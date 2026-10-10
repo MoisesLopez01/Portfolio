@@ -98,12 +98,15 @@ a { color: var(--orbe); text-decoration: none; }
 }
 .header {
   background: var(--card-bg); border-bottom: 1px solid var(--border);
-  padding: 14px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 24px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
 /* flex-basis 200px, not auto: with wrapping on, the title's max-content width
    would otherwise push the buttons onto a second row before it shrinks. */
 .header-title { flex: 1 1 200px; min-width: 0; }
-.header-title h1 { font-size: 17px; font-weight: 700; color: var(--void); line-height: 1.2; text-wrap: balance; }
+/* One line, ellipsis on overflow: a wrapped title used to double the header's
+   height and push Refresh onto a row of its own (2026.W41 screenshot). */
+.header-title h1 { font-size: 17px; font-weight: 700; color: var(--void); line-height: 1.2;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .header-title p  { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
 .week-badge { background: var(--orbe); color: #fff; border-radius: 99px;
               padding: 4px 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
@@ -116,6 +119,12 @@ a { color: var(--orbe); text-decoration: none; }
               transition: background .15s, border-color .15s, color .15s; }
 .header-btn:hover { background: var(--surface); }
 .header-btn svg { width: 14px; height: 14px; }
+/* Refresh / theme are utilities, not content — icon-only, label in title + sr-only. */
+.header-icon-btn { padding: 0; width: calc(32px * var(--scale)); height: calc(32px * var(--scale)); justify-content: center; }
+/* Data freshness: secondary information — muted text, no pill, one line; the
+   full two-cadence explanation lives in its tooltip. */
+.fresh-note { font-size: calc(11px * var(--scale)); color: var(--muted); font-weight: 600;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32ch; cursor: help; }
 
 /* ── LEFT SIDEBAR (2026.W37) ──
    The tabs used to be a horizontal strip above the data on every view, and the
@@ -172,7 +181,7 @@ a { color: var(--orbe); text-decoration: none; }
 }
 
 /* ── MAIN ── */
-main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 0; }
+main { max-width: 1600px; margin: 0 auto; padding: 0 24px 20px; display: flex; flex-direction: column; gap: 0; }
 
 /* ── LOADING ── */
 .loading { display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -213,7 +222,7 @@ main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; fle
   display: none;
   flex-direction: column;
   gap: 20px;
-  padding-top: 20px;
+  padding-top: 16px;
 }
 .tab-pane.active { display: flex; }
 
@@ -522,10 +531,26 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
 .mpill-off  { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
 
 /* ── FILTER BAR ── */
+/* One row by default (2026.W41): labels are visually hidden — every control
+   names itself ("All supervisors", "FTE Only", the search placeholder) — and
+   the four secondary filters fold into .fb-more. The bar used to take two
+   labelled rows, ~190px of sticky chrome above every view. */
 .filter-bar {
   background: var(--tab-bg);
-  padding: 10px 24px; display: none; align-items: flex-end; gap: 10px; flex-wrap: wrap;
+  padding: 6px 24px; display: none; align-items: center; gap: 8px; flex-wrap: wrap;
 }
+.fb-group > label, .fb-search > label {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.fb-more { display: flex; flex: 1 0 100%; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fb-more[hidden] { display: none; }
+.fb-more-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--slate);
+  font-size: calc(13px * var(--scale)); font-weight: 700; cursor: pointer; white-space: nowrap; }
+.fb-more-btn svg { width: 13px; height: 13px; }
+.fb-more-btn:hover, .fb-more-btn[aria-expanded="true"] { border-color: var(--orbe); color: var(--orbe); }
+.fb-more-count { background: var(--orbe); color: #fff; border-radius: 99px; padding: 0 6px;
+  font-size: calc(11px * var(--scale)); line-height: 1.6; }
 .filter-bar.visible { display: flex; }
 .fb-group { display: flex; flex-direction: column; gap: 4px; }
 .fb-group label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
@@ -540,13 +565,14 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
 }
 .fb-group select:focus-visible { border-color: var(--orbe); background-color: #fff; }
 .fb-group select.active { border-color: var(--orbe); color: var(--orbe); background-color: #EEF4FF; font-weight: 700; }
-.fb-search { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; max-width: 260px; }
+.fb-search { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; max-width: 280px; }
 .fb-search label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .fb-search-wrap { position: relative; }
 .fb-search-wrap svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; pointer-events: none; color: var(--muted); }
 .fb-search-wrap input { height: 34px; width: 100%; padding: 0 10px 0 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; outline: none; transition: border-color .15s; }
 .fb-search-wrap input:focus-visible { border-color: var(--orbe); background: #fff; }
-.fb-reset { height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; cursor: pointer; background: #fff; color: var(--slate); transition: background .12s, border-color .12s, color .12s; align-self: flex-end; }
+/* Reset is a quiet text action, not a peer of the filters. */
+.fb-reset { height: 34px; padding: 0 8px; border-radius: 8px; border: 1px solid transparent; font-size: 11px; font-weight: 700; cursor: pointer; background: transparent; color: var(--muted); transition: background .12s, border-color .12s, color .12s; }
 .fb-reset:hover { background: #FEF2F2; border-color: var(--june); color: var(--june); }
 
 /* ── Job Title multi-select dropdown ── */
@@ -1138,6 +1164,8 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
   .fb-group select { min-width: 0; width: 100%; }
   .fb-search { max-width: 100%; }
   .fb-reset { align-self: flex-start; }
+  .fb-more { flex-direction: column; align-items: stretch; }
+  .fb-more-btn { align-self: flex-start; }
 
   /* KPI: single column */
   .kpi-grid { grid-template-columns: 1fr; }
@@ -1392,7 +1420,7 @@ body { font-size: calc(15px * var(--scale)); }
 
 /* Filter controls — taller to fit larger type. .fb-multi-btn rides the same
    rules as the native selects so the two control generations read as ONE bar. */
-.fb-group select, .fb-search-wrap input, .fb-reset, .fb-multi-btn { height: calc(36px * var(--scale)); }
+.fb-group select, .fb-search-wrap input, .fb-reset, .fb-multi-btn, .fb-more-btn { height: calc(32px * var(--scale)); }
 
 /* Employee table — breathing room for 14px text */
 .emp-table th { padding: calc(11px * var(--scale)) calc(16px * var(--scale)); }
@@ -1437,8 +1465,8 @@ body { font-size: calc(15px * var(--scale)); }
    same selectors and MUST keep winning on small screens. Supersedes the old
    min-width:1440px notch (body 16px + hand-tuned 310px/240px grid columns). */
 @media (min-width: 1024px) {
-  main { max-width: calc(1600px * var(--scale)); padding: calc(20px * var(--scale)) calc(24px * var(--scale)); }
-  .header { padding: calc(14px * var(--scale)) calc(24px * var(--scale)); }
+  main { max-width: calc(1600px * var(--scale)); padding: 0 calc(24px * var(--scale)) calc(20px * var(--scale)); }
+  .header { padding: calc(8px * var(--scale)) calc(24px * var(--scale)); }
   /* KPI min stays UNSCALED and auto-FIT (not fill): extra width must become
      more columns first, then the cards stretch to close the row — so a full
      KPI set holds ONE row on wide screens instead of orphaning the last card
@@ -1529,7 +1557,7 @@ body.dark-mode .fb-multi-btn               { background: var(--input-bg); color:
 body.dark-mode .fb-multi-btn.active        { background: #1a2a5e; }
 body.dark-mode .fb-multi-panel             { background: #141C3D; border-color: var(--border); }
 body.dark-mode .fb-multi-opt:hover         { background: var(--hover-row); }
-body.dark-mode .fb-reset                   { background: var(--input-bg); color: var(--muted); border-color: var(--border); }
+body.dark-mode .fb-reset                   { background: transparent; color: var(--muted); border-color: transparent; }
 body.dark-mode .header-btn                 { background: var(--card-bg); color: var(--muted); border-color: var(--border); }
 body.dark-mode .header-btn:hover           { background: var(--hover-row); }
 body.dark-mode .copy-btn                   { background: var(--card-bg); border-color: var(--border); color: var(--muted); }
@@ -1700,17 +1728,17 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   </div>
   <div class="team-toggle" id="teamToggle" style="display:none" role="tablist" aria-label="Org team"></div>
   <span class="week-badge" id="weekBadge">Loading…</span>
-  <span id="dataFreshnessNote" style="font-size:10px;color:var(--slate);font-weight:600;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:3px 10px;white-space:nowrap;display:none"></span>
+  <span class="fresh-note" id="dataFreshnessNote" style="display:none"></span>
   <span class="role-badge role-badge-admin" id="userRoleBadge" style="display:none"></span>
-  <button class="header-btn" id="darkToggleBtn" onclick="toggleDarkMode()" title="Toggle dark mode" aria-label="Toggle dark mode">
+  <button class="header-btn header-icon-btn" id="darkToggleBtn" onclick="toggleDarkMode()" title="Toggle dark mode" aria-label="Toggle dark mode">
     <svg id="darkModeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
     </svg>
-    <span id="darkToggleLabel">Dark</span>
+    <span id="darkToggleLabel" class="sr-only">Dark</span>
   </button>
-  <button class="header-btn" id="refreshBtn" onclick="loadData(true)">
+  <button class="header-btn header-icon-btn" id="refreshBtn" onclick="loadData(true)" title="Refresh — bypass the cache and read the sheets live" aria-label="Refresh data">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-    Refresh
+    <span class="sr-only">Refresh</span>
   </button>
 </header>
 
@@ -1720,14 +1748,14 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 <!-- FILTER BAR -->
 <div class="filter-bar" id="filterBar">
   <div class="fb-search">
-    <label>Search</label>
+    <label for="fbSearch">Search</label>
     <div class="fb-search-wrap">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" id="fbSearch" placeholder="Name, supervisor, title…" oninput="applyFilters()">
     </div>
   </div>
   <div class="fb-group">
-    <label>Member Type</label>
+    <label for="fbMemberType">Member Type</label>
     <select id="fbMemberType" onchange="onMemberTypeChange()">
       <option value="fte">FTE Only</option>
       <option value="">All members</option>
@@ -1735,12 +1763,21 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     </select>
   </div>
   <div class="fb-group">
-    <label>Location</label>
-    <select id="fbLocation" onchange="applyFilters()"><option value="">All locations</option></select>
-  </div>
-  <div class="fb-group">
-    <label>Supervisor</label>
+    <label for="fbSupervisor">Supervisor</label>
     <select id="fbSupervisor" onchange="applyFilters()"><option value="">All supervisors</option></select>
+  </div>
+  <button class="fb-more-btn" id="fbMoreBtn" type="button" aria-expanded="false" aria-controls="fbMore" onclick="toggleMoreFilters_()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+    More filters<span class="fb-more-count" id="fbMoreCount" hidden></span>
+  </button>
+  <button class="fb-reset" id="fbResetBtn" onclick="resetFilters()">Reset</button>
+  <!-- Secondary filters: Location / Job Title / Family / Level narrow the slice
+       less often than search, member type and supervisor, so they fold away
+       behind "More filters" and stop costing a second row of chrome. -->
+  <div class="fb-more" id="fbMore" hidden>
+  <div class="fb-group">
+    <label for="fbLocation">Location</label>
+    <select id="fbLocation" onchange="applyFilters()"><option value="">All locations</option></select>
   </div>
   <div class="fb-group">
     <label>Job Title</label>
@@ -1778,7 +1815,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
       </div>
     </div>
   </div>
-  <button class="fb-reset" onclick="resetFilters()">Reset</button>
+  </div><!-- /fb-more -->
 </div>
 </div><!-- /topbar -->
 
@@ -3395,7 +3432,7 @@ function onDataLoaded(payload, wasRefresh) {
     if (trackedAt || srcAt) {
       var dailyTs = _fmtTs(trackedAt || srcAt);
       if (hasMetric_('tracked')) {
-        _fn.textContent = "↻ Tracked & Planned: " + dailyTs + " (daily)  ·  Goals · PTO · Kudos: manual";
+        _fn.textContent = "↻ Data as of " + dailyTs;
         _fn.title = "Tracked & Planned import automatically every day (last: " + dailyTs + ")." +
                     (srcAt ? "\nGoals, PTO and Kudos refresh when the spreadsheet is edited (last change: " + _fmtTs(srcAt) + ")." : "");
       } else {
@@ -8016,6 +8053,23 @@ function markSelectActive() {
   if (jfBtn) jfBtn.classList.toggle("active", STATE.jfFilter.size > 0);
   var lvBtn = document.getElementById("fbJobLevelBtn");
   if (lvBtn) lvBtn.classList.toggle("active", STATE.lvFilter.size > 0);
+  // Folded filters must still announce themselves: the "More filters" button
+  // carries how many of the four are narrowing the slice.
+  var loc = document.getElementById("fbLocation");
+  var nMore = (loc && loc.value ? 1 : 0) + (STATE.jobTitleFilter.size ? 1 : 0) +
+              (STATE.jfFilter.size ? 1 : 0) + (STATE.lvFilter.size ? 1 : 0);
+  var cnt = document.getElementById("fbMoreCount");
+  if (cnt) { cnt.textContent = nMore; cnt.hidden = nMore === 0; }
+  var moreBtn = document.getElementById("fbMoreBtn");
+  if (moreBtn) moreBtn.classList.toggle("active", nMore > 0);
+}
+
+function toggleMoreFilters_() {
+  var panel = document.getElementById("fbMore");
+  var btn   = document.getElementById("fbMoreBtn");
+  if (!panel || !btn) return;
+  panel.hidden = !panel.hidden;
+  btn.setAttribute("aria-expanded", String(!panel.hidden));
 }
 
 function populateJobTitleMulti(source) {
