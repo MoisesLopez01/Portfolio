@@ -149,9 +149,35 @@ ck('client canEditScoring_ = Super Admin / Admin, never while previewing',
 const tab = fnBody(html, 'renderWeightsTab_');
 ck('renderWeightsTab_ asks canEditScoring_()', /var canEdit = canEditScoring_\(\);/.test(tab));
 ck('a non-editor returns before any editor markup is built',
-   tab.indexOf('if (!canEdit) {') !== -1 && tab.indexOf('if (!canEdit) {') < tab.indexOf('weight-slider'));
-ck('the editor sits folded under "Edit weights"', /<details class="sw-editor" id="weightsEditor"/.test(tab) && /Edit weights/.test(tab));
+   tab.indexOf('if (!canEdit) {') !== -1 && tab.indexOf('if (!canEdit) {') < tab.indexOf('class="weight-num"'));
+ck('the advanced editor sits folded under "Advanced settings"',
+   /<details class="sw-editor" id="weightsEditor"/.test(tab) && /Advanced settings/.test(tab));
 ck('everyone gets the summary placeholder', /id="scoringSummary"/.test(fnBody(html, 'renderScoringOverview_')));
+// The read view is ONE table, one row per role, the same seven metric columns.
+const summary = fnBody(html, 'renderScoringSummary_');
+ck('summary renders a single table (no per-team loop of tables)',
+   (summary.match(/<table class="sw-table/g) || []).length === 1);
+ck('rate inputs appear only when the payload AND the client say "editor"',
+   /var editable = !!\(cfg\.canEdit && cfg\.matrix && canEditScoring_\(\)\);/.test(summary) &&
+   /editable\s*\?\s*'<input type="number" class="sw-rate"/.test(summary));
+ck('no slider anywhere on the page', !/type="range"/.test(html));
+ck('every row shows its score mix', /roleMixBar_\(r\.points\)/.test(summary));
+const saveRole = fnBody(html, 'saveRoleWeights_');
+ck('Save writes only roles whose points changed', /if \(!Object\.keys\(vals\)\.some\(/.test(saveRole));
+ck('Save writes the family-wide (ALL) cell, leaving level cells alone', /mx\[t\.team\]\[t\.code\]\.ALL = cell;/.test(saveRole));
+ck('Save goes through saveScoringMatrix (server re-checks canEditScoring_)', /\.saveScoringMatrix\(\{ matrix: MATRIX_CFG\.matrix \}\)/.test(saveRole));
+// eslint-disable-next-line no-eval
+const sharesOf100_ = eval('(' + fnBody(html, 'sharesOf100_') + ')');
+const thirds = sharesOf100_({ goals: 1, kudos: 1, si: 1 }, ['goals', 'kudos', 'si']);
+eq('points always total exactly 100 (1:1:1 → 34/33/33)', thirds.goals + thirds.kudos + thirds.si, 100);
+eq('points mirror the shares of renormalized weights', sharesOf100_({ goals: 45, kudos: 20, si: 20, pto: 15 }, ['goals', 'kudos', 'si', 'pto']),
+   { goals: 45, kudos: 20, si: 20, pto: 15 });
+ck('summary columns are all seven metrics (WEIGHT_DEFS), not the team subset',
+   /WEIGHT_DEFS\.map\(function\(d\)/.test(summary) && !/teamWeightDefs_/.test(summary));
+const guideSrc = extract(html, 'var SCORE_METRIC_GUIDE = [', '\n];');
+eq('the plain-English guide explains every scored metric',
+   (guideSrc.match(/key: '(\w+)'/g) || []).map(s => s.slice(6, -1)).sort(),
+   ['goals', 'kudos', 'planned', 'pto', 'rcr', 'si', 'tracked']);
 const load = fnBody(html, 'loadScoringMatrix_');
 ck('the summary renders for every caller', /renderScoringSummary_\(\);/.test(load));
 ck('the matrix editor renders only on an editor payload', /if \(cfg && cfg\.canEdit\) renderMatrixSection_\(\);/.test(load));

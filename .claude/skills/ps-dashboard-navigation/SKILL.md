@@ -76,9 +76,10 @@ main tab.
   to managers what each metric means and how it is evaluated. Internal ids (`dataref`,
   `tabDataRef`, the `dr-*` CSS classes) keep the old name.
 - ⚖️ **Scoring Weights** — every role (`roles: null`, since 2026.W41). Opens on a
-  read-only per-team summary; the editor is folded under "Edit weights" for
-  `canEditScoring_()` only (superadmin + admin, never while 👁 previewing). Visible in
-  preview, read-only there.
+  plain-English metric guide and a **Points by role** table; for `canEditScoring_()`
+  (superadmin + admin, never while 👁 previewing) its cells become rate inputs, and the
+  company default + per-level matrix sit under "Advanced settings". Visible in preview,
+  read-only there.
 - 🔒 **Access Control** — superadmin + admin + orgadmin. Carries `hideInPreview: true`
   — hidden while 👁 View as is active, because it reads settings as the real caller.
 - 📶 **Usage Analytics** — superadmin only. Lazy-loads `getUsageAnalytics()`;

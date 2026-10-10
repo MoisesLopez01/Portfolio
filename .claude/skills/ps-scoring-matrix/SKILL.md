@@ -33,12 +33,15 @@ family tunes**. Spec: `ps-dashboard/docs/specs/2026-07-09-team-aligned-scoring-d
 - **Per-employee weights on the client**: unchanged — `emp.scoreWeights` attaches only
   when the resolved weights differ from the flat base (reference check); base-inherit
   Services natives follow live weight previews via `SCORE_W`.
-- **Read view (2026.W41)**: every role sees a per-team summary built from
+- **Points by role (2026.W41)**: every role sees one table, one row per job family, the
+  seven metric columns as points out of 100, plus a score-mix bar. Rows come from
   `familySummaryWeights_` (block `ALL` cell over `blockFillBase_`, team mask, non-tracking
-  mask; "varies by level" when a level column has its own cell). Edit rights:
+  mask; `metrics` = the role's input cells). A family in two teams with equal weights is
+  one row whose save writes both blocks. Editors type rates inline (`saveRoleWeights_`
+  writes changed rows' `ALL` cells only; level cells untouched). Edit rights:
   `canEditScoring_` = superadmin + admin (org admins read only). Non-editors get the
   summary payload only. Tests: `tests/scoring-weights-view-checks.js`.
-- **Editor** (folded under "Edit weights"): ⚖️ Scoring Weights → matrix section renders three team separators
+- **Advanced editor** (folded under "Advanced settings"; company default has rate inputs, no slider): ⚖️ Scoring Weights → matrix section renders three team separators
   (Services / R&D / Sales & Success) with family blocks placed by active membership
   (`getScoringConfig().sections`) plus a per-team "Uncatalogued titles" catch-all.
   `saveScoringMatrix()` validates metrics against the team's set and busts the cache.

@@ -863,6 +863,7 @@ function familySummaryWeights_(teamKey, family, matrix, base) {
   }
   return {
     weights: Object.assign({}, maskToTeamMetrics_(cell ? fillWeights_(cell, fill) : fill, metrics)),
+    metrics: metrics.slice(), // metrics this role may carry — the editor's input cells
     levelOverrides: Object.keys(block).filter(k => k !== ALL_KEY_ && Object.keys(block[k] || {}).length).length,
   };
 }
@@ -935,7 +936,7 @@ function getScoringConfig() {
         ok: true, canEdit: false, metrics: WEIGHT_METRICS_, baseWeights: base,
         sections: sections.map(s => ({
           team: s.team,
-          families: s.families.map(f => ({ code: f.code, name: f.name, weights: f.weights, levelOverrides: f.levelOverrides })),
+          families: s.families.map(f => ({ code: f.code, name: f.name, weights: f.weights, metrics: f.metrics, levelOverrides: f.levelOverrides })),
           catchAll: { weights: s.catchAll.weights, levelOverrides: s.catchAll.levelOverrides },
         })),
       };

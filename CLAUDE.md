@@ -343,8 +343,14 @@ Configurable per deployment via ⚖️ Scoring Weights (sidebar › More) → sa
 `saveWeightSettings()` / `readWeightSettings_()` handle persistence.
 
 **Read for everyone, edit for Super Admin / Admin (2026.W41).** Every role opens the page
-and sees a plain per-team summary (job family × team metrics, each cell the metric's share
-of the score, resolved server-side by `familySummaryWeights_`). Editing is gated by
+on a plain-English guide to the seven metrics (`SCORE_METRIC_GUIDE`) and **Points by role**:
+one table, one row per job family, all seven metric columns, each cell the metric's points
+out of 100 (largest-remainder rounding, `sharesOf100_`) plus a score-mix bar. Weights and
+each role's allowed metrics are resolved server-side by `familySummaryWeights_`. Editors
+type rates straight into the cells (no sliders anywhere); Save writes only changed rows as
+the family's `ALL` cell in every team the row covers (`saveRoleWeights_` →
+`saveScoringMatrix`). The company default and per-level matrix sit folded under
+"Advanced settings". Editing is gated by
 `canEditScoring_` — superadmin + admin, **not** orgadmin (the weights are one company-wide
 policy). `getScoringConfig` hands non-editors the summary only (no headcounts, titles or raw
 matrix) and never seeds sheets for them; both save endpoints re-check `canEditScoring_`.
