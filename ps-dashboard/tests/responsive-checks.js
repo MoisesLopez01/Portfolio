@@ -56,7 +56,33 @@ ck('csz_ falls back to 1', (function () {
 
 // ── filter-bar consistency (2026-08-18 screenshot fix) ──
 ck('multiselect btn rides the scaled height rule',
-   /\.fb-group select, \.fb-search-wrap input, \.fb-reset, \.fb-multi-btn \{ height: calc\(36px \* var\(--scale\)\); \}/.test(html));
+   /\.fb-group select, \.fb-search-wrap input, \.fb-reset, \.fb-multi-btn, \.fb-more-btn \{ height: calc\(32px \* var\(--scale\)\); \}/.test(html));
+
+// ── compact top bar (2026.W41 screenshot: chrome ate ~450px above the data) ──
+ck('filter labels visually hidden, not removed',
+   html.includes('.fb-group > label, .fb-search > label {') && html.includes('<label for="fbSupervisor">Supervisor</label>'));
+ck('secondary filters fold behind More filters',
+   /<div class="fb-more" id="fbMore" hidden>[\s\S]*id="fbLocation"[\s\S]*id="fbJobTitleWrap"[\s\S]*id="fbJobFamilyWrap"[\s\S]*id="fbJobLevelWrap"[\s\S]*<\/div><!-- \/fb-more -->/.test(html));
+ck('primary filters stay outside the fold', (function () {
+  const fold = html.indexOf('<div class="fb-more" id="fbMore"');
+  return ['id="fbSearch"', 'id="fbMemberType"', 'id="fbSupervisor"'].every(function (id) {
+    const i = html.indexOf(id); return i > 0 && i < fold;
+  });
+})());
+ck('folded filters still counted on the button',
+   html.includes('function toggleMoreFilters_()') && /cnt\.hidden = nMore === 0/.test(html));
+ck('header title is one line', /\.header-title h1 \{[^}]*white-space: nowrap;/.test(html));
+// ── sidebar line icons (2026.W41) ── one stroke set, no emoji/Unicode glyphs in the rail
+// 5 main tabs + the collapse toggle (Leading Behaviours folded into Performance Record, 2026.W41).
+ck('main tabs carry line icons, not glyphs', (function () {
+  const nav = html.slice(html.indexOf('id="tabNav"'), html.indexOf('id="btnNav"') + 400);
+  return (nav.match(/<span class="tabDot" aria-hidden="true"><svg class="navIco"/g) || []).length === 6 &&
+         !/[◆◎★▲📋📈‹›]/.test(nav);
+})());
+ck('More-group emoji map to line icons',
+   /NAV_EMOJI_ICON_ = \{[^}]*'📖': 'book'[^}]*'🔒': 'lock'[^}]*'👁': 'eye'/.test(html) &&
+   html.includes("navIcon_(on ? 'expand' : 'collapse')"));
+ck('refresh keeps an accessible name', /id="refreshBtn"[^>]*aria-label="Refresh data"/.test(html));
 ck('multiselect in the 14px type tier', html.includes('.fb-multi-btn, .fb-multi-opt,'));
 ck('single-open multiselect panels', /querySelectorAll\('\.fb-multi-panel'\)\.forEach\(function\(p\) \{\s*\n?\s*if \(p !== panel\)/.test(html));
 
