@@ -135,6 +135,7 @@ Taken with sample data (made-up names and numbers), in `img/2026-W41/`:
 | `439571f` | Phone header: team selector on its own line (no sideways overflow) |
 | `1bff4bc` | Team Radar: signals first (see the addendum below) |
 | `03814c0` | Team grid: Celebrate / Support / Watch lanes and the Why column (see the addendum below) |
+| `c9bf797` | Team grid: the Watch card counts the Watch lane only, so the lane counts add up |
 
 ## Addendum — later on 2026-10-10: Team Radar and Team grid
 
