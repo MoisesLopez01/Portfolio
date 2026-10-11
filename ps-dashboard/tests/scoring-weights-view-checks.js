@@ -5,11 +5,13 @@
 //   2. Server — both save endpoints gate on canEditScoring_; getScoringConfig admits
 //      any allowed caller, never seeds sheets for a non-editor (a write), and hands a
 //      non-editor only the summary (no headcounts, title lists or raw matrix).
-//   3. Summary — familySummaryWeights_ (what the read-only tables show) agrees with
-//      weightsForEmployee_ (what actually scores people) for a family member at a
-//      level with no override of its own.
+//   3. Summary — familySummaryWeights_ (what the page shows: the role row AND its
+//      level fold) agrees with weightsForEmployee_ (what actually scores people), at
+//      a level with its own cell and at one that inherits the role.
 //   4. Client — the view is open to every role, the editor is offered only to
-//      canEditScoring_(), and never while previewing.
+//      canEditScoring_(), and never while previewing; the page is the company
+//      default strip + ONE role table whose rows fold open to their levels; org-scoped
+//      callers get only the roles and levels their own people hold.
 //
 // Run: node "ps-dashboard/tests/scoring-weights-view-checks.js"
 const fs   = require('fs');
@@ -66,6 +68,11 @@ ck('Job Catalog seeding is editor-only',    /if \(canEdit && !ss\.getSheetByName
 ck('Scoring Matrix seeding is editor-only', /if \(canEdit && !ss\.getSheetByName\(SCORING_MATRIX_SHEET_\)\)/.test(getC));
 const nonEditor = extract(getC, 'if (!canEdit) {', '\n    }');
 ck('non-editor payload says canEdit: false', /canEdit: false/.test(nonEditor));
+ck('non-editor payload ships each role\'s levels (catalog titles + resolved weights)', /levels: f\.levels/.test(nonEditor));
+ck('non-editor payload ships the level order', /levelCols: LEVEL_COLS_/.test(nonEditor));
+ck('non-editor catch-all ships its allowed metrics', /catchAll: \{ weights: s\.catchAll\.weights, metrics: s\.catchAll\.metrics/.test(nonEditor));
+ck('getScoringConfig resolves family summaries WITH the catalog (so levels come through)',
+   /familySummaryWeights_\(s\.team\.key, f\.code, matrix, base, catalog\)/.test(getC));
 ['matrix', 'rolesByFamily', 'unmappedTitles', 'count', 'seeded'].forEach(k => {
   ck('non-editor payload omits ' + k, !new RegExp('\\b' + k + '\\b\\s*[:,]').test(nonEditor.replace(/canEdit: false/, '')));
 });
@@ -82,6 +89,7 @@ const scoringSlice = [
   extract(report, 'const COE_FAMILY_CODE_', ';'),
   extract(report, 'const TRACKING_FAMILIES_', ';'),
   extract(report, 'const ALL_KEY_', ';'),
+  extract(report, 'const LEVEL_COLS_', ';'),
   extract(report, 'const RND_DEFAULT_W_', ';'),
   extract(report, 'const SALES_DEFAULT_W_', ';'),
   fnBody(report, 'normPS_'),
@@ -92,6 +100,7 @@ const scoringSlice = [
   fnBody(report, 'blockFillBase_'),
   fnBody(report, 'maskToTeamMetrics_'),
   fnBody(report, 'weightsForEmployee_'),
+  fnBody(report, 'resolveBlockWeights_'),
   fnBody(report, 'familySummaryWeights_'),
   extract(teams, 'const TEAMS_ = [', '\n];'),
   fnBody(teams, 'teamByKey_'),
@@ -141,6 +150,28 @@ const mutable = S.familySummaryWeights_('services', 'ALL', matrix, base).weights
 mutable.goals = 999;
 ck('summary weights are copies — editing one never mutates the flat base', base.goals === 25);
 
+// The level fold: each catalog level of a role, with the weights it scores with.
+const catalog = new Map([
+  ['consultant, service delivery',        { title: 'Consultant, Service Delivery',        family: 'JF009', track: 'I', level: 3, levelKey: 'I3' }],
+  ['senior consultant, service delivery', { title: 'Senior Consultant, Service Delivery', family: 'JF009', track: 'I', level: 3, levelKey: 'I3' }],
+  ['principal consultant',                { title: 'Principal Consultant',                family: 'JF009', track: 'I', level: 7, levelKey: 'I7' }],
+  ['engagement manager',                  { title: 'Engagement Manager',                  family: 'JF009', track: 'M', level: 6, levelKey: 'M6' }],
+  ['technical trainer',                   { title: 'Technical Trainer',                   family: 'JF008', track: 'I', level: 5, levelKey: 'I5' }],
+]);
+const jf009 = S.familySummaryWeights_('services', 'JF009', matrix, base, catalog);
+eq('levels follow LEVEL_COLS_ order and carry the catalog titles, sorted',
+   jf009.levels.map(l => l.key + ':' + l.titles.join('|')),
+   ['I3:Consultant, Service Delivery|Senior Consultant, Service Delivery', 'I7:Principal Consultant', 'M6:Engagement Manager']);
+const i7 = S.weightsForEmployee_({ name: 'x', team: 'services', jobTitle: 'Principal Consultant', tracksTime: true, isCrewMember: false }, matrix, catalog, base, null);
+eq('a level with its own cell shows exactly what scores its people (I7)', jf009.levels[1].weights, Object.assign({}, i7));
+const m6 = S.weightsForEmployee_({ name: 'x', team: 'services', jobTitle: 'Engagement Manager', tracksTime: true, isCrewMember: false }, matrix, catalog, base, null);
+eq('a level without a cell shows the role row (M6 inherits ALL)', jf009.levels[2].weights, Object.assign({}, m6));
+eq('the level that carries its own cell is flagged', jf009.levels.map(l => l.own), [false, true, false]);
+ck('levels are not built without the catalog', S.familySummaryWeights_('services', 'JF009', matrix, base).levels === undefined);
+ck('the catch-all never lists levels', S.familySummaryWeights_('services', 'ALL', matrix, base, catalog).levels === undefined);
+ck('a non-tracking role\'s levels carry no hours weight either',
+   S.familySummaryWeights_('services', 'JF008', matrix, base, catalog).levels.every(l => l.weights.tracked === 0 && l.weights.planned === 0));
+
 // ── 4. Client ────────────────────────────────────────────────────────────────
 ck('Scoring Weights is visible to every role (roles: null)',
    /\{ id: "weights",[^\n]*roles: null[^\n]*\}/.test(html));
@@ -158,7 +189,7 @@ const summary = fnBody(html, 'renderScoringSummary_');
 ck('summary renders a single table (no per-team loop of tables)',
    (summary.match(/<table class="sw-table/g) || []).length === 1);
 ck('rate inputs appear only when the payload AND the client say "editor"',
-   /var editable = !byLevel && !!\(cfg\.canEdit && cfg\.matrix && canEditScoring_\(\)\);/.test(summary) &&
+   /var editable = !scoped && !!\(cfg\.canEdit && cfg\.matrix && canEditScoring_\(\)\);/.test(summary) &&
    /editable\s*\?\s*'<input type="number" class="sw-rate"/.test(summary));
 ck('no slider anywhere on the page', !/type="range"/.test(html));
 ck('every row shows its score mix', /roleMixBar_\(r\.points\)/.test(summary));
@@ -178,35 +209,74 @@ ck('summary columns are all seven metrics (WEIGHT_DEFS), not the team subset',
 ck('no duplicate definitions list on the page', html.indexOf('SCORE_METRIC_GUIDE') === -1);
 ck('the lead line points to Documentation for definitions',
    /switchTab\(\\'dataref\\'\)/.test(fnBody(html, 'renderScoringOverview_')));
-// Org-scoped callers see their team's roles BY LEVEL in the SAME table, read-only.
-ck('the level view keys off the server scope stamp, not a role string',
-   /var byLevel = !!\(DATA && DATA\.managerScopeName\);/.test(summary));
-ck('the level view is never editable', /var editable = !byLevel && /.test(summary));
-ck('both views share the one table', /var rows = byLevel \? buildLevelRows_\(cfg\) : SW_ROWS;/.test(summary));
-// buildLevelRows_ groups the caller's people by role + level with the weights they are scored with.
+// Three levels of disclosure on the one page.
+ck('level 1 — the company default strip renders from cfg.baseWeights', /renderCompanyDefault_\(cfg, editable\)/.test(summary) &&
+   /sharesOf100_\(cfg\.baseWeights \|\| SCORE_W, keys\)/.test(fnBody(html, 'renderCompanyDefault_')));
+ck('level 3 — a role with catalog levels gets a fold row, hidden until opened',
+   /if \(hasLv\) html \+= '<tr class="sw-detail" id="swD-' \+ i \+ '"' \+ \(open \? '' : ' hidden'\)/.test(summary) &&
+   /renderLevelFold_\(r, scoped, editable\)/.test(summary));
+ck('the fold toggle is a real button with aria-expanded / aria-controls',
+   /<button type="button" class="sw-x" id="swX-' \+ i \+ '" aria-expanded="/.test(summary) && /aria-controls="swD-' \+ i \+ '"/.test(summary));
+ck('a role whose levels differ is tagged "varies by level"', /sw-tag[^']*>varies by level</.test(summary));
+const fold = fnBody(html, 'renderLevelFold_');
+ck('the fold lists level, job titles and the seven metric points', /Job titles at this level/.test(fold) && /WEIGHT_DEFS\.map\(function\(d\) \{ return '<th>' \+ esc\(d\.label\)/.test(fold));
+ck('a level point that differs from the role row is highlighted', /diff \? ' sw-diff'/.test(fold));
+ck('the fold never offers inputs (level tuning stays in Advanced settings)', !/<input/.test(fold) && /Level-specific points are set under Advanced settings/.test(fold));
+ck('"How a score is built" is folded and definition-free', /<details class="sw-how"/.test(fnBody(html, 'renderHowItWorks_')) &&
+   !/Hours logged vs/.test(fnBody(html, 'renderHowItWorks_')));
+ck('an expand-all / collapse-all control exists', /id="swAllBtn" onclick="swToggleAll_\(\)"/.test(summary));
+// Org-scoped callers: the same table, narrowed to their own roles and levels, read-only.
+ck('the scoped view keys off the server scope stamp, not a role string',
+   /var scoped = !!\(DATA && DATA\.managerScopeName\);/.test(summary));
+ck('the scoped view is never editable', /var editable = !scoped && /.test(summary));
+ck('both views share the one table', /if \(scoped\) rows = buildScopedRows_\(cfg, rows\);/.test(summary));
 {
-  const SCORE_W = { goals: 25, tracked: 25, planned: 20, rcr: 15, kudos: 5, si: 5, pto: 5 };
   const WEIGHT_DEFS = ['goals', 'tracked', 'planned', 'rcr', 'kudos', 'si', 'pto'].map(k => ({ key: k }));
   const isCrewEmp = e => !!e.isCrewMember;
+  const svcW = { goals: 25, tracked: 25, planned: 20, rcr: 15, kudos: 5, si: 5, pto: 5 };
+  const i7W  = { goals: 30, tracked: 30, planned: 20, rcr: 10, kudos: 5, si: 5, pto: 0 };
   const opsW = { goals: 45, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 15 };
-  const DATA = { employees: [
-    { jobTitle: '09.I3.1 - Consultant, Service Delivery' },
-    { jobTitle: '09.I3.2 - Senior Consultant, Service Delivery' },
-    { jobTitle: '09.M6.1 - Engagement Manager, Service Delivery',
-      scoreWeights: { goals: 30, tracked: 30, planned: 20, rcr: 10, kudos: 5, si: 5, pto: 0 } },
-    { jobTitle: '15.I2.2 - Operations Analyst', scoreWeights: opsW },
-    { jobTitle: '09.I3.3 - Consultant', isCrewMember: true },
+  const svcM = ['rcr', 'si', 'goals', 'tracked', 'planned', 'kudos', 'pto'], opsM = ['si', 'goals', 'kudos', 'pto'];
+  const cfg = { levelCols: ['I1','I2','I3','I4','I5','I6','I7','I8','M4','M5','M6','M7','M8','M9','M10'], sections: [
+    { team: { key: 'services', label: 'Services' },
+      families: [
+        { code: 'JF009', name: 'Service Delivery', weights: svcW, metrics: svcM, levels: [
+          { key: 'I3', titles: ['Consultant, Service Delivery', 'Senior Consultant, Service Delivery'], weights: svcW, own: false },
+          { key: 'I7', titles: ['Principal Consultant'], weights: i7W, own: true },
+          { key: 'M6', titles: ['Engagement Manager'], weights: svcW, own: false } ] },
+        { code: 'JF015', name: 'Operations', weights: opsW, metrics: opsM, levels: [
+          { key: 'I2', titles: ['Operations Analyst'], weights: opsW, own: false } ] } ],
+      catchAll: { weights: svcW, metrics: svcM } },
+    { team: { key: 'rnd', label: 'R&D' }, families: [
+        { code: 'JF015', name: 'Operations', weights: opsW, metrics: opsM, levels: [
+          { key: 'I2', titles: ['Operations Analyst'], weights: opsW, own: false } ] } ],
+      catchAll: { weights: opsW, metrics: opsM } },
   ] };
-  const cfg = { sections: [{ families: [{ code: 'JF009', name: 'Service Delivery' }, { code: 'JF015', name: 'Operations' }] }] };
+  const DATA = { managerScopeName: 'Someone', employees: [
+    { jobTitle: '09.I3.1 - Consultant, Service Delivery', team: 'services' },
+    { jobTitle: 'Senior Consultant, Service Delivery', team: 'services' },      // catalog title, no code prefix
+    { jobTitle: '09.I7.1 - Principal Consultant', team: 'services' },
+    { jobTitle: '09.M9.1 - Director, Service Delivery', team: 'services' },      // code only, level not in catalog
+    { jobTitle: '15.I2.2 - Operations Analyst', team: 'services' },
+    { jobTitle: 'Chief Vibes Officer', team: 'services' },                        // uncatalogued → Other
+    { jobTitle: '09.I3.3 - Consultant', team: 'services', isCrewMember: true },  // crew left out
+  ] };
   // eslint-disable-next-line no-eval
-  const build = eval('(function(){' + fnBody(html, 'sharesOf100_') + '\n' + fnBody(html, 'buildLevelRows_') +
-    '\nreturn buildLevelRows_;})()');
-  const rows = build(cfg);
-  eq('level rows: one per role + level, in family then level order, crew left out',
-     rows.map(r => r.name + ' ' + r.level + ' ×' + r.n), ['Service Delivery I3 ×2', 'Service Delivery M6 ×1', 'Operations I2 ×1']);
-  eq('a level row carries the weights its people are scored with', rows[1].points,
-     { goals: 30, tracked: 30, planned: 20, rcr: 10, kudos: 5, si: 5 });
-  ck('a metric with no weight is not listed for that level (shown as —)', rows[2].metrics.indexOf('tracked') === -1);
+  const B = eval('(function(){' + ['sharesOf100_', 'pointsDiffer_', 'buildRoleRows_', 'swNormTitle_', 'scopeRoleUsage_', 'buildScopedRows_']
+    .map(n => fnBody(html, n)).join('\n') + '\nreturn { buildRoleRows_, buildScopedRows_ };})()');
+  const all = B.buildRoleRows_(cfg);
+  eq('company-wide: one row per role, identical Operations blocks merged across teams',
+     all.map(r => r.name + (r.showTeam ? ' (' + r.team + ')' : '') + ' targets=' + r.targets.length), ['Service Delivery targets=1', 'Operations targets=2']);
+  ck('company-wide: a role with a differing level is flagged, one without is not', all[0].varies === true && all[1].varies === false);
+  ck('company-wide: level points come from the level\'s own weights (I7)',
+     Object.keys(i7W).every(k => all[0].levels[1].points[k] === i7W[k]));
+  const rows = B.buildScopedRows_(cfg, all);
+  eq('scoped: only the roles my people hold, with headcounts, crew left out, uncatalogued → Other job titles',
+     rows.map(r => r.name + ' ×' + r.n), ['Service Delivery ×4', 'Operations ×1', 'Other job titles ×1']);
+  eq('scoped: only the levels my people hold, matched by catalog title OR job code, a code-only level listed as scoring like the role',
+     rows[0].levels.map(l => l.key + ' ×' + l.n + (l.titles.length ? '' : ' (code only)')), ['I3 ×2', 'I7 ×1', 'M9 ×1 (code only)']);
+  ck('scoped: a role row keeps the server-resolved role points and its metric mask', rows[1].metrics.indexOf('tracked') === -1 && rows[1].points.goals === 45);
+  ck('scoped: the Other row carries no fold and no save targets', rows[2].levels.length === 0 && rows[2].targets.length === 0);
 }
 const load = fnBody(html, 'loadScoringMatrix_');
 ck('the summary renders for every caller', /renderScoringSummary_\(\);/.test(load));

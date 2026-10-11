@@ -33,18 +33,22 @@ family tunes**. Spec: `ps-dashboard/docs/specs/2026-07-09-team-aligned-scoring-d
 - **Per-employee weights on the client**: unchanged — `emp.scoreWeights` attaches only
   when the resolved weights differ from the flat base (reference check); base-inherit
   Services natives follow live weight previews via `SCORE_W`.
-- **Points by role (2026.W41)**: the page is ONE table (no definitions — they live in
-  📖 Documentation; no second table). Org-scoped callers (`DATA.managerScopeName`) get their
-  team's roles by level (`buildLevelRows_`, from `emp.scoreWeights || SCORE_W`), read-only.
-  Everyone else: one row per job family, the
-  seven metric columns as points out of 100, plus a score-mix bar. Rows come from
-  `familySummaryWeights_` (block `ALL` cell over `blockFillBase_`, team mask, non-tracking
-  mask; `metrics` = the role's input cells). A family in two teams with equal weights is
-  one row whose save writes both blocks. Editors type rates inline (`saveRoleWeights_`
-  writes changed rows' `ALL` cells only; level cells untouched). Edit rights:
-  `canEditScoring_` = superadmin + admin (org admins read only). Non-editors get the
-  summary payload only. Tests: `tests/scoring-weights-view-checks.js`.
-- **Advanced editor** (folded under "Advanced settings"; company default has rate inputs, no slider): ⚖️ Scoring Weights → matrix section renders three team separators
+- **Points by role (2026.W41)**: the page is the **company default strip** + ONE table (no
+  definitions — they live in 📖 Documentation; no second table) whose rows **fold open to
+  their levels**. Rows come from `familySummaryWeights_` → `resolveBlockWeights_` (level
+  cell → block `ALL` cell → `blockFillBase_`, team mask, non-tracking mask — the scorer's
+  rule; `metrics` = the role's input cells; `levels[]` = catalog levels with titles, resolved
+  weights and an `own` flag when the level carries its own cell). Client: `buildRoleRows_`
+  (a family in two teams with equal weights AND levels is one row whose save writes both
+  blocks; `varies` when any level's points differ), `renderLevelFold_` (highlights differing
+  cells), `swToggle_` / `swToggleAll_` (fold state in `STATE.swOpen`), `renderHowItWorks_`
+  (folded four-step note). Org-scoped callers (`DATA.managerScopeName`) get
+  `buildScopedRows_`: only the roles/levels their people hold (catalog title, then job-code
+  prefix; uncatalogued → "Other job titles" from the team catch-all; crew excluded), with
+  headcounts, read-only. Editors type rates inline (`saveRoleWeights_` writes changed rows'
+  `ALL` cells only; level cells untouched — those live in the Advanced editor). Edit rights:
+  `canEditScoring_` = superadmin + admin (org admins read only). Non-editors get the summary
+  payload only (plus `levelCols`). Tests: `tests/scoring-weights-view-checks.js`.- **Advanced editor** (folded under "Advanced settings"; company default has rate inputs, no slider): ⚖️ Scoring Weights → matrix section renders three team separators
   (Services / R&D / Sales & Success) with family blocks placed by active membership
   (`getScoringConfig().sections`) plus a per-team "Uncatalogued titles" catch-all.
   `saveScoringMatrix()` validates metrics against the team's set and busts the cache.

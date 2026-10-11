@@ -848,30 +848,61 @@ function seedScoringMatrix_(famsByTeam) {
   return { rows: rows.length - 1, savedAt };
 }
 
-// The weights a (team, family) block scores with at a level that has no override
-// of its own — what the read-only ⚖️ Scoring Weights summary shows. Same rules as
-// weightsForEmployee_: the block's ALL cell over blockFillBase_, then the hard
-// team mask, and non-tracking families lose tracked/planned/RCR. `levelOverrides`
-// counts level columns that carry their own cell (the summary flags "varies by level").
-function familySummaryWeights_(teamKey, family, matrix, base) {
+// The weights a (team, family) block scores with at `levelKey` — a level column, or
+// ALL_KEY_ for the block-wide value a level without a cell of its own inherits. The
+// ONE rule the ⚖️ Scoring Weights page (role rows AND their level fold) shares with
+// weightsForEmployee_, so the page can never drift from what actually scores people:
+// level cell → block ALL cell → blockFillBase_, then the hard team mask, and
+// non-tracking families lose tracked/planned/RCR.
+function resolveBlockWeights_(teamKey, family, levelKey, matrix, base) {
   const block = ((matrix || {})[teamKey] || {})[family] || {};
   const fill  = blockFillBase_(teamKey, family, base);
-  const cell  = block[ALL_KEY_];
+  const cell  = (levelKey !== ALL_KEY_ && block[levelKey]) || block[ALL_KEY_] || null;
   let metrics = teamByKey_(teamKey).metrics;
   if (family !== ALL_KEY_ && TRACKING_FAMILIES_.indexOf(family) === -1) {
     metrics = metrics.filter(m => m !== "tracked" && m !== "planned" && m !== "rcr");
   }
   return {
     weights: Object.assign({}, maskToTeamMetrics_(cell ? fillWeights_(cell, fill) : fill, metrics)),
-    metrics: metrics.slice(), // metrics this role may carry — the editor's input cells
+    metrics: metrics.slice(),
+  };
+}
+
+// What the ⚖️ Scoring Weights page shows for one (team, family) role row: the
+// block-wide weights, the metrics the role may carry (the editor's input cells),
+// how many level columns carry their own cell ("varies by level"), and — when the
+// Job Catalog is passed — the role's `levels`: each catalog level with the job
+// titles at that level and the weights it actually scores with. Titles are catalog
+// rows, not people: a non-editor never learns who holds them or how many.
+function familySummaryWeights_(teamKey, family, matrix, base, catalog) {
+  const block = ((matrix || {})[teamKey] || {})[family] || {};
+  const top   = resolveBlockWeights_(teamKey, family, ALL_KEY_, matrix, base);
+  const out = {
+    weights: top.weights,
+    metrics: top.metrics,
     levelOverrides: Object.keys(block).filter(k => k !== ALL_KEY_ && Object.keys(block[k] || {}).length).length,
   };
+  if (catalog && family !== ALL_KEY_) {
+    const titles = {};
+    catalog.forEach(e => {
+      if (e.family !== family) return;
+      (titles[e.levelKey] = titles[e.levelKey] || []).push(e.title);
+    });
+    out.levels = LEVEL_COLS_.filter(lk => titles[lk]).map(lk => ({
+      key: lk,
+      titles: titles[lk].sort(),
+      weights: resolveBlockWeights_(teamKey, family, lk, matrix, base).weights,
+      own: !!(block[lk] && Object.keys(block[lk]).length),   // carries its own cell
+    }));
+  }
+  return out;
 }
 
 // Exported — scoring config for ⚖️ Scoring Weights. Every allowed role may read it
 // (transparency, 2026.W41); `canEdit` (canEditScoring_ — Super Admin / Admin) unlocks
-// the editor. Non-editors receive only the per-family summary: no headcounts, title
-// lists or raw matrix, and they never trigger the first-open sheet seeding (a write).
+// the editor. Non-editors receive only the per-family summary (role weights plus the
+// Job Catalog's levels and titles per role): no headcounts, no unmapped-title audit
+// list, no raw matrix, and they never trigger the first-open sheet seeding (a write).
 // Groups families under the org-team sections (spec §5): placement is driven by
 // where active roster members sit, so a family spanning two teams appears under
 // both. Seeds both sheets on first open so the feature bootstraps itself.
@@ -927,17 +958,18 @@ function getScoringConfig() {
       catchAll: { count: uncat[t.key] || 0, fill: blockFillBase_(t.key, ALL_KEY_, base) },
     }));
     sections.forEach(s => {
-      s.families.forEach(f => Object.assign(f, familySummaryWeights_(s.team.key, f.code, matrix, base)));
+      s.families.forEach(f => Object.assign(f, familySummaryWeights_(s.team.key, f.code, matrix, base, catalog)));
       Object.assign(s.catchAll, familySummaryWeights_(s.team.key, ALL_KEY_, matrix, base));
     });
 
     if (!canEdit) {
       return {
-        ok: true, canEdit: false, metrics: WEIGHT_METRICS_, baseWeights: base,
+        ok: true, canEdit: false, metrics: WEIGHT_METRICS_, baseWeights: base, levelCols: LEVEL_COLS_,
         sections: sections.map(s => ({
           team: s.team,
-          families: s.families.map(f => ({ code: f.code, name: f.name, weights: f.weights, metrics: f.metrics, levelOverrides: f.levelOverrides })),
-          catchAll: { weights: s.catchAll.weights, levelOverrides: s.catchAll.levelOverrides },
+          families: s.families.map(f => ({ code: f.code, name: f.name, weights: f.weights, metrics: f.metrics,
+                                           levelOverrides: f.levelOverrides, levels: f.levels })),
+          catchAll: { weights: s.catchAll.weights, metrics: s.catchAll.metrics, levelOverrides: s.catchAll.levelOverrides },
         })),
       };
     }

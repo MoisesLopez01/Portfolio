@@ -342,24 +342,34 @@ Default: `{ goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 
 Configurable per deployment via ⚖️ Scoring Weights (sidebar › More) → saved to `PS Settings` sheet.
 `saveWeightSettings()` / `readWeightSettings_()` handle persistence.
 
-**Read for everyone, edit for Super Admin / Admin (2026.W41).** The page is **one table**,
-**Points by role** — all seven metric columns, each cell the metric's points out of 100
-(largest-remainder rounding, `sharesOf100_`) plus a colour score-mix bar. No definitions on
-the page (one line links to 📖 Documentation); never add a second table. Company-wide
-callers get one row per job family (weights + allowed metrics resolved server-side by
-`familySummaryWeights_`). **Org-scoped callers** (payload carries `managerScopeName` —
-managers, delegates, org admins) get their own team's roles **by level** instead
-(`buildLevelRows_`, from `emp.scoreWeights || SCORE_W`, crew excluded), read-only. Editors
-type rates straight into the cells (no sliders anywhere); Save writes only changed rows as
-the family's `ALL` cell in every team the row covers (`saveRoleWeights_` →
-`saveScoringMatrix`). The company default and per-level matrix sit folded under
-"Advanced settings". Editing is gated by
-`canEditScoring_` — superadmin + admin, **not** orgadmin (the weights are one company-wide
-policy). `getScoringConfig` hands non-editors the summary only (no headcounts, titles or raw
-matrix) and never seeds sheets for them; both save endpoints re-check `canEditScoring_`.
-Guarded by `tests/scoring-weights-view-checks.js`.
+**Read for everyone, edit for Super Admin / Admin (2026.W41).** Three levels of disclosure
+on one page, nothing duplicated, no metric definitions (one line links to 📖 Documentation):
 
-### Team-aligned scoring matrix (2026-07-09)
+1. **Company default** strip — `cfg.baseWeights` as points out of 100 with the colour mix bar.
+2. **Points by role** — **ONE table**, one row per job family, all seven metric columns as
+   points out of 100 (largest-remainder rounding, `sharesOf100_`) plus a score-mix bar.
+   Never add a second table.
+3. **Levels** — folded under each role (▸, `swToggle_`, open state in `STATE.swOpen`): the
+   role's Job Catalog levels, the job titles at each, and the points that level scores with;
+   a cell that differs from the role row is highlighted and the row carries a "varies by
+   level" tag. "How a score is built" (four steps, no definitions) sits folded under the table.
+
+Role rows and level folds are resolved server-side by `familySummaryWeights_` →
+`resolveBlockWeights_`, the **same rule as `weightsForEmployee_`** (level cell → `ALL` cell →
+`blockFillBase_` → team mask → non-tracking mask), so the page can never drift from what
+scores people. Level titles come from the catalog (job titles, never people). **Org-scoped
+callers** (payload carries `managerScopeName` — managers, delegates, org admins) get the same
+table narrowed to the roles and levels their own people hold, with headcounts
+(`buildScopedRows_`: catalog-title-then-job-code match, mirroring the server; uncatalogued →
+an "Other job titles" row; crew excluded), read-only. Editors type rates straight into the role
+cells (no sliders anywhere); Save writes only changed rows as the family's `ALL` cell in every
+team the row covers (`saveRoleWeights_` → `saveScoringMatrix`); level cells are tuned only
+under "Advanced settings", where the company default and per-level matrix sit folded. Editing
+is gated by `canEditScoring_` — superadmin + admin, **not** orgadmin (the weights are one
+company-wide policy). `getScoringConfig` hands non-editors the summary only (role weights +
+catalog levels; no headcounts, unmapped-title audit or raw matrix) and never seeds sheets for
+them; both save endpoints re-check `canEditScoring_`. Guarded by
+`tests/scoring-weights-view-checks.js`.### Team-aligned scoring matrix (2026-07-09)
 
 Scoring groups follow the org team toggle (`TEAMS_` in `ps-dashboard/PS Teams.js`): **team gates,
 family tunes**. **Hard invariant**: every resolution path in `weightsForEmployee_` ends in

@@ -1338,7 +1338,7 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .sw-pts.sw-zero { font-weight: 600; color: var(--muted); }
 .sw-rate { width: 58px; padding: 5px 6px; text-align: center; font: inherit; font-weight: 800; color: var(--void);
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
-.sw-rate:focus { outline: 2px solid var(--sky); outline-offset: 1px; border-color: var(--sky); }
+.sw-rate:focus { outline: 2px solid var(--orbe); outline-offset: 1px; border-color: var(--orbe); }
 .sw-tot { font-weight: 800; color: var(--success); }
 .sw-tot.sw-bad, .sw-status.sw-bad { color: var(--june); }
 .sw-status { font-size: 12px; font-weight: 700; color: var(--slate); align-self: center; }
@@ -1353,6 +1353,49 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .sw-editor > summary { cursor: pointer; font-size: 14px; font-weight: 800; color: var(--void); padding: 6px 0; }
 .sw-editor-hint { font-size: 11px; font-weight: 600; color: var(--muted); margin-left: 6px; }
 .sw-editor[open] > summary { margin-bottom: 12px; }
+/* Company default strip (level 1), role fold (level 3) and the folded process note */
+.sw-default { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--card-bg, transparent);
+  display: flex; flex-direction: column; gap: 10px; }
+.sw-default-h { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.sw-default-t { font-size: 13px; font-weight: 800; color: var(--void); }
+.sw-mix-lg { height: 14px; min-width: 0; }
+.sw-chips { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.sw-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--void);
+  border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; background: var(--surface); }
+.sw-chip b { font-weight: 900; }
+.sw-chip-off { color: var(--muted); font-weight: 600; }
+.sw-chip .weight-dot { width: 8px; height: 8px; }
+.sw-tools { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 12px 0 6px; }
+.sw-link { border: 0; background: none; padding: 2px 4px; font: inherit; font-size: 11px; font-weight: 800; color: var(--orbe);
+  cursor: pointer; text-transform: uppercase; letter-spacing: .04em; }
+.sw-x { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-right: 6px; padding: 0;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--slate); font: inherit; font-size: 11px;
+  cursor: pointer; vertical-align: middle; transition: transform .15s, color .15s, border-color .15s; }
+.sw-x[aria-expanded="true"] { transform: rotate(90deg); color: var(--orbe); border-color: var(--orbe); }
+.sw-x-none { visibility: hidden; }
+.sw-tag { display: inline-block; font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: #0D3B8C;
+  background: #EEF4FF; border-radius: 99px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
+.sw-table tr.sw-row-open td { border-bottom: 0; }
+.sw-table tr.sw-detail > td { padding: 0 10px 12px 36px; text-align: left; font-weight: 500; }
+.sw-table tr.sw-detail:hover > td { background: transparent; }
+.sw-fold { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 6px 10px 10px; overflow-x: auto; }
+.sw-sub { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.sw-sub th { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 5px 8px;
+  text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.sw-sub td { padding: 5px 8px; text-align: center; font-weight: 700; color: var(--void); border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums; }
+.sw-sub tr:last-child td { border-bottom: 0; }
+.sw-sub th:first-child, .sw-sub td:first-child { text-align: left; }
+.sw-sub th.sw-sub-t, .sw-sub td.sw-sub-t { text-align: left; font-weight: 600; color: var(--slate); min-width: 200px; }
+.sw-sub td:first-child .sw-lvl { margin-left: 0; }
+.sw-pts-sm { min-width: 28px; padding: 1px 7px; font-size: 11px; background: var(--card-bg, #fff); }
+.sw-diff { background: #EEF4FF; border-color: var(--orbe); color: #0D3B8C; }
+.sw-fold-note { font-size: 11px; color: var(--muted); margin-top: 8px; }
+.sw-how { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; margin-top: 14px; }
+.sw-how > summary { cursor: pointer; font-size: 13px; font-weight: 800; color: var(--void); }
+.sw-steps { margin: 10px 0 2px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; line-height: 1.55; color: var(--slate); }
+.sw-steps b { color: var(--void); }
+body.dark-mode .sw-tag, body.dark-mode .sw-diff { background: #1E2A5E; color: #C7D2FE; }
 .weight-list { display: flex; flex-direction: column; gap: 14px; }
 .weight-row {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
@@ -11126,10 +11169,11 @@ function usageFilterRows_(q) {
 }
 
 // ── SCORING WEIGHTS TAB (every role reads; Admin / Super Admin edit) ──
-// Since 2026.W41 the page opens on a plain summary for everyone: one table per team,
-// job family × the metrics that team is scored on, each cell the metric's share of
-// the score. The full editor (flat base + Team → Family × Level matrix) is unchanged
-// and sits folded under "Edit weights" for canEditScoring_() only.
+// Since 2026.W41 the page opens on a plain summary for everyone: the company default
+// strip, then ONE "Points by role" table (job family × the seven metrics, each cell
+// the metric's points out of 100) whose rows fold open to the role's levels. The full
+// editor (flat base + Team → Family × Level matrix) is unchanged and sits folded under
+// "Advanced settings" for canEditScoring_() only.
 function renderWeightsTab_() {
   var container = document.getElementById("weightsBody");
   if (!container) return;
@@ -11214,11 +11258,17 @@ function renderWeightsTab_() {
   loadScoringMatrix_();
 }
 
-// ⚖️ Scoring Weights read view — ONE table, colour signals, no extra prose (metric
-// definitions live in 📖 Documentation). Company-wide callers see one row per role;
-// org-scoped callers (managers, delegates, org admins — the payload carries
-// managerScopeName) see their own team's roles BY LEVEL, built from the weights their
-// people are actually scored with, so they can see scoring is tuned per role and level.
+// ⚖️ Scoring Weights read view — ONE table, colour signals, no definitions on the
+// page (those live in 📖 Documentation). Three levels of disclosure, top to bottom:
+//   1. Company default — the starting split of the 100 points (one strip).
+//   2. Points by role  — one row per job family; editors type rates into the cells.
+//   3. Levels          — folded under each role (▸): its Job Catalog levels, the job
+//      titles at each, and the points that level actually scores with (server-resolved
+//      by familySummaryWeights_, the same rule as the scorer); a cell that differs
+//      from the role row is highlighted.
+// Org-scoped callers (payload carries managerScopeName — managers, delegates, org
+// admins) see only the roles and levels their own people hold, with headcounts,
+// read-only. "How a score is built" sits folded under the table.
 function renderScoringOverview_(canEdit) {
   return '<div class="sw-overview">' +
     '<div class="sw-head"><div class="sec-header">Points by role</div>' +
@@ -11226,6 +11276,7 @@ function renderScoringOverview_(canEdit) {
         ' — only Admins and Super Admins can change the weights</span>') +
     '</div>' +
     '<p class="settings-note sw-lead">Every score is out of 100 points; the bar shows where they come from. ' +
+      'Open a role (▸) to see how its levels are tuned. ' +
       'What each metric measures: <a href="#" onclick="switchTab(\'dataref\');return false">📖 Documentation</a>.</p>' +
     '<div id="scoringSummary">' +
       '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
@@ -11253,23 +11304,35 @@ function sharesOf100_(weights, keys) {
 }
 
 // Rows of the role table (rebuilt from MATRIX_CFG on every render). Each row is a
-// job family; a family that sits in two teams with identical weights is ONE row
-// whose edits write to both teams' blocks; with different weights it gets one row
-// per team. `metrics` = what the role may carry (server-resolved team + tracking mask).
+// job family; a family that sits in two teams with identical weights (role row AND
+// levels) is ONE row whose edits write to both teams' blocks; with different weights
+// it gets one row per team. `metrics` = what the role may carry (server-resolved
+// team + tracking mask). `levels` = the role's catalog levels with their own points;
+// `varies` = at least one level scores differently from the role row.
 var SW_ROWS = [];
+
+function pointsDiffer_(a, b) {
+  return WEIGHT_DEFS.some(function(d) { return (a[d.key] || 0) !== (b[d.key] || 0); });
+}
 
 function buildRoleRows_(cfg) {
   var rows = [], byName = {};
   (cfg.sections || []).forEach(function(sec) {
     (sec.families || []).forEach(function(f) {
-      var w = f.weights || {}, sig = JSON.stringify(w);
+      var w = f.weights || {}, levels = f.levels || [];
+      var sig = JSON.stringify([w, levels.map(function(l) { return l.weights; })]);
       var metrics = f.metrics || WEIGHT_DEFS.map(function(d) { return d.key; }).filter(function(k) { return (w[k] || 0) > 0; });
       var target = { team: sec.team.key, code: f.code, metrics: metrics };
       var prev = byName[f.name] || [];
       var same = prev.filter(function(r) { return r.sig === sig; })[0];
       if (same) { same.targets.push(target); return; }
-      var row = { name: f.name, team: sec.team.label, sig: sig, metrics: metrics, targets: [target] };
+      var row = { id: f.code + '@' + sec.team.key, name: f.name, code: f.code, team: sec.team.label,
+                  sig: sig, metrics: metrics, targets: [target] };
       row.points = sharesOf100_(w, metrics);
+      row.levels = levels.map(function(l) {
+        return { key: l.key, titles: l.titles || [], own: !!l.own, points: sharesOf100_(l.weights || {}, metrics) };
+      });
+      row.varies = row.levels.some(function(l) { return pointsDiffer_(l.points, row.points); });
       if (prev.length) { prev.forEach(function(r) { r.showTeam = true; }); row.showTeam = true; }
       prev.push(row); byName[f.name] = prev;
       rows.push(row);
@@ -11278,40 +11341,72 @@ function buildRoleRows_(cfg) {
   return rows;
 }
 
-// Org-scoped view: the caller's own people grouped by role and level, each group
-// carrying the weights the server resolved for them (emp.scoreWeights, else the flat
-// base the client scores with). Crew are left out — the table describes roles.
-function buildLevelRows_(cfg) {
-  var famName = {}, famIdx = {}, i = 0;
+// Org-scoped callers: which roles and levels the caller's own (non-crew) people hold.
+// Mirrors the server's catalog lookup — the clean title against the Job Catalog titles
+// the payload ships per level, then the job code embedded in the title ("09.I3.1 - …"
+// → JF009, I3). Anything else lands in the team catch-all ("Other job titles").
+function swNormTitle_(t) {
+  return String(t || '').replace(/^\s*\d+\.[IMim]\d+\.\d+\s*[-–—]\s*/, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function scopeRoleUsage_(cfg) {
+  var idx = {};
   (cfg.sections || []).forEach(function(sec) {
-    (sec.families || []).forEach(function(f) { if (!(f.code in famIdx)) { famName[f.code] = f.name; famIdx[f.code] = i++; } });
+    (sec.families || []).forEach(function(f) {
+      (f.levels || []).forEach(function(l) {
+        (l.titles || []).forEach(function(t) { idx[swNormTitle_(t)] = { fam: f.code, lvl: l.key }; });
+      });
+    });
   });
-  var groups = {}, rows = [];
+  var use = { fams: {}, other: { n: 0, teams: {} } };
   ((DATA && DATA.employees) || []).forEach(function(e) {
     if (isCrewEmp(e)) return;
-    var m = /^\s*(\d+)\.([IM])(\d+)\.\d+\s*[-–—]/.exec(e.jobTitle || '');
-    var fam = m ? 'JF' + ('00' + m[1]).slice(-3) : null;
-    var lvl = m ? m[2] + m[3] : '';
-    var name = fam && famName[fam] ? famName[fam]
-      : String(e.jobTitle || 'Other job titles').replace(/^\s*\d+\.[IMim]\d+\.\d+\s*[-–—]\s*/, '');
-    var w = e.scoreWeights || SCORE_W;
-    var key = name + '|' + lvl + '|' + JSON.stringify(w);
-    if (!groups[key]) {
-      var metrics = WEIGHT_DEFS.map(function(d) { return d.key; }).filter(function(k) { return (w[k] || 0) > 0; });
-      groups[key] = { name: name, level: lvl, n: 0, metrics: metrics, points: sharesOf100_(w, metrics),
-        ord: [fam in famIdx ? famIdx[fam] : 999, name, lvl.charAt(0) === 'M' ? 1 : 0, parseInt(lvl.slice(1), 10) || 0] };
-      rows.push(groups[key]);
+    var hit = idx[swNormTitle_(e.jobTitle)];
+    if (!hit) {
+      var m = /^\s*(\d+)\.([IM])(\d+)\.\d+\s*[-–—]/i.exec(e.jobTitle || '');
+      if (m) hit = { fam: 'JF' + ('00' + m[1]).slice(-3), lvl: m[2].toUpperCase() + m[3] };
     }
-    groups[key].n++;
+    if (!hit) { use.other.n++; if (e.team) use.other.teams[e.team] = true; return; }
+    var u = use.fams[hit.fam] || (use.fams[hit.fam] = { n: 0, teams: {}, levels: {} });
+    u.n++;
+    if (e.team) u.teams[e.team] = true;
+    u.levels[hit.lvl] = (u.levels[hit.lvl] || 0) + 1;
   });
-  rows.sort(function(a, b) {
-    for (var j = 0; j < a.ord.length; j++) {
-      if (a.ord[j] < b.ord[j]) return -1;
-      if (a.ord[j] > b.ord[j]) return 1;
-    }
-    return 0;
+  return use;
+}
+
+// The role rows narrowed to the caller's own people: only roles they hold (in the
+// team their people sit in), only the levels they hold, each with a headcount. A level
+// held by someone but absent from the catalog (job-code-only title) scores with the
+// role row and is listed as such.
+function buildScopedRows_(cfg, rows) {
+  var use = scopeRoleUsage_(cfg), out = [];
+  var order = cfg.levelCols || ['I1','I2','I3','I4','I5','I6','I7','I8','M4','M5','M6','M7','M8','M9','M10'];
+  rows.forEach(function(r) {
+    var u = use.fams[r.code];
+    if (!u) return;
+    var inTeam = !Object.keys(u.teams).length || r.targets.some(function(t) { return u.teams[t.team]; });
+    if (!inTeam) return;
+    var levels = r.levels.filter(function(l) { return u.levels[l.key]; })
+      .map(function(l) { return { key: l.key, titles: l.titles, own: l.own, points: l.points, n: u.levels[l.key] }; });
+    Object.keys(u.levels).forEach(function(lk) {
+      if (!levels.some(function(l) { return l.key === lk; })) levels.push({ key: lk, titles: [], own: false, points: r.points, n: u.levels[lk] });
+    });
+    levels.sort(function(a, b) { return order.indexOf(a.key) - order.indexOf(b.key); });
+    out.push({ id: r.id, name: r.name, code: r.code, team: r.team, showTeam: r.showTeam, metrics: r.metrics,
+               points: r.points, targets: r.targets, n: u.n, levels: levels,
+               varies: levels.some(function(l) { return pointsDiffer_(l.points, r.points); }) });
   });
-  return rows;
+  if (use.other.n) {
+    var teamKey = Object.keys(use.other.teams)[0], sec = null;
+    (cfg.sections || []).forEach(function(s) { if (!sec && (!teamKey || s.team.key === teamKey)) sec = s; });
+    var ca = (sec && sec.catchAll) || {}, w = ca.weights || {};
+    var metrics = ca.metrics || WEIGHT_DEFS.map(function(d) { return d.key; }).filter(function(k) { return (w[k] || 0) > 0; });
+    out.push({ id: 'ALL@' + (sec ? sec.team.key : ''), name: 'Other job titles', code: 'ALL', team: sec ? sec.team.label : '',
+               note: 'not in the Job Catalog', metrics: metrics, points: sharesOf100_(w, metrics), targets: [],
+               n: use.other.n, levels: [], varies: false });
+  }
+  return out;
 }
 
 // The coloured "score mix" bar: how a role's 100 points split across metrics.
@@ -11323,8 +11418,74 @@ function roleMixBar_(points) {
   }).join('');
 }
 
-// The one table. Company-wide: a row per role (editors type rates into the cells).
-// Org-scoped: the caller's team roles by level, read-only.
+// Level 1 — the company default strip (cfg.baseWeights, the flat base every Services
+// role starts from; R&D and Sales roles start from their own team defaults, visible
+// in their rows).
+function renderCompanyDefault_(cfg, editable) {
+  var keys = WEIGHT_DEFS.map(function(d) { return d.key; });
+  var pts = sharesOf100_(cfg.baseWeights || SCORE_W, keys);
+  return '<div class="sw-default">' +
+    '<div class="sw-default-h"><span class="sw-default-t">Company default</span>' +
+      '<span class="sw-code">the starting split — each role below tunes it' +
+      (editable ? ' · change it under Advanced settings' : '') + '</span></div>' +
+    '<div class="sw-mix sw-mix-lg">' + roleMixBar_(pts) + '</div>' +
+    '<div class="sw-chips">' + WEIGHT_DEFS.map(function(d) {
+      var v = pts[d.key] || 0;
+      return '<span class="sw-chip' + (v ? '' : ' sw-chip-off') + '"><span class="weight-dot" style="background:' + d.color + '"></span>' +
+        esc(d.label) + ' <b>' + v + '</b></span>';
+    }).join('') + '</div>' +
+  '</div>';
+}
+
+// Level 3 — the fold under a role row: its levels, the titles at each, (headcount for
+// org-scoped callers) and the points that level scores with; a point that differs
+// from the role row is highlighted.
+function renderLevelFold_(r, scoped, editable) {
+  var html = '<div class="sw-fold"><table class="sw-sub"><thead><tr>' +
+    '<th title="I = individual-contributor track · M = management track">Level</th>' +
+    '<th class="sw-sub-t">Job titles at this level</th>' + (scoped ? '<th>People</th>' : '') +
+    WEIGHT_DEFS.map(function(d) { return '<th>' + esc(d.label) + '</th>'; }).join('') +
+    '</tr></thead><tbody>';
+  r.levels.forEach(function(l) {
+    html += '<tr><td><span class="sw-lvl">' + esc(l.key) + '</span></td>' +
+      '<td class="sw-sub-t">' + (l.titles.length
+        ? l.titles.map(function(t) { return esc(shortRole_(t)); }).join(' · ')
+        : '<span class="sw-off">Job code only — scores as the role</span>') + '</td>' +
+      (scoped ? '<td>' + l.n + '</td>' : '');
+    WEIGHT_DEFS.forEach(function(d) {
+      if (r.metrics.indexOf(d.key) === -1) { html += '<td><span class="sw-off">—</span></td>'; return; }
+      var v = l.points[d.key] || 0, base = r.points[d.key] || 0, diff = v !== base;
+      html += '<td><span class="sw-pts sw-pts-sm' + (diff ? ' sw-diff' : (v ? '' : ' sw-zero')) + '"' +
+        (diff ? ' title="Role row: ' + base + ' pts"' : '') + '>' + v + '</span></td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table><div class="sw-fold-note">' +
+    (r.varies ? 'A highlighted cell is where this level is tuned on its own; everything else follows the role row.'
+              : 'Every level of this role scores with the same points as the role row.') +
+    (editable ? ' Level-specific points are set under Advanced settings.' : '') +
+  '</div></div>';
+  return html;
+}
+
+// Folded process note — the four steps, no metric definitions (📖 Documentation).
+function renderHowItWorks_() {
+  return '<details class="sw-how"' + (STATE.swHowOpen ? ' open' : '') + ' ontoggle="STATE.swHowOpen = this.open">' +
+    '<summary>How a score is built <span class="sw-editor-hint">four steps</span></summary>' +
+    '<ol class="sw-steps">' +
+      '<li><b>Company default.</b> 100 points split across the metrics — the strip above.</li>' +
+      '<li><b>Role.</b> Each job family carries its own split (the table). A metric a role cannot earn, such as ' +
+        'tracked hours for a role with no time mandate, shows — and its points go to the others.</li>' +
+      '<li><b>Level.</b> Inside a role, a level can be tuned on its own — open the role (▸); a highlighted cell is ' +
+        'where a level differs. I-levels are the individual-contributor track, M-levels the management track.</li>' +
+      '<li><b>Week.</b> Each week every metric earns a share of its points from that week\'s data, and the shares add ' +
+        'up to the score out of 100. Top Rocketeers ranks on exactly these points.</li>' +
+    '</ol></details>';
+}
+
+// Level 2 — the one table. Company-wide: a row per role (editors type rates into the
+// cells). Org-scoped: the caller's own roles with headcounts, read-only. Every row
+// with catalog levels folds open (swToggle_) to renderLevelFold_.
 function renderScoringSummary_() {
   var el = document.getElementById('scoringSummary');
   if (!el) return;
@@ -11334,13 +11495,21 @@ function renderScoringSummary_() {
       (cfg && cfg.error ? ': ' + esc(cfg.error) : '') + '</div>';
     return;
   }
-  var byLevel = !!(DATA && DATA.managerScopeName);
-  var editable = !byLevel && !!(cfg.canEdit && cfg.matrix && canEditScoring_());
-  SW_ROWS = byLevel ? [] : buildRoleRows_(cfg);
-  var rows = byLevel ? buildLevelRows_(cfg) : SW_ROWS;
-  var html = (byLevel ? '<p class="settings-note sw-lead">Your team\'s roles by level — scoring can be tuned per role ' +
-      'and level, so levels in the same role may differ.</p>' : '') +
-    '<div class="sw-scroll"><table class="sw-table' + (editable ? ' sw-editable' : '') + '"><thead><tr>' +
+  var scoped = !!(DATA && DATA.managerScopeName);
+  var editable = !scoped && !!(cfg.canEdit && cfg.matrix && canEditScoring_());
+  var rows = buildRoleRows_(cfg);
+  if (scoped) rows = buildScopedRows_(cfg, rows);
+  SW_ROWS = rows;
+  var nCols = WEIGHT_DEFS.length + 2 + (editable ? 1 : 0);
+  var people = 0;
+  rows.forEach(function(r) { people += r.n || 0; });
+
+  var html = renderCompanyDefault_(cfg, editable);
+  html += '<div class="sw-tools">' +
+    (scoped ? '<span class="sw-code">Your people only — ' + people + (people === 1 ? ' person' : ' people') + ' in ' +
+      rows.length + (rows.length === 1 ? ' role' : ' roles') + '</span>' : '<span></span>') +
+    '<button type="button" class="sw-link" id="swAllBtn" onclick="swToggleAll_()">Expand all levels</button></div>';
+  html += '<div class="sw-scroll"><table class="sw-table' + (editable ? ' sw-editable' : '') + '"><thead><tr>' +
     '<th>Role</th><th class="sw-mix-h">Score mix</th>' +
     WEIGHT_DEFS.map(function(d) {
       return '<th><span class="weight-dot" style="background:' + d.color + '"></span>' + esc(d.label) + '</th>';
@@ -11348,10 +11517,18 @@ function renderScoringSummary_() {
     (editable ? '<th>Total</th>' : '') +
     '</tr></thead><tbody>';
   rows.forEach(function(r, i) {
-    html += '<tr><td class="sw-fam">' + esc(r.name) +
-      (r.level ? ' <span class="sw-lvl">' + esc(r.level) + '</span>' : '') +
+    var hasLv = !!(r.levels && r.levels.length);
+    var open = hasLv && !!(STATE.swOpen && STATE.swOpen[r.id]);
+    html += '<tr class="sw-row' + (open ? ' sw-row-open' : '') + '"><td class="sw-fam">' +
+      (hasLv ? '<button type="button" class="sw-x" id="swX-' + i + '" aria-expanded="' + (open ? 'true' : 'false') +
+                 '" aria-controls="swD-' + i + '" onclick="swToggle_(' + i + ')" title="Show levels">▸</button>'
+             : '<span class="sw-x sw-x-none"></span>') +
+      esc(r.name) +
       (r.showTeam ? ' <span class="sw-code">' + esc(r.team) + '</span>' : '') +
-      (byLevel ? ' <span class="sw-code">' + r.n + (r.n === 1 ? ' person' : ' people') + '</span>' : '') + '</td>' +
+      (r.note ? ' <span class="sw-code">' + esc(r.note) + '</span>' : '') +
+      (scoped ? ' <span class="sw-code">' + r.n + (r.n === 1 ? ' person' : ' people') + '</span>' : '') +
+      (r.varies ? ' <span class="sw-tag" title="At least one level scores differently — open the role">varies by level</span>' : '') +
+      '</td>' +
       '<td class="sw-mix-c"><div class="sw-mix" id="swMix-' + i + '">' + roleMixBar_(r.points) + '</div></td>';
     WEIGHT_DEFS.forEach(function(d) {
       if (r.metrics.indexOf(d.key) === -1) { html += '<td><span class="sw-off" title="Does not apply to this role">—</span></td>'; return; }
@@ -11364,8 +11541,10 @@ function renderScoringSummary_() {
     });
     if (editable) html += '<td><span class="sw-tot" id="swTot-' + i + '">100</span></td>';
     html += '</tr>';
+    if (hasLv) html += '<tr class="sw-detail" id="swD-' + i + '"' + (open ? '' : ' hidden') + '><td colspan="' + nCols + '">' +
+      renderLevelFold_(r, scoped, editable) + '</td></tr>';
   });
-  if (!rows.length) html += '<tr><td colspan="' + (WEIGHT_DEFS.length + 2) + '" class="sw-off">No roles to show for the current team.</td></tr>';
+  if (!rows.length) html += '<tr><td colspan="' + nCols + '" class="sw-off">No roles to show for the current team.</td></tr>';
   html += '</tbody></table></div>';
   if (editable) {
     html += '<div class="settings-actions" style="margin-top:12px">' +
@@ -11374,7 +11553,42 @@ function renderScoringSummary_() {
       '<span id="swStatus" class="sw-status">Type a rate in any cell — each role must add up to 100</span>' +
     '</div>';
   }
+  html += renderHowItWorks_();
   el.innerHTML = html;
+  swAllBtn_();
+}
+
+// Fold a role's levels open or shut; the choice survives re-renders (STATE.swOpen).
+function swToggle_(i, force) {
+  var d = document.getElementById('swD-' + i), b = document.getElementById('swX-' + i);
+  if (!d) return;
+  var open = force === undefined ? d.hidden : !!force;
+  d.hidden = !open;
+  if (b) {
+    b.setAttribute('aria-expanded', open ? 'true' : 'false');
+    var tr = b.closest('tr');
+    if (tr) tr.classList.toggle('sw-row-open', open);
+  }
+  STATE.swOpen = STATE.swOpen || {};
+  if (SW_ROWS[i]) STATE.swOpen[SW_ROWS[i].id] = open;
+  swAllBtn_();
+}
+
+function swAnyFoldClosed_() {
+  return Array.prototype.some.call(document.querySelectorAll('.sw-detail'), function(d) { return d.hidden; });
+}
+
+function swToggleAll_() {
+  var open = swAnyFoldClosed_();
+  SW_ROWS.forEach(function(r, i) { if (document.getElementById('swD-' + i)) swToggle_(i, open); });
+}
+
+function swAllBtn_() {
+  var btn = document.getElementById('swAllBtn');
+  if (!btn) return;
+  var any = document.querySelector('.sw-detail');
+  btn.style.display = any ? '' : 'none';
+  btn.textContent = swAnyFoldClosed_() ? 'Expand all levels' : 'Collapse all levels';
 }
 
 function swRowValues_(i) {
@@ -11445,9 +11659,7 @@ function saveRoleWeights_() {
       if (st) { st.textContent = 'Save failed: ' + String(e.message || e); st.classList.add('sw-bad'); }
     })
     .saveScoringMatrix({ matrix: MATRIX_CFG.matrix });
-}
-
-// ── SCORING MATRIX EDITOR — Team → Family × Level weights (Admin / Super Admin) ──
+}// ── SCORING MATRIX EDITOR — Team → Family × Level weights (Admin / Super Admin) ──
 // Backed by getScoringConfig() / saveScoringMatrix(). Families are grouped under
 // the org-team separators (same teams as the dashboard toggle); blank cells
 // inherit the per-(team, family) fill defaults shipped in cfg.sections.
