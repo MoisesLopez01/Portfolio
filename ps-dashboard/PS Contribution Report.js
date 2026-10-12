@@ -291,9 +291,10 @@ function saveWeightSettings(weightsObj) {
   try {
     // Server-side authorization — hiding the UI button is not enough; this
     // function is callable directly via google.script.run by anyone with the link.
-    // Read is open to every role; edit is Super Admin / Admin only (canEditScoring_).
+    // Read is open to every role; the company default is Super Admin only
+    // (canEditScoringBase_) — it re-weights every team at once.
     const access = checkDashboardAccess();
-    if (!access.allowed || !canEditScoring_(access)) return { ok: false, error: "Admin or Super Admin access required" };
+    if (!access.allowed || !canEditScoringBase_(access)) return { ok: false, error: "Super Admin access required" };
 
     const valid = ["goals","tracked","planned","rcr","kudos","si","pto"];
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -898,11 +899,33 @@ function familySummaryWeights_(teamKey, family, matrix, base, catalog) {
   return out;
 }
 
+// Teams whose scoring blocks this caller may WRITE (2026.W42). Super Admin: every
+// team. Org Admin: the teams their own org tree holds — the same BFS
+// (resolveManagerScope_, own row dropped) and team tag (teamForProfile_) that scope
+// their dashboard, so the editor can never reach a team they cannot see. Everyone
+// else: none. `loadRoster` is called only for an org admin and must return the
+// team-tagged roster plus the bridge map readPSRoster_ fills, so a dropped
+// mid-level manager severs the tree here no more than on the dashboard.
+function scoringEditTeams_(access, loadRoster) {
+  if (!access || !access.allowed || !canEditScoring_(access)) return [];
+  if (canEditScoringBase_(access)) return TEAMS_.map(t => t.key);
+  if (!access.delegateScopeName) return [];
+  const { roster, bridges } = loadRoster();
+  const anchor = normPS_(access.delegateScopeName);
+  const scope  = resolveManagerScope_(roster, anchor, bridges);
+  scope.delete(anchor);   // the anchor's own row never counts — same as getPSReportData
+  const own = new Map([...roster].filter(([n]) => scope.has(n)));
+  return availableTeams_(own).map(t => t.key);
+}
+
 // Exported — scoring config for ⚖️ Scoring Weights. Every allowed role may read it
-// (transparency, 2026.W41); `canEdit` (canEditScoring_ — Super Admin / Admin) unlocks
-// the editor. Non-editors receive only the per-family summary (role weights plus the
-// Job Catalog's levels and titles per role): no headcounts, no unmapped-title audit
-// list, no raw matrix, and they never trigger the first-open sheet seeding (a write).
+// (transparency, 2026.W41); `canEdit` unlocks the editor for the teams listed in
+// `editTeams` (scoringEditTeams_ — Super Admin: all; Org Admin: their own tree's
+// teams), and `canEditBase` (Super Admin) the company default. Non-editors receive
+// only the per-family summary (role weights plus the Job Catalog's levels and titles
+// per role): no headcounts, no unmapped-title audit list, no raw matrix, and they
+// never trigger the first-open sheet seeding (a write). An org admin's editor payload
+// is narrowed to their teams — sections, matrix and the Services audit list alike.
 // Groups families under the org-team sections (spec §5): placement is driven by
 // where active roster members sit, so a family spanning two teams appears under
 // both. Seeds both sheets on first open so the feature bootstraps itself.
@@ -910,18 +933,23 @@ function getScoringConfig() {
   try {
     const access = checkDashboardAccess();
     if (!access.allowed) return { ok: false, denied: true };
-    const canEdit = canEditScoring_(access);
+    const mayEdit = canEditScoring_(access);
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let seeded = false;
-    if (canEdit && !ss.getSheetByName(JOB_CATALOG_SHEET_)) { seedJobCatalog_(); seeded = true; }
+    if (mayEdit && !ss.getSheetByName(JOB_CATALOG_SHEET_)) { seedJobCatalog_(); seeded = true; }
 
     const catalog = readJobCatalog_();
 
     // Tag the company-wide roster with teams (same rule as getPSReportData) and
     // count active non-crew members per (team, family) + uncatalogued per team.
-    const roster = readPSRoster_();
+    // The bridge map feeds scoringEditTeams_ (an org admin's tree walk).
+    const bridges = new Map();
+    const roster = readPSRoster_(bridges);
     roster.forEach(p => { p.team = teamForProfile_(p, catalog); });
+    const editTeams = scoringEditTeams_(access, () => ({ roster, bridges }));
+    const canEdit   = mayEdit && editTeams.length > 0;   // an org admin with an empty tree reads only
+    const canEditBase = canEditScoringBase_(access);
     const famCounts = {};   // { teamKey: { famCode: n } }
     const uncat     = {};   // { teamKey: n }
     const unmapped  = {};   // Services-team uncatalogued titles (audit list)
@@ -937,7 +965,7 @@ function getScoringConfig() {
       famCounts[p.team][hit.family] = (famCounts[p.team][hit.family] || 0) + 1;
     });
 
-    if (canEdit && !ss.getSheetByName(SCORING_MATRIX_SHEET_)) {
+    if (mayEdit && !ss.getSheetByName(SCORING_MATRIX_SHEET_)) {
       const famsByTeam = {};
       TEAMS_.forEach(t => { famsByTeam[t.key] = Object.keys(famCounts[t.key] || {}); });
       seedScoringMatrix_(famsByTeam);
@@ -974,12 +1002,19 @@ function getScoringConfig() {
       };
     }
 
+    // An org admin edits — and sees headcounts for — their own teams only. The
+    // matrix they receive holds just those teams, so what they post back can only
+    // ever name those blocks (saveScoringMatrix refuses any other team anyway).
+    const visible = canEditBase ? sections : sections.filter(s => editTeams.indexOf(s.team.key) !== -1);
+    const matrixOut = canEditBase ? matrix : {};
+
     // Pre-create every rendered (team, family) block so the editor's save payload
     // replaces exactly the rendered blocks (merge semantics in saveScoringMatrix).
-    sections.forEach(s => {
+    visible.forEach(s => {
       if (!matrix[s.team.key]) matrix[s.team.key] = {};
       s.families.forEach(f => { if (!matrix[s.team.key][f.code]) matrix[s.team.key][f.code] = {}; });
       if (!matrix[s.team.key][ALL_KEY_]) matrix[s.team.key][ALL_KEY_] = {};
+      matrixOut[s.team.key] = matrix[s.team.key];
     });
 
     // Roles grouped per family/level for the editor's read-only reference rows.
@@ -992,11 +1027,12 @@ function getScoringConfig() {
     });
 
     return {
-      ok: true, canEdit: true, seeded, matrix, sections, rolesByFamily,
+      ok: true, canEdit: true, canEditBase, editTeams, seeded, matrix: matrixOut, sections: visible, rolesByFamily,
       levelCols:   LEVEL_COLS_,
       metrics:     WEIGHT_METRICS_,
       baseWeights: base,
-      unmappedTitles: Object.keys(unmapped).map(t => ({ jobTitle: t, count: unmapped[t] })),
+      unmappedTitles: editTeams.indexOf("services") === -1 ? []
+                    : Object.keys(unmapped).map(t => ({ jobTitle: t, count: unmapped[t] })),
     };
   } catch(e) {
     Logger.log(`❌ getScoringConfig: ${e.message}`);
@@ -1012,9 +1048,26 @@ function getScoringConfig() {
 function saveScoringMatrix(payload) {
   try {
     const access = checkDashboardAccess();
-    if (!access.allowed || !canEditScoring_(access)) return { ok: false, error: "Admin or Super Admin access required" };
+    if (!access.allowed || !canEditScoring_(access)) return { ok: false, error: "Super Admin or Org Admin access required" };
     const incoming = payload && payload.matrix;
     if (!incoming || typeof incoming !== "object") return { ok: false, error: "Invalid payload" };
+
+    // Team scope (2026.W42): an org admin may only write the teams their own org
+    // tree holds. A payload naming any other team is refused outright — not
+    // trimmed — so a failed widening is visible in the log, never silently partial.
+    const editTeams = scoringEditTeams_(access, () => {
+      const bridges = new Map();
+      const roster  = readPSRoster_(bridges);
+      const catalog = readJobCatalog_();
+      roster.forEach(p => { p.team = teamForProfile_(p, catalog); });
+      return { roster, bridges };
+    });
+    if (editTeams.length === 0) return { ok: false, error: "No team to edit — your org tree holds no active members" };
+    const refused = Object.keys(incoming).filter(k => TEAMS_.some(t => t.key === k) && editTeams.indexOf(k) === -1);
+    if (refused.length > 0) {
+      Logger.log(`⚠️ saveScoringMatrix: ${access.email} (${access.role}) may edit [${editTeams.join(", ")}] but posted [${refused.join(", ")}] — refused`);
+      return { ok: false, error: "You may only edit " + editTeams.map(k => teamByKey_(k).label).join(" / ") };
+    }
 
     const validFam = {};
     ACTIVE_FAMILIES_.forEach(f => { validFam[f.code] = true; });

@@ -2733,7 +2733,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
       <div class="section-head">
         <div>
           <h2>Scoring Weights</h2>
-          <p class="section-sub">How each team's score is built · Visible to everyone · Only Admins and Super Admins can change the weights</p>
+          <p class="section-sub">How each team's score is built · Visible to everyone · Super Admins change any team, Org Admins their own</p>
         </div>
       </div>
       <div id="weightsBody">
@@ -2972,9 +2972,10 @@ var VIEWS = [
   { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["superadmin", "admin", "orgadmin", "viewer", "manager"] },
   { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📖 Documentation",   location: "menu",   roles: null },
   // Scoring Weights (2026.W41): every role may READ the weights — a transparency
-  // page. Editing is Super Admin / Admin only (canEditScoring_, enforced again by the
-  // save endpoints). Shown under 👁 View as too, always read-only there, because the
-  // weights are one company-wide policy and read the same for every caller.
+  // page. Editing (2026.W42) is Super Admin (every team) / Org Admin (their own
+  // teams) only — canEditScoring_ + cfg.editTeams, enforced again by the save
+  // endpoints. Shown under 👁 View as too, always read-only there: the page follows
+  // the team toggle and reads the same for every caller of that team.
   { id: "weights",    btnId: "tabBtnWeights",    paneId: "tabWeights",    label: "⚖️ Scoring Weights", location: "menu",   roles: null },
   // hideInPreview: these pages read settings as the REAL caller (getAccessSettings etc.
   // are never impersonated), so showing them under 👁 View as would misrepresent what
@@ -2997,9 +2998,19 @@ function isSuperAdmin_()   { return STATE.userRole === 'superadmin'; }
 function hasAdminPower_()  { return STATE.userRole === 'superadmin' || STATE.userRole === 'admin' || STATE.userRole === 'orgadmin'; }
 // Org admins run their own org but may not hand out the company-wide tiers.
 function canManageAdmins_() { return STATE.userRole === 'superadmin' || STATE.userRole === 'admin'; }
-// Scoring Weights editor — Super Admin / Admin only, never while previewing someone.
-// Mirrors canEditScoring_ in PS Security.js (the save endpoints are the real gate).
-function canEditScoring_()  { return !STATE.viewAs && (STATE.userRole === 'superadmin' || STATE.userRole === 'admin'); }
+// Scoring Weights editor — Super Admin (every team) / Org Admin (their own teams),
+// never while previewing someone. Mirrors canEditScoring_ in PS Security.js; the
+// server's cfg.editTeams says WHICH teams, and the save endpoints are the real gate.
+function canEditScoring_()  { return !STATE.viewAs && (STATE.userRole === 'superadmin' || STATE.userRole === 'orgadmin'); }
+// The company default (flat base) is one company-wide policy — Super Admin only.
+function canEditScoringBase_() { return !STATE.viewAs && isSuperAdmin_(); }
+// The team on screen (served team, falling back to the toggle) and whether the
+// caller may tune it — server truth (cfg.editTeams), never a role guess.
+function swTeamKey_()   { return (DATA && DATA.meta && DATA.meta.team && DATA.meta.team.key)   || STATE.activeTeam; }
+function swTeamLabel_() { return (DATA && DATA.meta && DATA.meta.team && DATA.meta.team.label) || STATE.activeTeam; }
+function swCanEditTeam_(cfg) {
+  return canEditScoring_() && !!(cfg && cfg.canEdit && cfg.matrix) && (cfg.editTeams || []).indexOf(swTeamKey_()) !== -1;
+}
 // The signed-in user's OWN tier, unaffected by 👁 View as. Only a super admin can be
 // handed a payload carrying meta.viewAs, so realRole is server truth, not a client guess.
 function isRealSuperAdmin_() { return STATE.realRole === 'superadmin'; }
@@ -3608,6 +3619,7 @@ function loadData(forceRefresh) {
   _loadingTeam = STATE.activeTeam;
   _prefetchWanted = null;                  // a user-driven load supersedes any wait-on-prefetch
   var seq = ++_loadSeq;
+  if (forceRefresh) MATRIX_CFG = null;     // ⚖️ Scoring Weights refetches its config on a live read
 
   // A prior denial or error replaced the spinner markup — put it back so a retry
   // (Refresh, or entering/leaving 👁 View as) shows a loading state, not stale text.
@@ -11179,6 +11191,7 @@ function renderWeightsTab_() {
   if (!container) return;
 
   var canEdit = canEditScoring_();
+  var canBase = canEditScoringBase_();
   var html = renderScoringOverview_(canEdit);
   if (!canEdit) {
     container.innerHTML = html;
@@ -11186,11 +11199,16 @@ function renderWeightsTab_() {
     return;
   }
 
+  // Advanced settings: the company default (Super Admin only) and the per-level
+  // matrix for the team on screen (Super Admin: any team; Org Admin: their own).
   html += '<details class="sw-editor" id="weightsEditor"' + (STATE.weightsEditorOpen ? ' open' : '') +
     ' ontoggle="STATE.weightsEditorOpen = this.open">' +
-    '<summary>⚙️ Advanced settings <span class="sw-editor-hint">company default and per-level fine-tuning · Admins &amp; Super Admins</span></summary>';
+    '<summary>⚙️ Advanced settings <span class="sw-editor-hint">' +
+      (canBase ? 'company default and per-level fine-tuning · Super Admins'
+               : 'per-level fine-tuning for your teams · Org Admins') + '</span></summary>';
   html += '<div class="settings-body">';
 
+  if (canBase) {
   html += '<p class="settings-intro">Each rocketeer receives a composite score (0–100) that blends the metrics below. ' +
     'Adjust the percentage each metric contributes to reflect your team\'s priorities. ' +
     '<strong>Set a metric\'s weight to 0 to exclude it from scoring entirely.</strong> ' +
@@ -11242,19 +11260,20 @@ function renderWeightsTab_() {
 
   html += '<p class="settings-note">Only editors of the source spreadsheet can save changes. ' +
     'All users will see the new weights on their next page refresh.</p>';
+  html += '<hr class="sec-divider">';
+  }   // canBase — company default
 
   html += '</div>';
 
-  // Family × Level overrides — loaded async
-  html += '<hr class="sec-divider">' +
-    '<div id="matrixSection">' +
+  // Family × Level overrides for the team on screen — loaded async
+  html += '<div id="matrixSection">' +
       '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
       '<span style="font-size:12px;color:var(--muted)">Loading scoring matrix…</span></div>' +
     '</div>';
 
   html += '</details>';
   container.innerHTML = html;
-  updateWeightTotal();
+  if (canBase) updateWeightTotal();
   loadScoringMatrix_();
 }
 
@@ -11266,17 +11285,20 @@ function renderWeightsTab_() {
 //      titles at each, and the points that level actually scores with (server-resolved
 //      by familySummaryWeights_, the same rule as the scorer); a cell that differs
 //      from the role row is highlighted.
+// The table follows the org-team toggle (2026.W42): Services shows the Services
+// roles and levels, R&D its own, Sales & Success its own — one group at a time.
 // Org-scoped callers (payload carries managerScopeName — managers, delegates, org
-// admins) see only the roles and levels their own people hold, with headcounts,
-// read-only. "How a score is built" sits folded under the table.
+// admins) see only the roles and levels their own people hold, with headcounts;
+// an org admin tunes them (their own teams only, server-checked), a manager reads.
+// "How a score is built" sits folded under the table.
 function renderScoringOverview_(canEdit) {
   return '<div class="sw-overview">' +
     '<div class="sw-head"><div class="sec-header">Points by role</div>' +
       (canEdit ? '' : '<span class="sw-readonly">🔒 Read-only' + (STATE.viewAs ? ' while previewing' : '') +
-        ' — only Admins and Super Admins can change the weights</span>') +
+        ' — Super Admins change any team, Org Admins their own</span>') +
     '</div>' +
     '<p class="settings-note sw-lead">Every score is out of 100 points; the bar shows where they come from. ' +
-      'Open a role (▸) to see how its levels are tuned. ' +
+      'The table follows the team toggle above. Open a role (▸) to see how its levels are tuned. ' +
       'What each metric measures: <a href="#" onclick="switchTab(\'dataref\');return false">📖 Documentation</a>.</p>' +
     '<div id="scoringSummary">' +
       '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
@@ -11496,18 +11518,23 @@ function renderScoringSummary_() {
     return;
   }
   var scoped = !!(DATA && DATA.managerScopeName);
-  var editable = !scoped && !!(cfg.canEdit && cfg.matrix && canEditScoring_());
-  var rows = buildRoleRows_(cfg);
-  if (scoped) rows = buildScopedRows_(cfg, rows);
+  var teamKey = swTeamKey_(), teamLabel = swTeamLabel_();
+  // One group at a time — the team the toggle shows (Services / R&D / Sales & Success).
+  var teamCfg = Object.assign({}, cfg, { sections: (cfg.sections || []).filter(function(s) { return s.team.key === teamKey; }) });
+  var editable = swCanEditTeam_(cfg);
+  var rows = buildRoleRows_(teamCfg);
+  if (scoped) rows = buildScopedRows_(teamCfg, rows);
   SW_ROWS = rows;
   var nCols = WEIGHT_DEFS.length + 2 + (editable ? 1 : 0);
   var people = 0;
   rows.forEach(function(r) { people += r.n || 0; });
 
-  var html = renderCompanyDefault_(cfg, editable);
+  var html = renderCompanyDefault_(cfg, canEditScoringBase_());
   html += '<div class="sw-tools">' +
-    (scoped ? '<span class="sw-code">Your people only — ' + people + (people === 1 ? ' person' : ' people') + ' in ' +
-      rows.length + (rows.length === 1 ? ' role' : ' roles') + '</span>' : '<span></span>') +
+    '<span class="sw-code"><b>' + esc(teamLabel) + '</b> — ' +
+      (scoped ? 'your people only, ' + people + (people === 1 ? ' person' : ' people') + ' in ' : '') +
+      rows.length + (rows.length === 1 ? ' role' : ' roles') +
+      (editable ? ' · a change applies to every ' + esc(teamLabel) + ' rocketeer in that role' : '') + '</span>' +
     '<button type="button" class="sw-link" id="swAllBtn" onclick="swToggleAll_()">Expand all levels</button></div>';
   html += '<div class="sw-scroll"><table class="sw-table' + (editable ? ' sw-editable' : '') + '"><thead><tr>' +
     '<th>Role</th><th class="sw-mix-h">Score mix</th>' +
@@ -11530,21 +11557,22 @@ function renderScoringSummary_() {
       (r.varies ? ' <span class="sw-tag" title="At least one level scores differently — open the role">varies by level</span>' : '') +
       '</td>' +
       '<td class="sw-mix-c"><div class="sw-mix" id="swMix-' + i + '">' + roleMixBar_(r.points) + '</div></td>';
+    var rowEdit = editable && r.targets.length > 0;   // "Other job titles" has no block to write
     WEIGHT_DEFS.forEach(function(d) {
       if (r.metrics.indexOf(d.key) === -1) { html += '<td><span class="sw-off" title="Does not apply to this role">—</span></td>'; return; }
       var v = r.points[d.key] || 0;
-      html += '<td>' + (editable
+      html += '<td>' + (rowEdit
         ? '<input type="number" class="sw-rate" min="0" max="100" step="1" inputmode="numeric" value="' + v + '"' +
           ' data-row="' + i + '" data-key="' + d.key + '" aria-label="' + esc(r.name + ' — ' + d.label) + ' points"' +
           ' oninput="swRateInput_(' + i + ')">'
         : '<span class="sw-pts' + (v ? '' : ' sw-zero') + '">' + v + '</span>') + '</td>';
     });
-    if (editable) html += '<td><span class="sw-tot" id="swTot-' + i + '">100</span></td>';
+    if (editable) html += '<td>' + (rowEdit ? '<span class="sw-tot" id="swTot-' + i + '">100</span>' : '') + '</td>';
     html += '</tr>';
     if (hasLv) html += '<tr class="sw-detail" id="swD-' + i + '"' + (open ? '' : ' hidden') + '><td colspan="' + nCols + '">' +
       renderLevelFold_(r, scoped, editable) + '</td></tr>';
   });
-  if (!rows.length) html += '<tr><td colspan="' + nCols + '" class="sw-off">No roles to show for the current team.</td></tr>';
+  if (!rows.length) html += '<tr><td colspan="' + nCols + '" class="sw-off">No roles to show for ' + esc(teamLabel) + '.</td></tr>';
   html += '</tbody></table></div>';
   if (editable) {
     html += '<div class="settings-actions" style="margin-top:12px">' +
@@ -11611,6 +11639,7 @@ function swRateInput_(i) {
   var allOk = true, changed = false;
   SW_ROWS.forEach(function(r, j) {
     var v = swRowValues_(j);
+    if (!Object.keys(v).length) return;   // read-only row (no inputs) — nothing to check
     var t = Object.keys(v).reduce(function(s, k) { return s + v[k]; }, 0);
     if (t !== 100) allOk = false;
     if (Object.keys(v).some(function(k) { return v[k] !== (r.points[k] || 0); })) changed = true;
@@ -11648,7 +11677,7 @@ function saveRoleWeights_() {
       if (btn) btn.textContent = 'Save';
       if (res && res.ok) {
         if (st) { st.textContent = '✓ Saved ' + n + ' role' + (n === 1 ? '' : 's') + ' — scores update on the next refresh'; st.classList.remove('sw-bad'); }
-        loadScoringMatrix_();
+        loadScoringMatrix_(true);
       } else if (st) {
         st.textContent = 'Save failed: ' + ((res && res.error) || 'unknown error'); st.classList.add('sw-bad');
         if (btn) btn.disabled = false;
@@ -11665,16 +11694,15 @@ function saveRoleWeights_() {
 // inherit the per-(team, family) fill defaults shipped in cfg.sections.
 var MATRIX_CFG = null;
 
-function loadScoringMatrix_() {
+// Fetches the scoring config once and renders the page from it; a team switch
+// re-renders from the same config (the payload covers every team the caller may
+// see). `force` refetches — after a save; the Refresh button clears it too.
+function loadScoringMatrix_(force) {
+  if (!force && MATRIX_CFG && MATRIX_CFG.ok) { renderScoringFromCfg_(); return; }
   google.script.run
     .withSuccessHandler(function(cfg) {
       MATRIX_CFG = cfg;
-      renderScoringSummary_();
-      // The editor needs the full config, which the server ships to editors only.
-      if (!document.getElementById("matrixSection")) return;
-      if (cfg && cfg.canEdit) renderMatrixSection_();
-      else document.getElementById("matrixSection").innerHTML =
-        '<div class="mx-err">The scoring matrix can only be edited by Admins and Super Admins.</div>';
+      renderScoringFromCfg_();
     })
     .withFailureHandler(function(e) {
       var msg = esc(String(e.message || e));
@@ -11684,6 +11712,16 @@ function loadScoringMatrix_() {
       if (el) el.innerHTML = '<p style="color:#B71C1C;font-size:12px;padding:8px 0">Failed to load scoring matrix: ' + msg + '</p>';
     })
     .getScoringConfig();
+}
+
+function renderScoringFromCfg_() {
+  var cfg = MATRIX_CFG;
+  renderScoringSummary_();
+  // The editor needs the full config, which the server ships to editors only.
+  if (!document.getElementById("matrixSection")) return;
+  if (cfg && cfg.canEdit) renderMatrixSection_();
+  else document.getElementById("matrixSection").innerHTML =
+    '<div class="mx-err">The scoring matrix can only be edited by Super Admins and Org Admins.</div>';
 }
 
 // Section lookup helpers — cfg.sections is ordered like the dashboard team toggle.
@@ -11720,13 +11758,27 @@ function renderMatrixSection_() {
     return;
   }
 
-  var html = '<div class="sec-header">⚖️ Scoring Weights by Team, Family &amp; Level</div>' +
-    '<p class="sec-sub">Families are grouped under the <strong>org teams</strong> from the dashboard toggle, ' +
-    'placed by where their active members sit — a family with members in two teams appears under both and is ' +
-    'tuned independently. Each team scores only on its own metric set; blank cells inherit the placeholder ' +
+  // One group at a time: the team the toggle shows, and only if the caller may
+  // tune it (cfg.editTeams — Super Admin: every team; Org Admin: their own).
+  var teamKey = swTeamKey_(), teamLabel = swTeamLabel_();
+  var secs = (cfg.sections || []).filter(function(s) { return s.team.key === teamKey; });
+  var html = '<div class="sec-header">⚖️ ' + esc(teamLabel) + ' — weights by family &amp; level</div>' +
+    '<p class="sec-sub">The families below are the ones with active <strong>' + esc(teamLabel) + '</strong> members; ' +
+    'switch the team toggle above for another group. A family with members in two teams is tuned independently in each. ' +
+    'The team scores only on its own metric set; blank cells inherit the placeholder ' +
     'weights shown. Each level column should total 100% (other totals are renormalized at scoring time).</p>';
 
-  cfg.sections.forEach(function(sec) {
+  if ((cfg.editTeams || []).indexOf(teamKey) === -1) {
+    el.innerHTML = html + '<div class="mx-err">The ' + esc(teamLabel) + ' weights can only be changed by Super Admins and the ' +
+      esc(teamLabel) + ' Org Admins.</div>';
+    return;
+  }
+  if (!secs.length) {
+    el.innerHTML = html + '<div class="mx-err">No ' + esc(teamLabel) + ' families with active members.</div>';
+    return;
+  }
+
+  secs.forEach(function(sec) {
     html += renderTeamSeparator_(sec);
     if (sec.team.key === 'services') html += renderDefaultRef_(cfg);
     sec.families.forEach(function(f) {
@@ -12024,6 +12076,7 @@ function saveMatrixToSheet_() {
       if (res && res.ok) {
         var flash = document.getElementById('matrixSaveFlash');
         if (flash) { flash.style.display = 'inline'; setTimeout(function() { flash.style.display = 'none'; }, 2500); }
+        loadScoringMatrix_(true);   // the role table above is server-resolved — refresh it
       } else if (err) {
         err.textContent = 'Save failed: ' + ((res && res.error) || 'unknown error');
         err.style.display = 'block';

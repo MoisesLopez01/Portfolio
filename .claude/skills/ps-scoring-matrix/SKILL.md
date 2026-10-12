@@ -45,12 +45,26 @@ family tunes**. Spec: `ps-dashboard/docs/specs/2026-07-09-team-aligned-scoring-d
   (folded four-step note). Org-scoped callers (`DATA.managerScopeName`) get
   `buildScopedRows_`: only the roles/levels their people hold (catalog title, then job-code
   prefix; uncatalogued → "Other job titles" from the team catch-all; crew excluded), with
-  headcounts, read-only. Editors type rates inline (`saveRoleWeights_` writes changed rows'
-  `ALL` cells only; level cells untouched — those live in the Advanced editor). Edit rights:
-  `canEditScoring_` = superadmin + admin (org admins read only). Non-editors get the summary
-  payload only (plus `levelCols`). Tests: `tests/scoring-weights-view-checks.js`.- **Advanced editor** (folded under "Advanced settings"; company default has rate inputs, no slider): ⚖️ Scoring Weights → matrix section renders three team separators
-  (Services / R&D / Sales & Success) with family blocks placed by active membership
-  (`getScoringConfig().sections`) plus a per-team "Uncatalogued titles" catch-all.
+  headcounts. Editors type rates inline (`saveRoleWeights_` writes changed rows'
+  `ALL` cells only; level cells untouched — those live in the Advanced editor).
+- **One team at a time (2026.W42)**: the table and the Advanced editor show the team the
+  dashboard toggle shows (`swTeamKey_()` = `DATA.meta.team.key`; `renderScoringSummary_`
+  filters `cfg.sections` to it before `buildRoleRows_`). Services shows its roles and
+  levels, R&D its own, Sales & Success its own. The config is fetched once (`MATRIX_CFG`,
+  `loadScoringMatrix_(force)`); a team switch re-renders from it, a save or Refresh refetches.
+- **Edit rights (2026.W42)**: `canEditScoring_` = superadmin + **orgadmin** (plain admin reads);
+  `canEditScoringBase_` = superadmin only (company default). `scoringEditTeams_(access,
+  loadRoster)` says WHICH teams — superadmin: all; orgadmin: the teams their org tree holds
+  (`resolveManagerScope_` with bridges, own row dropped, `availableTeams_`); shipped as
+  `cfg.editTeams`, used by the client's `swCanEditTeam_(cfg)`. `getScoringConfig` narrows an
+  org admin's editor payload (sections, matrix, Services audit) to those teams;
+  `saveScoringMatrix` refuses a payload naming any other team (whole save, logged). The
+  "Other job titles" row never carries inputs (`r.targets` empty). Non-editors get the
+  summary payload only (plus `levelCols`). Tests: `tests/scoring-weights-view-checks.js`.
+- **Advanced editor** (folded under "Advanced settings"; company default has rate inputs, no
+  slider, super admins only): the matrix section renders the team on screen — one separator
+  with its family blocks placed by active membership (`getScoringConfig().sections`) plus the
+  team's "Uncatalogued titles" catch-all — and refuses a team outside `cfg.editTeams`.
   `saveScoringMatrix()` validates metrics against the team's set and busts the cache.
 - Tests: `_test_weightsResolver()` and `_test_matrixMigration()` — GAS editor or Node
   (eval both PS files with a stubbed `Logger`).

@@ -257,7 +257,8 @@ own login. **Only the report payload is impersonated**: every settings endpoint 
 resolves the real caller, so the preview can never write as the target. The frontend
 hides Access Control while previewing (`hideInPreview` on the `VIEWS` entry) because it
 would read settings as the real caller; Scoring Weights stays visible but read-only
-(`canEditScoring_()` is false while `STATE.viewAs` is set). `meta.viewAs` is stamped by
+(`canEditScoring_()` is false while `STATE.viewAs` is set; the page follows the team
+toggle, so the preview shows the target's team group). `meta.viewAs` is stamped by
 `applySelfExclusion_` (per-caller, never in the shared cache entry); the 👁 sidebar entry keys off
 `STATE.realRole` / `isRealSuperAdmin_()`, not the previewed `userRole`. Candidates come
 from `listViewAsTargets()`. Spec: `ps-dashboard/docs/specs/2026-09-01-view-as-impersonation-design.md`.
@@ -342,13 +343,15 @@ Default: `{ goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 
 Configurable per deployment via ⚖️ Scoring Weights (sidebar › More) → saved to `PS Settings` sheet.
 `saveWeightSettings()` / `readWeightSettings_()` handle persistence.
 
-**Read for everyone, edit for Super Admin / Admin (2026.W41).** Three levels of disclosure
-on one page, nothing duplicated, no metric definitions (one line links to 📖 Documentation):
+**Read for everyone (2026.W41); edit for Super Admin — any team — and Org Admin — their
+own teams (2026.W42).** Three levels of disclosure on one page, nothing duplicated, no
+metric definitions (one line links to 📖 Documentation):
 
 1. **Company default** strip — `cfg.baseWeights` as points out of 100 with the colour mix bar.
-2. **Points by role** — **ONE table**, one row per job family, all seven metric columns as
-   points out of 100 (largest-remainder rounding, `sharesOf100_`) plus a score-mix bar.
-   Never add a second table.
+2. **Points by role** — **ONE table**, one row per job family **of the team the toggle
+   shows** (Services / R&D / Sales & Success — one group at a time, `swTeamKey_()` =
+   `DATA.meta.team.key`), all seven metric columns as points out of 100 (largest-remainder
+   rounding, `sharesOf100_`) plus a score-mix bar. Never add a second table.
 3. **Levels** — folded under each role (▸, `swToggle_`, open state in `STATE.swOpen`): the
    role's Job Catalog levels, the job titles at each, and the points that level scores with;
    a cell that differs from the role row is highlighted and the row carries a "varies by
@@ -361,15 +364,32 @@ scores people. Level titles come from the catalog (job titles, never people). **
 callers** (payload carries `managerScopeName` — managers, delegates, org admins) get the same
 table narrowed to the roles and levels their own people hold, with headcounts
 (`buildScopedRows_`: catalog-title-then-job-code match, mirroring the server; uncatalogued →
-an "Other job titles" row; crew excluded), read-only. Editors type rates straight into the role
-cells (no sliders anywhere); Save writes only changed rows as the family's `ALL` cell in every
-team the row covers (`saveRoleWeights_` → `saveScoringMatrix`); level cells are tuned only
-under "Advanced settings", where the company default and per-level matrix sit folded. Editing
-is gated by `canEditScoring_` — superadmin + admin, **not** orgadmin (the weights are one
-company-wide policy). `getScoringConfig` hands non-editors the summary only (role weights +
-catalog levels; no headcounts, unmapped-title audit or raw matrix) and never seeds sheets for
-them; both save endpoints re-check `canEditScoring_`. Guarded by
-`tests/scoring-weights-view-checks.js`.### Team-aligned scoring matrix (2026-07-09)
+an "Other job titles" row; crew excluded). Editors type rates straight into the role cells (no
+sliders anywhere); Save writes only changed rows as the family's `ALL` cell of the team on
+screen (`saveRoleWeights_` → `saveScoringMatrix`) — a change applies to every rocketeer of that
+team in that role, and the table says so; level cells are tuned only under "Advanced
+settings", which shows the per-level matrix **for the team on screen** and, for super admins
+only, the company default.
+
+**Two edit gates, both in PS Security.js, both re-checked by the save endpoints:**
+
+- `canEditScoring_` — superadmin + **orgadmin**; plain admin, viewer and manager read only.
+  WHICH teams comes from `scoringEditTeams_` (PS Contribution Report.js): superadmin → every
+  team; orgadmin → the teams their own org tree holds, by the same BFS and team tag as their
+  dashboard (`resolveManagerScope_` with bridges, own row dropped, `availableTeams_`); an
+  org admin with an empty tree is a reader. `getScoringConfig` ships it as `editTeams` and
+  narrows an org admin's editor payload (sections, matrix, Services audit list) to those
+  teams; `saveScoringMatrix` **refuses the whole save** when the payload names any other
+  team (logged), never trims it silently. The client's `swCanEditTeam_(cfg)` keys off
+  `cfg.editTeams`, never a role guess.
+- `canEditScoringBase_` — superadmin only: the company default (`saveWeightSettings`)
+  re-weights every team at once, so an org-scoped editor never touches it.
+
+`getScoringConfig` hands non-editors the summary only (role weights + catalog levels; no
+headcounts, unmapped-title audit or raw matrix) and never seeds sheets for them. The config
+is fetched once per load (`MATRIX_CFG`); a team switch re-renders from it, a save or the
+Refresh button refetches. Guarded by `tests/scoring-weights-view-checks.js`. Spec:
+`ps-dashboard/docs/specs/2026-10-12-scoring-weights-team-scoped-editing-design.md`.### Team-aligned scoring matrix (2026-07-09)
 
 Scoring groups follow the org team toggle (`TEAMS_` in `ps-dashboard/PS Teams.js`): **team gates,
 family tunes**. **Hard invariant**: every resolution path in `weightsForEmployee_` ends in

@@ -76,12 +76,14 @@ main tab.
   to managers what each metric means and how it is evaluated. Internal ids (`dataref`,
   `tabDataRef`, the `dr-*` CSS classes) keep the old name.
 - ⚖️ **Scoring Weights** — every role (`roles: null`, since 2026.W41). Opens on the
-  company default strip and a single **Points by role** table whose rows fold open (▸) to
-  the role's levels (org-scoped callers: only the roles and levels their own people hold,
-  with headcounts); "How a score is built" is folded under the table. For
-  `canEditScoring_()` (superadmin + admin, never while 👁 previewing) the role cells become
-  rate inputs, and the company default + per-level matrix sit under "Advanced settings".
-  Visible in preview, read-only there.
+  company default strip and a single **Points by role** table for the team the toggle
+  shows (Services / R&D / Sales & Success, one group at a time since 2026.W42) whose rows
+  fold open (▸) to the role's levels (org-scoped callers: only the roles and levels their
+  own people hold, with headcounts); "How a score is built" is folded under the table. For
+  `canEditScoring_()` (superadmin + orgadmin, never while 👁 previewing) and a team in
+  `cfg.editTeams` (`swCanEditTeam_`) the role cells become rate inputs; "Advanced settings"
+  holds the per-level matrix of that team and, for super admins only, the company default.
+  Plain admins read. Visible in preview, read-only there.
 - 🔒 **Access Control** — superadmin + admin + orgadmin. Carries `hideInPreview: true`
   — hidden while 👁 View as is active, because it reads settings as the real caller.
 - 📶 **Usage Analytics** — superadmin only. Lazy-loads `getUsageAnalytics()`;

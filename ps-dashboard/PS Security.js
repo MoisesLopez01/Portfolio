@@ -213,16 +213,29 @@ function canManageAdmins_(roleOrAccess) {
 }
 
 /**
- * True for the roles that may EDIT the scoring weights (flat base + team matrix).
+ * True for the roles that may EDIT the scoring matrix (role and level weights).
  *
- * Since 2026.W41 every role may READ them — ⚖️ Scoring Weights is a transparency
- * page, so people can see how their score is built. Org admins read but do not
- * edit: the weights are one company-wide policy, and an org-scoped admin
- * re-weighting them would change every score outside their own tree.
+ * Since 2026.W41 every role may READ the weights — ⚖️ Scoring Weights is a
+ * transparency page, so people can see how their score is built. Since 2026.W42
+ * editing follows the org-team toggle: a Super Admin tunes every team, an Org
+ * Admin tunes only the teams their own org tree holds (`scoringEditTeams_` in
+ * PS Contribution Report.js narrows both the editor payload and the save to
+ * those teams). Plain Admins, viewers and managers read only. The company
+ * default — the flat base every Services role starts from — is one company-wide
+ * policy and stays Super Admin only: canEditScoringBase_.
  */
 function canEditScoring_(roleOrAccess) {
   const r = (roleOrAccess && roleOrAccess.role) || roleOrAccess;
-  return r === "superadmin" || r === "admin";
+  return r === "superadmin" || r === "orgadmin";
+}
+
+/**
+ * True for the roles that may edit the COMPANY DEFAULT weights (PS Settings
+ * sheet, saveWeightSettings) — Super Admin only. An org-scoped editor changing
+ * the base would re-weight every score outside their own tree.
+ */
+function canEditScoringBase_(roleOrAccess) {
+  return isSuperAdmin_(roleOrAccess);
 }
 
 /**
