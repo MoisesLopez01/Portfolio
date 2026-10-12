@@ -1,7 +1,6 @@
 # PS Contribution Report — Performance Record and filter bar (2026.W41)
 
-**Status:** built and tested locally on 2026-10-10 (2026.W41). Not pushed and not deployed.
-Push, deploy and the GTT ticket are scheduled for 2026.W42 (Oct 12–18); see "Pending" at the end.
+**Status:** built and tested locally on 2026-10-10 (2026.W41). Deployed on 2026-10-12 (2026.W42) as live deployment **@288** under **GTT-929** (subtasks GTT-930 to GTT-934); see "Done in 2026.W42" at the end.
 **Branch:** `worktree-perf-record-merge-filterbar` (local worktree `D:\Development\.claude\worktrees\perf-record-merge-filterbar`).
 **Approved mock:** https://claude.ai/artifact/8kRY1KSxaaJV8R9yDa5D2r (approved 2026-10-10).
 
@@ -113,14 +112,16 @@ Taken with sample data (made-up names and numbers), in `img/2026-W41/`:
   - on a phone, when the team selector (Services / R&D / Sales) is visible, the header overflowed sideways and hid the title; the selector now takes its own line. Found by rendering a synthetic demo with three teams
 - **Not yet checked:** the real payload with real names, the live Google Apps Script environment, and dark mode. These are part of next week's steps.
 
-## Pending for 2026.W42
+## Done in 2026.W42 (2026-10-12)
 
-1. Create the GTT ticket for this enhancement and attach this report.
-2. Review the branch and screenshots. Decide whether to keep the 75 / 50 bands (see Decisions).
-3. Push the branch.
-4. Before `clasp push`, run `clasp pull` into a scratch folder and compare it with the branch, because files are sometimes edited in the Apps Script editor. Then push and publish with `clasp deploy -i <deploymentId>`.
-5. Check the live dashboard with real data at laptop and phone widths, in light and dark mode, as an admin and as a manager.
-6. Tell managers that Leading Behaviours now lives inside Performance Record.
+1. GTT-929 created with this report as the description; subtasks GTT-930 to GTT-934 assigned and closed, 15h logged.
+2. The 75 / 50 bands stay.
+3. `clasp pull` into a scratch folder showed only two files differing from the branch: `PS Dashboard.html` (this work) and `Jira Backlog.js` (v3.21.1, local since 2026.W40). Nothing had been edited in the Apps Script editor.
+4. All 10 test files passed (730 checks), including the new Performance Record and responsive checks.
+5. `clasp push` in the pinned file order, then `clasp deploy` to the live deployment: **@288**.
+6. In-app Documentation: Headcount / Roster and Kudos given now read "Daily export"; the Purpose paragraph no longer repeats the cadences.
+
+Still to do: tell managers that Leading Behaviours now lives inside Performance Record.
 
 ## Commits (local)
 
