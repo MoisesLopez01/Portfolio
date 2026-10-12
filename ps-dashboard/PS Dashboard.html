@@ -2224,7 +2224,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         <div class="dr-section">
           <div class="dr-section-title">Purpose</div>
           <p class="dr-p">The PS Weekly Contribution Report consolidates key engagement and performance metrics for the Professional Services team across a rolling 5-week window. It is designed to give PS leadership a clear, weekly view of team health — what is being delivered, how goals are progressing, and where individuals may need support.</p>
-          <p class="dr-p">Data is refreshed weekly. The dashboard reflects exports as of the last update date shown at the top of the page — it is not a live feed. Most metrics cover the past two completed weeks plus the current week; some, like RCR and SI, are updated on a monthly or quarterly cycle.</p>
+          <p class="dr-p">The dashboard is not a live feed: it reads exports as of the last update shown at the top of the page. Each source refreshes on its own schedule, listed under Data Sources below.</p>
           <p class="dr-p">Page visits are logged (who and when) to measure adoption. Usage analytics are visible to super admins only.</p>
         </div>
 
@@ -2250,13 +2250,13 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <table class="dr-tbl">
             <thead><tr><th>Metric</th><th>Source</th><th>Cadence</th></tr></thead>
             <tbody>
-              <tr><td>Headcount / Roster</td><td>Netsuite Export</td><td>Weekly export</td></tr>
+              <tr><td>Headcount / Roster</td><td>Netsuite Export</td><td>Daily export</td></tr>
               <tr data-metric="rcr"><td>RCR</td><td>Finance — revenue vs. compensation</td><td>Monthly (last closed month)</td></tr>
               <tr><td>SI Score</td><td>Small Improvements platform</td><td>Quarterly</td></tr>
               <tr><td>Goals Commented</td><td>Goals platform (<span class="drGoalsQ">current quarter</span>)</td><td>Weekly export</td></tr>
               <tr data-metric="planned"><td>Time planned</td><td>Tempo API</td><td>Daily export</td></tr>
               <tr data-metric="tracked"><td>Time tracked</td><td>Tempo API</td><td>Daily export</td></tr>
-              <tr><td>Kudos given</td><td>Netsuite Export</td><td>Weekly export</td></tr>
+              <tr><td>Kudos given</td><td>Netsuite Export</td><td>Daily export</td></tr>
               <tr><td>PTO</td><td>PTO accumulation tracking</td><td>Weekly export</td></tr>
             </tbody>
           </table>
