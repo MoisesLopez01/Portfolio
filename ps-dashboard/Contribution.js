@@ -61,11 +61,15 @@ const CONFIG = {
   // ── Goals (external PS Goals spreadsheet) ────────────────
   GOALS_SS_ID:         "1v5s0Ogka8nrxfT8u71BwG9KidwhD32TjzV_miKad5HQ",
   SHEET_GOALS_RD:      "RD",
-  GOALS_QUARTER:       "FY26Q4",
-  Q4_BASE_ISO_WEEK:    14,     // ISO week that starts FY26Q4 (April 1 week)
-  GOALS_MIN_COUNT:     10,     // ≥ 10 distinct goals required
-  GOALS_COMPLETED_MIN: 8,      // ≥ 8 completed by quarter end
-  GOALS_COMMENT_PCT:   0.60,   // 60 % of goals must have required weekly self-comments
+  // The goals quarter is DERIVED (fiscalContextCR_, FY starts July 1): the current
+  // fiscal quarter, or — for the first GOALS_GRACE_DAYS of a new quarter — the quarter
+  // that just closed, so the sheet shows the closed quarter's final rate exactly as the
+  // PS Dashboard does. Pacing rules mirror readGoalsEngagement_; the three policy
+  // numbers below are fallbacks used only when CONFIG_PS is not in scope.
+  GOALS_MIN_COUNT:            8,     // Rule 1 — distinct goals required after the 4-week writing ramp
+  GOALS_ACTIVE_COMMENT_COUNT: 6,     // Rule 3 — goals that must carry ≥ reqCmt self-comments
+  GOALS_MIN_IN_PROGRESS_PCT:  0.5,   // Rule 2 — share of goals that must be "In Progress"
+  GOALS_GRACE_DAYS:           21,    // closed-quarter window after a quarter starts
 
   // ── Kudos ─────────────────────────────────────────────────
   SHEET_KUDOS: "Kudos_Normalized",
@@ -85,9 +89,13 @@ const CONFIG = {
   // them chronologically and keeps every populated one, so the trend window and
   // the latest month roll across the fiscal-year boundary on their own.
 
-  // ── YTD column header (3. RCR only — FY26 and earlier) ────
+  // ── YTD column ────────────────────────────────────────────
+  // The YTD column follows the fiscal year of the latest month on the RCR axis
+  // ("FY27 YTD RCR" from Jul 26): for a New RCR (rate) year it is the mean of the
+  // person's months in that FY; for a 3. RCR (ratio) year it is the tab's own YTD
+  // column, read from COL_YTD. LEGACY_YTD_LABEL is only the label when the axis is empty.
   COL_YTD: "YTD",
-  LEGACY_YTD_LABEL: "FY26 YTD RCR",   // the YTD column is frozen at the last FY the 3. RCR tab covers
+  LEGACY_YTD_LABEL: "YTD RCR",
 
   // ── Org-scoped runs ───────────────────────────────────────
   // runContributorIntelligenceForOrg(leader) writes the three reports for one
@@ -631,14 +639,157 @@ function readRcrAxis_(rcrData, newRcrData, rosterNameToId) {
 
 /**
  * Per-person monthly series from the axis, oldest → newest.
- * @returns {{ month, value, source }[]}
+ * @returns {{ month, sortKey, value, source }[]}
  */
 function rcrSeriesFor_(axis, internalId) {
   const m = axis.byId.get(internalId);
   if (!m) return [];
   return axis.months
     .filter(x => m.has(x.name))
-    .map(x => ({ month: x.name, value: m.get(x.name).value, source: m.get(x.name).source }));
+    .map(x => ({ month: x.name, sortKey: x.sortKey, value: m.get(x.name).value, source: m.get(x.name).source }));
+}
+
+/** Fiscal year number of an axis sortKey (year*12 + month0). FY starts July 1: Jul 2026 → 2027. */
+function fiscalYearOfSortKey_(sortKey) {
+  const y = Math.floor(sortKey / 12), m = sortKey % 12;
+  return (m >= 6 ? y : y - 1) + 1;
+}
+
+/** "FY27 YTD RCR" for the fiscal year of the axis's latest month; the fallback label when empty. */
+function ytdLabelFor_(axis) {
+  if (!axis || !axis.latest) return CONFIG.LEGACY_YTD_LABEL;
+  return `FY${String(fiscalYearOfSortKey_(axis.latest.sortKey)).slice(-2)} YTD RCR`;
+}
+
+/**
+ * Fiscal-year-to-date RCR for one person, by the method of the latest month:
+ *   rate year  → mean of their months in that FY (there is nothing to sum);
+ *   ratio year → the 3. RCR tab's own YTD column (sheetYtd), the true SUM/SUM figure.
+ * @param {{month,sortKey,value,source}[]} series  rcrSeriesFor_ output
+ * @param {object} axis
+ * @param {number|null} sheetYtd  value read from CONFIG.COL_YTD, if any
+ * @returns {number|null}
+ */
+function ytdRcrFor_(series, axis, sheetYtd) {
+  if (!axis || !axis.latest) return sheetYtd;
+  if (axis.latest.source !== "rate") return sheetYtd;
+  const fy   = fiscalYearOfSortKey_(axis.latest.sortKey);
+  const vals = series.filter(p => fiscalYearOfSortKey_(p.sortKey) === fy).map(p => p.value);
+  if (!vals.length) return null;
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100;
+}
+
+// ── Fiscal context — FY, quarter, grace window ────────────────────────────
+// Mirrors computeFiscalContext_ (PS Contribution Report.js): FY starts July 1
+// (FY27 = Jul 2026 – Jun 2027), quarters are fixed 3-month windows, and the
+// first GOALS_GRACE_DAYS of a new quarter are a Goals-only transition window in
+// which the dashboard keeps showing the quarter that just closed. Kept local
+// (with a reference date for tests) so the exporter never depends on the
+// report file's version; the grace length is taken from CONFIG_PS when present.
+function fiscalContextCR_(referenceDate) {
+  const today = referenceDate instanceof Date ? referenceDate : new Date();
+  const m = today.getMonth() + 1, yr = today.getFullYear();
+  const fyStartCalYear = m >= 7 ? yr : yr - 1;
+  const fyNum = fyStartCalYear + 1;
+  const qNum  = m >= 7 && m <= 9 ? 1 : m >= 10 ? 2 : m <= 3 ? 3 : 4;
+  const fq    = (fy, q) => `FY${String(fy).slice(-2)}Q${q}`;
+  const qStartOf = (fy, q) => new Date(q <= 2 ? fy - 1 : fy, [6, 9, 0, 3][q - 1], 1);
+  const qEndOf   = (fy, q) => { const s = qStartOf(fy, q); return new Date(s.getFullYear(), s.getMonth() + 3, 0, 23, 59, 59, 999); };
+  const prevFy = qNum === 1 ? fyNum - 1 : fyNum, prevQ = qNum === 1 ? 4 : qNum - 1;
+  const graceDays = (typeof CONFIG_PS !== "undefined" && CONFIG_PS.GOALS_GRACE_DAYS) || CONFIG.GOALS_GRACE_DAYS;
+  const qStart    = qStartOf(fyNum, qNum);
+  const dayOfQtr  = Math.floor((today - qStart) / 86400000);
+  const inGracePeriod = dayOfQtr < graceDays;
+  const graceEnd  = new Date(qStart.getFullYear(), qStart.getMonth(), qStart.getDate() + graceDays - 1);
+  // The quarter the report evaluates: the closed one while in the grace window.
+  const rFy = inGracePeriod ? prevFy : fyNum, rQ = inGracePeriod ? prevQ : qNum;
+  // SI: the last four COMPLETED quarters, newest last (the dashboard reads the newest).
+  const siQuarters = [];
+  let sFy = prevFy, sQ = prevQ;
+  for (let i = 0; i < 4; i++) { siQuarters.unshift(fq(sFy, sQ)); if (sQ === 1) { sQ = 4; sFy--; } else sQ--; }
+  return {
+    fyNum, fyLabel: `FY${String(fyNum).slice(-2)}`, qNum,
+    goalsQuarter: fq(fyNum, qNum), prevGoalsQuarter: fq(prevFy, prevQ),
+    inGracePeriod, graceDays, graceEndDate: graceEnd,
+    reportQuarter: fq(rFy, rQ), reportQStart: qStartOf(rFy, rQ), reportQEnd: qEndOf(rFy, rQ),
+    siQuarters,
+  };
+}
+
+/**
+ * Pacing thresholds for the evaluated week of the report quarter, as the
+ * dashboard computes them per week: qWeek from the quarter's first Monday,
+ * reqCmt = max(1, qWeek − 4), no goal-count penalty in the first four weeks.
+ * `evalDate` is the end of the last completed week, capped at the quarter end
+ * (a closed quarter is judged at its final week).
+ */
+function goalsPacing_(fc, evalDate) {
+  const mondayOf = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  const end   = evalDate && evalDate < fc.reportQEnd ? new Date(evalDate) : new Date(fc.reportQEnd);
+  const qWeek = Math.max(1, Math.floor((mondayOf(end) - mondayOf(fc.reportQStart)) / (7 * 86400000)) + 1);
+  const ps = typeof CONFIG_PS !== "undefined" ? CONFIG_PS : {};
+  const minCount      = ps.GOALS_MIN_COUNT            || CONFIG.GOALS_MIN_COUNT;
+  const activeCount   = ps.GOALS_ACTIVE_COMMENT_COUNT || CONFIG.GOALS_ACTIVE_COMMENT_COUNT;
+  const inProgressPct = ps.GOALS_MIN_IN_PROGRESS_PCT  || CONFIG.GOALS_MIN_IN_PROGRESS_PCT;
+  return {
+    qWeek, evalEnd: end,
+    reqCmt: Math.max(1, qWeek - 4),
+    goalsRequired: qWeek <= 4 ? 0 : minCount,
+    minCount, activeCount, inProgressPct,
+  };
+}
+
+/**
+ * The dashboard's three-rule verdict for one person (readGoalsEngagement_):
+ *   Rule 1 — at least goalsRequired goals (0 during the writing ramp);
+ *   Rule 2 — more than inProgressPct of them "In Progress";
+ *   Rule 3 — at least activeCount goals with ≥ reqCmt self-comments by evalEnd
+ *            (a completed goal needs just one).
+ * @param {Map<string,{status,selfComments:Date[]}>} empGoals
+ * @param {object} pacing  goalsPacing_ output
+ * @returns {{ compliant, rule, total, completed, inProgress, qualifying, pct, note }}
+ */
+function goalsVerdict_(empGoals, pacing) {
+  const ids   = empGoals ? Array.from(empGoals.keys()) : [];
+  const total = ids.length;
+  const completed  = ids.filter(id => empGoals.get(id).status === "Completed").length;
+  const inProgress = ids.filter(id => empGoals.get(id).status === "In Progress").length;
+  const qualifying = ids.filter(id => {
+    const g   = empGoals.get(id);
+    const cnt = g.selfComments.filter(d => d <= pacing.evalEnd).length;
+    return g.status === "Completed" ? cnt >= 1 : cnt >= pacing.reqCmt;
+  }).length;
+  const pct = total > 0 ? Math.round((qualifying / total) * 100) : null;
+  const base = { total, completed, inProgress, qualifying, pct };
+  if (total === 0) {
+    return pacing.goalsRequired === 0
+      ? { ...base, compliant: true,  rule: null, note: `Writing ramp (week ${pacing.qWeek}) — no goals yet` }
+      : { ...base, compliant: false, rule: 1,    note: "No Goals" };
+  }
+  if (total < pacing.goalsRequired) {
+    return { ...base, compliant: false, rule: 1, note: `Rule 1: ${total}/${pacing.minCount} goals` };
+  }
+  const needed = Math.ceil(total * pacing.inProgressPct);
+  if (inProgress < needed) {
+    return { ...base, compliant: false, rule: 2, note: `Rule 2: ${inProgress}/${total} in progress (need ${needed})` };
+  }
+  if (qualifying < pacing.activeCount) {
+    return { ...base, compliant: false, rule: 3, note: `Rule 3: ${qualifying}/${pacing.activeCount} goals paced (≥${pacing.reqCmt} self-comments)` };
+  }
+  return { ...base, compliant: true, rule: null, note: `Compliant — ${qualifying}/${total} goals paced (≥${pacing.reqCmt})` };
+}
+
+// Labels that depend on the run's data/date, read by the header and banner
+// writers. Set once per run by setRunLabels_; defaults keep stand-alone calls safe.
+var RUN_LABELS_ = { ytd: "YTD RCR", goals: "Goal Engage (%)", goalsQuarter: "", goalsNote: "" };
+
+function setRunLabels_(axis, fc) {
+  RUN_LABELS_.ytd          = ytdLabelFor_(axis);
+  RUN_LABELS_.goalsQuarter = fc ? fc.reportQuarter : "";
+  RUN_LABELS_.goals        = fc ? `Goal Engage % (${fc.reportQuarter})` : "Goal Engage (%)";
+  RUN_LABELS_.goalsNote    = fc && fc.inGracePeriod
+    ? `Goals: ${fc.reportQuarter} — closed quarter, shown until ${Utilities.formatDate(fc.graceEndDate, Session.getScriptTimeZone(), "MMM d")} (${fc.goalsQuarter} opens then)`
+    : fc ? `Goals: ${fc.reportQuarter} (quarter to date)` : "";
 }
 
 /**
@@ -1651,8 +1802,8 @@ function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraRe
         if (!emp.region)      emp.region      = strVal_(row, rcrData.headers, "Resource Region");
         if (emp.tenure === null) emp.tenure   = numVal_(row, rcrData.headers, "Tenure (years)");
 
-        // YTD is the 3. RCR tab's own figure — frozen at the last FY that tab
-        // covers (CONFIG.LEGACY_YTD_LABEL). Monthly values come from the axis below.
+        // The tab's own YTD column (FY26 SUM/SUM). Step 4b replaces it with the
+        // FY of the latest axis month when that FY is a New RCR (rate) year.
         emp.ytdRCR = numVal_(row, rcrData.headers, CONFIG.COL_YTD);
       });
     }
@@ -1670,6 +1821,7 @@ function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraRe
         if (!series.length) return;
         withSeries++;
         emp.monthlyRCR    = series;
+        emp.ytdRCR        = ytdRcrFor_(series, axis, emp.ytdRCR);   // FY of the latest month
         emp.lastMonthsRCR = safeLastMonths.map(m => {
           const pt = series.find(p => p.month === m);
           return { month: m, value: pt ? pt.value : null, source: pt ? pt.source : null };
@@ -1696,12 +1848,8 @@ function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraRe
         const emp = employees.get(internalId);
         if (!emp) return;
 
-        const qCols = [
-          "Small Improvements Manager Rating FY25Q4",
-          "Small Improvements Manager Rating FY26Q1",
-          "Small Improvements Manager Rating FY26Q2",
-          "Small Improvements Manager Rating FY26Q3",
-        ];
+        // The last four completed quarters, derived (FY27Q1 is newest in Oct 2026).
+        const qCols = fiscalContextCR_().siQuarters.map(q => "Small Improvements Manager Rating " + q);
         const siScores = qCols.map(q => numVal_(row, siData.headers, q));
         const validSI  = siScores.filter(s => s !== null);
         const latestSI = validSI.length ? validSI[validSI.length - 1] : null;
@@ -1740,23 +1888,20 @@ function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraRe
       if (iRocketeer === -1 || iGoalId === -1) {
         Logger.log(`⚠️ RD Goals: required columns missing. Headers: ${rdGoalsData.headers.join(", ")}`);
       } else {
-        // Current ISO week → quarter week for required-comment threshold
-        const today = new Date();
-        const dM = new Date(today);
-        dM.setHours(0, 0, 0, 0);
-        dM.setDate(dM.getDate() + 3 - (dM.getDay() + 6) % 7);
-        const jan4 = new Date(dM.getFullYear(), 0, 4);
-        const isoWeekNow = 1 + Math.round(((dM - jan4) / 86400000 - 3 + (jan4.getDay() + 6) % 7) / 7);
-        const quarterWeek = Math.max(1, isoWeekNow - CONFIG.Q4_BASE_ISO_WEEK + 1);
-        const requiredComments = Math.max(1, quarterWeek - 4);
+        // Quarter and pacing as the dashboard computes them: the current fiscal
+        // quarter, or the one that just closed while inside the grace window, judged
+        // at the end of the last completed week (capped at the quarter's end).
+        const fc     = fiscalContextCR_();
+        const pacing = goalsPacing_(fc, weeks && weeks.length ? weeks[weeks.length - 1].end : null);
+        Logger.log(`Goals: quarter ${fc.reportQuarter}${fc.inGracePeriod ? " (closed — grace window)" : ""}, week ${pacing.qWeek}, reqCmt ${pacing.reqCmt}, goals required ${pacing.goalsRequired}`);
 
         // Build per-person goal map: normName → Map<goalId, { status, selfComments: Date[] }>
         const goalMap = new Map();
         rdGoalsData.rows.forEach(row => {
           const rocketeer = String(row[iRocketeer] || "").trim();
           if (!rocketeer) return;
-          // Filter to configured fiscal quarter only
-          if (iQuarter !== -1 && String(row[iQuarter] || "").trim() !== CONFIG.GOALS_QUARTER) return;
+          // Filter to the evaluated fiscal quarter only
+          if (iQuarter !== -1 && String(row[iQuarter] || "").trim() !== fc.reportQuarter) return;
 
           const norm        = normalizeToRosterKey_(rocketeer);
           const rNorm       = normalizeName_(rocketeer);
@@ -1790,11 +1935,11 @@ function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraRe
           if (!emp) return;
 
           const goalIds   = Array.from(empGoals.keys());
-          const total     = goalIds.length;
-          const completed = goalIds.filter(id => empGoals.get(id).status === "Completed").length;
-          const inProg    = goalIds.filter(id => empGoals.get(id).status === "In Progress").length;
-          const compliant = goalIds.filter(id => empGoals.get(id).selfComments.length >= requiredComments).length;
-          const pct       = total > 0 ? Math.round((compliant / total) * 100) : null;
+          const verdict   = goalsVerdict_(empGoals, pacing);
+          const total     = verdict.total;
+          const completed = verdict.completed;
+          const inProg    = verdict.inProgress;
+          const pct       = verdict.pct;
 
           // Count self-comments per week window by bucketing stored dates
           const weekComments = weekZeros_();
@@ -1815,13 +1960,9 @@ function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraRe
             ? (weekComments.reduce((a, b) => a + b, 0) / weekComments.length).toFixed(1)
             : "0";
 
-          if (total < CONFIG.GOALS_MIN_COUNT) {
-            emp.goalsNote = total > 0 ? `< ${CONFIG.GOALS_MIN_COUNT} goals (${total})` : "No Goals";
-          } else if (completed < CONFIG.GOALS_COMPLETED_MIN) {
-            emp.goalsNote = `${completed}/${total} completed — target ${CONFIG.GOALS_COMPLETED_MIN}`;
-          } else {
-            emp.goalsNote = `${compliant}/${total} goals w/ comments (req ≥${requiredComments})`;
-          }
+          emp.goalsCompliant = verdict.compliant;
+          emp.goalsRule      = verdict.rule;
+          emp.goalsNote      = verdict.note;
 
           const c = weekComments, lw = c[c.length - 1], pw = c[c.length - 2];
           emp.goalActivityTrend = lw > pw ? "Rising"
@@ -2137,13 +2278,13 @@ function writeBanner_(sh, row, lastMonths, isNonContrib, totalCols, ctx) {
   row++;
 
   let subText = isNonContrib
-    ? `Generated: ${ts}     ·     Focus: Goal Engagement & Development Engagement`
-    : `Generated: ${ts}     ·     Trend window: ${windowLabel} + ${CONFIG.LEGACY_YTD_LABEL}` +
-      `     ·     ${tierLegend_()}`;
+    ? `Generated: ${ts}     ·     Focus: Goal Engagement & Development Engagement` + (RUN_LABELS_.goalsNote ? `     ·     ${RUN_LABELS_.goalsNote}` : "")
+    : `Generated: ${ts}     ·     Trend window: ${windowLabel} + ${RUN_LABELS_.ytd}` +
+      `     ·     ${tierLegend_()}` + (RUN_LABELS_.goalsNote ? `     ·     ${RUN_LABELS_.goalsNote}` : "");
 
   const legend = isNonContrib
-    ? `     ·     Logged Time: Tempo tracked hrs per week     Avg Comments/Wk: Goal activity intensity     *Goal Engage: (In Progress + Done) / Total`
-    : `     ·     RCR: Revenue/Cost — FY26 from "3. RCR", FY27 on from "New RCR" (direct rate)     Logged Time: Tempo tracked hrs per week     *Goal Engage: (In Progress + Done) / Total     Note: Critical w/ Short Tenure (FTE <= 4mo, Contractor <= 1mo) = High Onboarding Risk`;
+    ? `     ·     Logged Time: Tempo tracked hrs per week     Avg Comments/Wk: Goal activity intensity     *Goal Engage: goals paced with self-comments / total (dashboard rules 1–3)`
+    : `     ·     RCR: Revenue/Cost — FY26 from "3. RCR", FY27 on from "New RCR" (direct rate)     Logged Time: Tempo tracked hrs per week     *Goal Engage: goals paced with self-comments / total (dashboard rules 1–3)     Note: Critical w/ Short Tenure (FTE <= 4mo, Contractor <= 1mo) = High Onboarding Risk`;
 
   subText += legend;
 
@@ -2350,10 +2491,10 @@ function writeSummaryOverview_(sh, row, counts, sectionTitle) {
 function writeMainTable_(sh, row, emps, lastMonths, weeks) {
   const dynCols = [
     "Internal ID","Employee Number","Name","Job Title","Level","Contributor Type","Supervisor","Region","Tenure",
-    CONFIG.LEGACY_YTD_LABEL,
+    RUN_LABELS_.ytd,
     (lastMonths[0] || "M−2") + " RCR", (lastMonths[1] || "M−1") + " RCR", (lastMonths[2] || "Latest") + " RCR",
     "RCR Tier",
-    "Goal Engage (%)",
+    RUN_LABELS_.goals,
     ...weekHeaders_(weeks, "", " Comments"),
     "Kudos",
     "SI Score",
@@ -2394,7 +2535,7 @@ const MAIN_TIER_COL_IDX = 13;
 function writeNonContributorTable_(sh, row, emps, weeks) {
   const cols = [
     "Internal ID","Employee Number","Name","Department","Job Title","Level","Contributor Type","Supervisor","Region","Tenure",
-    "Goal Engage (%)",
+    RUN_LABELS_.goals,
     ...weekHeaders_(weeks, "", " Comments"),
     "Avg Comments/Wk", "Kudos",
     "SI Score",
@@ -2476,7 +2617,7 @@ function nonContribEmpsToRows_(emps) {
 function writeCrewTable_(sh, row, emps, lastMonths, weeks) {
   const dynCols = [
     "Internal ID","Name","Department","Job Title","Supervisor","Region","Tenure",
-    CONFIG.LEGACY_YTD_LABEL,
+    RUN_LABELS_.ytd,
     (lastMonths[0] || "M−2") + " RCR", (lastMonths[1] || "M−1") + " RCR", (lastMonths[2] || "Latest") + " RCR",
     "Kudos",
     ...weekHeaders_(weeks, "Logged Time ", ""),
@@ -2900,6 +3041,9 @@ function runContributorIntelligence_(opts) {
   // dashboard's reading. The trend window is its last three populated months.
   const axis       = readRcrAxis_(rcrData, newRcrData, rosterNameIdMap_(rosterData, contractorData));
   const lastMonths = detectLastClosedMonths_(axis);
+  const fc         = fiscalContextCR_();
+  setRunLabels_(axis, fc);
+  Logger.log(`   → ${RUN_LABELS_.ytd}; ${RUN_LABELS_.goalsNote}`);
   Logger.log(`   → Trend window: ${lastMonths.join(", ") || "—"}` +
              (axis.latest ? `  (latest: ${axis.latest.name}, ${axis.latest.source === "rate" ? "New RCR direct rate" : "3. RCR ratio"})` : ""));
 

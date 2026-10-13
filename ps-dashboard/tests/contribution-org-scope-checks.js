@@ -210,13 +210,13 @@ ck('contributor tab: banner carries the org RCR and method',
    /RCR \(Aug 26\): 1\.73/.test(ctext) && /direct rate/.test(ctext));
 ck('contributor tab: nobody outside the org',       !/Eve Other|Ceo Person|Old Timer|Nobody Known/.test(ctext));
 ck('contributor tab: Ana, Ben, Dana, Fay are rows', ['Ana Lead', 'Ben Consultant', 'Dana Report', 'Fay Ramp'].every(n => nameCells(C).includes(n)));
-ck('contributor tab: headers carry the legacy YTD label and the three axis months',
-   /FY26 YTD RCR/.test(ctext) && /Jun 26 RCR/.test(ctext) && /Jul 26 RCR/.test(ctext) && /Aug 26 RCR/.test(ctext) && /RCR Tier/.test(ctext));
+ck('contributor tab: headers carry the FY YTD label and the three axis months',
+   /FY27 YTD RCR/.test(ctext) && /Jun 26 RCR/.test(ctext) && /Jul 26 RCR/.test(ctext) && /Aug 26 RCR/.test(ctext) && /RCR Tier/.test(ctext));
 const benRow = writtenRows(C).find(r => r[2] === 'Ben Consultant');
 const anaRow = writtenRows(C).find(r => r[2] === 'Ana Lead');
 const danaRow = writtenRows(C).find(r => r[2] === 'Dana Report');
-ck('Ben: FY26 YTD 2.15 | Jun 9.9 (rate won) | Jul 2.0 | Aug 2.8 → Champion on the latest month',
-   benRow && benRow[9] === '2.15' && benRow[10] === '9.90' && benRow[11] === '2.00' && benRow[12] === '2.80' && benRow[13] === 'Champion', JSON.stringify(benRow));
+ck('Ben: FY27 YTD 2.40 | Jun 9.9 (rate won) | Jul 2.0 | Aug 2.8 → Champion on the latest month',
+   benRow && benRow[9] === '2.40' && benRow[10] === '9.90' && benRow[11] === '2.00' && benRow[12] === '2.80' && benRow[13] === 'Champion', JSON.stringify(benRow));
 ck('Ana: 1.4 → Watch (dashboard threshold 1.5, not the old 2.0)', anaRow && anaRow[13] === 'Watch', JSON.stringify(anaRow));
 ck('Dana: 1.0 → Critical',                          danaRow && danaRow[13] === 'Critical', JSON.stringify(danaRow));
 ck('rows are bucketed Critical → Watch → Healthy → Champion',
@@ -300,6 +300,61 @@ ck('tier legend is derived from CONFIG',           /1\.01–1\.5\s+Watch/.test(t
   rcrMonthFromHeader_ = savedH; rcrMonthColumns_ = savedC;
   ck('shared parser is preferred when present', rcrMonthColumnsCR_(H).length === savedC(H).length);
 }
+
+// ── Fiscal context (FY starts July 1; FY27 = Jul 2026 – Jun 2027) ───────────
+{
+  const d = (y, m, day) => new Date(y, m - 1, day);
+  const oct13 = fiscalContextCR_(d(2026, 10, 13));
+  ck('2026-10-13 is FY27 Q2; FY27Q1 just closed',           oct13.fyLabel === 'FY27' && oct13.goalsQuarter === 'FY27Q2' && oct13.prevGoalsQuarter === 'FY27Q1');
+  ck('2026-10-13 is inside the 21-day grace window → report FY27Q1 (closed)', oct13.inGracePeriod && oct13.reportQuarter === 'FY27Q1');
+  ck('closed quarter spans Jul 1 – Sep 30 2026',             oct13.reportQStart.getTime() === d(2026, 7, 1).getTime() && oct13.reportQEnd.getMonth() === 8 && oct13.reportQEnd.getDate() === 30);
+  ck('SI quarters = last four completed, newest last',       oct13.siQuarters.join('|') === 'FY26Q2|FY26Q3|FY26Q4|FY27Q1');
+  const oct25 = fiscalContextCR_(d(2026, 10, 25));
+  ck('2026-10-25 is past the grace window → report FY27Q2', !oct25.inGracePeriod && oct25.reportQuarter === 'FY27Q2' && oct25.reportQStart.getTime() === d(2026, 10, 1).getTime());
+  const jul1 = fiscalContextCR_(d(2026, 7, 1));
+  ck('2026-07-01 opens FY27Q1; grace shows FY26Q4',          jul1.fyLabel === 'FY27' && jul1.goalsQuarter === 'FY27Q1' && jul1.reportQuarter === 'FY26Q4' && jul1.siQuarters[3] === 'FY26Q4');
+  const mar = fiscalContextCR_(d(2027, 3, 15));
+  ck('2027-03-15 is FY27 Q3',                                mar.goalsQuarter === 'FY27Q3' && mar.prevGoalsQuarter === 'FY27Q2' && !mar.inGracePeriod);
+  const jan = fiscalContextCR_(d(2027, 1, 10));
+  ck('2027-01-10: FY27Q3 open, FY27Q2 reported (grace)',      jan.goalsQuarter === 'FY27Q3' && jan.reportQuarter === 'FY27Q2');
+
+  // Pacing: closed quarter is judged at its final week; open quarter at the last completed week.
+  const pClosed = goalsPacing_(oct13, d(2026, 10, 11));
+  ck('closed quarter: week 14 of 13 weeks caps at quarter end → reqCmt 10, goals required', pClosed.qWeek === 14 && pClosed.reqCmt === 10 && pClosed.goalsRequired === pClosed.minCount);
+  const pOpen = goalsPacing_(oct25, d(2026, 10, 18));
+  ck('open quarter week 3: writing ramp — no goal-count penalty, reqCmt 1', pOpen.qWeek === 3 && pOpen.reqCmt === 1 && pOpen.goalsRequired === 0);
+  ck('pacing numbers come from CONFIG_PS (8 goals, 6 active)', pOpen.minCount === 8 && pOpen.activeCount === 6);
+
+  // Verdict: the dashboard's three rules.
+  const dt = n => new Date(2026, 7, n);
+  const goal = (status, n) => ({ status, selfComments: Array.from({ length: n }, (_, i) => dt(1 + i)) });
+  const mk = list => new Map(list.map((g, i) => ['G' + i, g]));
+  const pace = { qWeek: 8, reqCmt: 4, goalsRequired: 8, minCount: 8, activeCount: 6, inProgressPct: 0.5, evalEnd: new Date(2026, 8, 30) };
+  const good = mk([goal('In Progress', 4), goal('In Progress', 5), goal('In Progress', 4), goal('In Progress', 4), goal('In Progress', 6), goal('Completed', 1), goal('In Progress', 0), goal('Planned', 0)]);
+  const v1 = goalsVerdict_(good, pace);
+  ck('compliant: 8 goals, 6 in progress, 6 paced (completed needs one comment)', v1.compliant && v1.rule === null && v1.qualifying === 6 && v1.pct === 75, JSON.stringify(v1));
+  const v2 = goalsVerdict_(mk([goal('In Progress', 9), goal('In Progress', 9)]), pace);
+  ck('rule 1: too few goals',                                 !v2.compliant && v2.rule === 1 && /Rule 1: 2\/8/.test(v2.note));
+  const v3 = goalsVerdict_(mk([goal('Planned', 9), goal('Planned', 9), goal('Planned', 9), goal('Planned', 9), goal('In Progress', 9), goal('In Progress', 9), goal('In Progress', 9), goal('Completed', 9)]), pace);
+  ck('rule 2: majority not in progress',                      !v3.compliant && v3.rule === 2 && /Rule 2: 3\/8/.test(v3.note));
+  const v4 = goalsVerdict_(mk(Array.from({ length: 8 }, () => goal('In Progress', 2))), pace);
+  ck('rule 3: comments behind pace',                          !v4.compliant && v4.rule === 3 && v4.qualifying === 0 && v4.pct === 0);
+  ck('comments after the evaluated week do not count',        goalsVerdict_(mk(Array.from({ length: 8 }, () => goal('In Progress', 4))), { ...pace, evalEnd: new Date(2026, 7, 2) }).qualifying === 0);
+  const v5 = goalsVerdict_(new Map(), { ...pace, goalsRequired: 0, qWeek: 2 });
+  ck('no goals in the writing ramp is compliant',             v5.compliant && /Writing ramp/.test(v5.note));
+  ck('no goals after the ramp is rule 1',                     goalsVerdict_(new Map(), pace).rule === 1);
+}
+
+// ── YTD follows the fiscal year of the latest axis month ─────────────────────
+ck('FY of Jul 26 is 2027, of Jun 26 is 2026',                 fiscalYearOfSortKey_(2026 * 12 + 6) === 2027 && fiscalYearOfSortKey_(2026 * 12 + 5) === 2026);
+ck('YTD label follows the axis: FY27 YTD RCR',                ytdLabelFor_(axis) === 'FY27 YTD RCR' && ytdLabelFor_({ latest: null }) === 'YTD RCR');
+ck('rate year: YTD = mean of the FY27 months (Ben: Jul 2.0, Aug 2.8 → 2.4)', near(ytdRcrFor_(rcrSeriesFor_(axis, '102'), axis, 2.15), 2.4));
+ck('ratio year: YTD keeps the sheet column',                  ytdRcrFor_(rcrSeriesFor_(axis, '102'), { latest: { name: 'Jun 26', sortKey: 2026 * 12 + 5, source: 'ratio' } }, 2.15) === 2.15);
+ck('rate year without FY months → null',                      ytdRcrFor_([{ sortKey: 2026 * 12 + 4, value: 1 }], axis, 9) === null);
+ck('contributor tab header carries FY27 YTD RCR and the goals quarter',
+   /FY27 YTD RCR/.test(cellText(C)) && !/FY26 YTD RCR/.test(cellText(C)) && new RegExp('Goal Engage % \\(' + fiscalContextCR_().reportQuarter.replace(/[()]/g, '') + '\\)').test(cellText(C)));
+ck('Ben row shows the FY27 YTD mean (2.40), not the FY26 sheet YTD', benRow && benRow[9] === '2.40', JSON.stringify(benRow));
+ck('banner says which goals quarter is shown',                /Goals: FY2\dQ\d/.test(cellText(C)));
 
 if (fail) { console.error('❌ contribution-org-scope-checks: ' + fail + ' failed, ' + pass + ' passed'); process.exit(1); }
 console.log('✅ contribution-org-scope-checks: ' + pass + ' checks passed');
