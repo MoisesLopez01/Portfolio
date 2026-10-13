@@ -507,9 +507,41 @@ function strVal_(row, headers, colName) {
 function getMonthlyValues_(row, headers) {
   // Legacy single-sheet reader kept for callers that hold a 3. RCR row; the
   // report itself takes per-person months from readRcrAxis_ (both tabs).
-  return rcrMonthColumns_(headers)
+  return rcrMonthColumnsCR_(headers)
     .map(c => ({ month: c.name, value: numVal_(row, headers, headers[c.col]), source: "ratio" }))
     .filter(x => x.value !== null);
+}
+
+// Month-header parser: "Jun 26" | "2026.07 RCR" -> { name: "Jun 26" | "Jul 26", sortKey }.
+// A local copy of rcrMonthFromHeader_ / rcrMonthColumns_ (PS Contribution Report.js,
+// 2026.W42) so this exporter also runs in a project whose report file predates the
+// New RCR axis. The shared parser is preferred when it is in scope, so the two can
+// never disagree once both are deployed.
+const RCR_MONTH_ABBR_CR_  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const RCR_MONTH_ORDER_CR_ = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+function rcrMonthFromHeaderCR_(h) {
+  if (typeof rcrMonthFromHeader_ === "function") return rcrMonthFromHeader_(h);
+  const s = String(h || "").trim();
+  let m = s.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{2})$/i);
+  if (m) {
+    const mo = RCR_MONTH_ORDER_CR_[m[1].toLowerCase()];
+    return { name: RCR_MONTH_ABBR_CR_[mo] + " " + m[2], sortKey: (2000 + parseInt(m[2], 10)) * 12 + mo };
+  }
+  m = s.match(/^(\d{4})[.\-\/](\d{1,2})\s+RCR$/i);
+  if (m) {
+    const yr = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1;
+    if (mo < 0 || mo > 11) return null;
+    return { name: RCR_MONTH_ABBR_CR_[mo] + " " + String(yr % 100).padStart(2, "0"), sortKey: yr * 12 + mo };
+  }
+  return null;
+}
+// Every month column of a sheet, oldest -> newest: [{ name, sortKey, col }].
+function rcrMonthColumnsCR_(headers) {
+  if (typeof rcrMonthColumns_ === "function") return rcrMonthColumns_(headers);
+  return headers
+    .map((h, i) => { const m = rcrMonthFromHeaderCR_(h); return m ? { name: m.name, sortKey: m.sortKey, col: i } : null; })
+    .filter(Boolean)
+    .sort((a, b) => a.sortKey - b.sortKey);
 }
 
 // ── RCR month axis — two tabs, one axis ───────────────────────────────────
@@ -538,7 +570,7 @@ function readRcrAxis_(rcrData, newRcrData, rosterNameToId) {
 
   const ingest = (data, source, resolveId) => {
     if (!data || !data.headers || !data.rows) return;
-    const cols = rcrMonthColumns_(data.headers);
+    const cols = rcrMonthColumnsCR_(data.headers);
     const ids  = data.rows.map(resolveId);
     cols.forEach(c => {
       let populated = false;

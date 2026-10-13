@@ -285,5 +285,21 @@ ck('classifyRCR_ 1.4 → Watch, 2.4 → Healthy, 2.6 → Champion',
    classifyRCR_(1.4, '').tier === 'Watch' && classifyRCR_(2.4, '').tier === 'Healthy' && classifyRCR_(2.6, '').tier === 'Champion');
 ck('tier legend is derived from CONFIG',           /1\.01–1\.5\s+Watch/.test(tierLegend_()) && /> 2\.5\s+Champion/.test(tierLegend_()));
 
+// ── Local month-header parser: must match the shared one when the report file
+//    predates the New RCR axis (the fallback path is taken only when the shared
+//    functions are out of scope, so hide them for a moment).
+{
+  const savedH = rcrMonthFromHeader_, savedC = rcrMonthColumns_;
+  rcrMonthFromHeader_ = undefined; rcrMonthColumns_ = undefined;
+  const H = ['Internal ID', 'Employee', '2026.07 RCR', 'Jun 26', 'jun 26', '2026.13 RCR', 'Hire Date', '2027.06 RCR'];
+  const cols = rcrMonthColumnsCR_(H);
+  ck('fallback parser: both spellings, chronological, junk skipped',
+     cols.map(c => c.name + '@' + c.col).join('|') === 'Jun 26@3|Jun 26@4|Jul 26@2|Jun 27@7', cols.map(c => c.name + '@' + c.col).join('|'));
+  ck('fallback parser: "2026.07 RCR" and "Jul 26" share a sortKey',
+     rcrMonthFromHeaderCR_('2026.07 RCR').sortKey === rcrMonthFromHeaderCR_('Jul 26').sortKey);
+  rcrMonthFromHeader_ = savedH; rcrMonthColumns_ = savedC;
+  ck('shared parser is preferred when present', rcrMonthColumnsCR_(H).length === savedC(H).length);
+}
+
 if (fail) { console.error('❌ contribution-org-scope-checks: ' + fail + ' failed, ' + pass + ' passed'); process.exit(1); }
 console.log('✅ contribution-org-scope-checks: ' + pass + ' checks passed');
