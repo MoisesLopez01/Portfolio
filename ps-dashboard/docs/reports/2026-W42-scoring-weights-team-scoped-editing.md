@@ -28,6 +28,8 @@ Everything is edited in the one table; there is no separate "Advanced settings" 
 - **Org Admin:** the same role and level cells, for their own teams only. No company default.
 - A level that matches its role row follows it, including future changes; a level typed on its own is tuned on its own; "follow role" snaps it back.
 - A save is checked on the server. An Org Admin whose request names another team is refused outright and the attempt is logged.
+- **Reset all to defaults** (two clicks) clears every role and level of the teams you may edit, so each role scores with its team's default by its metrics (Services roles start from the company default; R&D, Sales & Success and the operations families from their own defaults) and every level follows its role. The company default is kept. A role that still carries its own points shows a small "custom" tag.
+- Unsaved cells now survive a background refresh of the dashboard, and the "Saved" note stays on screen after the table refreshes. Before this fix a background refresh silently emptied the editor, which looked like "save is not working".
 
 ## Where the rules live
 
@@ -41,6 +43,7 @@ Everything is edited in the one table; there is no separate "Advanced settings" 
 - GTT-935 created (Task, component Models, Metrics, Agents (MMA)), closed as Done with 6h logged.
 - `clasp pull` into a scratch dir showed no editor-only edits; `clasp push -f` (16 files) then `clasp deploy` published **@289** on the live URL.
 - Follow-up the same day: the duplicated "Advanced settings" editor was removed and the table became the one place to edit; published as **@290**.
+- Second follow-up: unsaved cells no longer vanish on a background refresh, the saved note survives the table refresh, and "Reset all to defaults" was added and run once for Services, R&D and Sales & Success; published as **@291**.
 
 ## Open decision
 

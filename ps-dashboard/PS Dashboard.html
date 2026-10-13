@@ -1337,6 +1337,10 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .sw-chip .sw-rate-sm { width: 46px; }
 .sw-default-tot { margin-left: auto; }
 .sw-sub .sw-link { font-size: 10px; padding: 0 2px; white-space: nowrap; }
+.settings-btn.sw-reset { margin-left: auto; }
+.settings-btn.sw-armed { background: #FEE2E2; color: #B71C1C; border-color: #B71C1C; }
+.sw-tag-custom { background: #FFF4E5; color: #9A3412; }
+body.dark-mode .sw-tag-custom { background: #4A2A12; color: #FDBA74; }
 .sw-tot { font-weight: 800; color: var(--success); }
 .sw-tot.sw-bad, .sw-status.sw-bad { color: var(--june); }
 .sw-status { font-size: 12px; font-weight: 700; color: var(--slate); align-self: center; }
@@ -11141,6 +11145,17 @@ function usageFilterRows_(q) {
 function renderWeightsTab_() {
   var container = document.getElementById("weightsBody");
   if (!container) return;
+  // renderAll() calls this on EVERY re-render — a tab switch, a filter change, a
+  // background data refresh. The page only needs rebuilding when what it shows
+  // changes (team, scope, previewed person, edit rights); rebuilding otherwise
+  // threw away the editor's unsaved cells and reset Save ("save is not working",
+  // 2026.W42). A save or the Refresh button still force a rebuild through
+  // loadScoringMatrix_(true) / MATRIX_CFG = null.
+  var key = swTeamKey_() + '|' + ((DATA && DATA.managerScopeName) || '') + '|' +
+            (STATE.viewAs ? STATE.viewAs.email : '') + '|' + (canEditScoring_() ? 'edit' : 'read');
+  if (container.getAttribute('data-sw-key') === key && document.getElementById('scoringSummary') &&
+      ((MATRIX_CFG && MATRIX_CFG.ok) || _matrixLoading)) return;
+  container.setAttribute('data-sw-key', key);
   container.innerHTML = renderScoringOverview_(canEditScoring_());
   loadScoringMatrix_();
 }
@@ -11443,6 +11458,7 @@ function renderScoringSummary_() {
       (r.note ? ' <span class="sw-code">' + esc(r.note) + '</span>' : '') +
       (scoped ? ' <span class="sw-code">' + r.n + (r.n === 1 ? ' person' : ' people') + '</span>' : '') +
       (r.varies ? ' <span class="sw-tag" title="At least one level scores differently — open the role">varies by level</span>' : '') +
+      (editable && swRowCustom_(r) ? ' <span class="sw-tag sw-tag-custom" title="This role carries its own points instead of the default — Reset all to defaults clears it">custom</span>' : '') +
       '</td>' +
       '<td class="sw-mix-c"><div class="sw-mix" id="swMix-' + i + '">' + roleMixBar_(r.points) + '</div></td>';
     var rowEdit = editable && r.targets.length > 0;   // "Other job titles" has no block to write
@@ -11467,11 +11483,80 @@ function renderScoringSummary_() {
       '<button class="settings-btn settings-btn-secondary" onclick="renderScoringSummary_()">Undo changes</button>' +
       '<button class="settings-btn settings-btn-primary" id="swSaveBtn" onclick="saveScoringPage_()" disabled>Save</button>' +
       '<span id="swStatus" class="sw-status">Type a rate in any cell — the company default, each role and each level must add up to 100</span>' +
+      (editable ? '<button type="button" class="settings-btn settings-btn-secondary sw-reset" id="swResetBtn" onclick="swResetDefaults_()"' +
+        ' title="Clear every role and level of the teams you may edit back to the defaults">Reset all to defaults</button>' : '') +
     '</div>';
   }
   html += renderHowItWorks_();
   el.innerHTML = html;
   swAllBtn_();
+  // A note from the save or reset that just finished survives the refetch re-render.
+  if (STATE.swFlash) {
+    var fl = document.getElementById('swStatus');
+    if (fl) { fl.textContent = STATE.swFlash; fl.classList.remove('sw-bad'); }
+    STATE.swFlash = null;
+  }
+}
+
+// True when the role carries its own block-wide (ALL) cell in any team it covers —
+// i.e. it does not score with the default. Editors only (they hold the matrix).
+function swRowCustom_(r) {
+  var mx = (MATRIX_CFG && MATRIX_CFG.matrix) || {};
+  return (r.targets || []).some(function(t) {
+    var cell = ((mx[t.team] || {})[t.code] || {}).ALL;
+    return !!(cell && Object.keys(cell).length);
+  });
+}
+
+// Reset every role and level the caller may edit to the defaults: every cell of
+// every (team, family) block in cfg.editTeams is cleared, so each role scores with
+// its team's fill (blockFillBase_ — Services natives ← company default; R&D, Sales
+// & Success and the embedded ops families ← their team defaults) and every level
+// follows its role. The company default itself is kept. Two clicks: the first arms
+// the button for 8 s, the second resets. Super admins reset every team; org admins
+// their own.
+function swResetDefaults_() {
+  var btn = document.getElementById('swResetBtn'), st = document.getElementById('swStatus');
+  if (!btn || !MATRIX_CFG || !MATRIX_CFG.canEdit) return;
+  var teams = MATRIX_CFG.editTeams || [];
+  var secOf = function(k) { return (MATRIX_CFG.sections || []).filter(function(x) { return x.team.key === k; })[0]; };
+  var labels = teams.map(function(k) { var s = secOf(k); return s ? s.team.label : k; });
+  var disarm = function() { btn.removeAttribute('data-armed'); btn.classList.remove('sw-armed'); btn.disabled = false; btn.textContent = 'Reset all to defaults'; };
+  if (!btn.getAttribute('data-armed')) {
+    btn.setAttribute('data-armed', '1'); btn.classList.add('sw-armed');
+    btn.textContent = 'Click again to reset ' + labels.join(' / ');
+    if (st) { st.textContent = 'This clears every role and level of ' + labels.join(', ') + ' back to the defaults (the company default is kept). Click the button again to confirm.'; st.classList.remove('sw-bad'); }
+    clearTimeout(btn._armTimer);
+    btn._armTimer = setTimeout(function() { disarm(); if (st && /Click the button again/.test(st.textContent)) st.textContent = ''; }, 8000);
+    return;
+  }
+  clearTimeout(btn._armTimer);
+  var mx = MATRIX_CFG.matrix || (MATRIX_CFG.matrix = {});
+  teams.forEach(function(k) {
+    var fams = { ALL: true };
+    Object.keys(mx[k] || {}).forEach(function(f) { fams[f] = true; });
+    var sec = secOf(k);
+    ((sec && sec.families) || []).forEach(function(f) { fams[f.code] = true; });
+    mx[k] = {};
+    Object.keys(fams).forEach(function(f) { mx[k][f] = {}; });   // an empty block = inherit (server replaces it)
+  });
+  btn.disabled = true; btn.textContent = 'Resetting…';
+  var save = document.getElementById('swSaveBtn'); if (save) save.disabled = true;
+  if (st) { st.textContent = 'Resetting ' + labels.join(' / ') + '…'; st.classList.remove('sw-bad'); }
+  function fail(msg) {
+    if (st) { st.textContent = 'Reset failed: ' + msg; st.classList.add('sw-bad'); }
+    loadScoringMatrix_(true);   // resync the in-memory matrix with the sheet
+  }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.ok) {
+        STATE.swFlash = '✓ Reset — every role and level of ' + labels.join(' / ') + ' now scores with the defaults';
+        if (st) st.textContent = STATE.swFlash + ' · refreshing…';
+        loadScoringMatrix_(true);
+      } else fail((res && res.error) || 'unknown error');
+    })
+    .withFailureHandler(function(e) { fail(String(e.message || e)); })
+    .saveScoringMatrix({ matrix: MATRIX_CFG.matrix });
 }
 
 // Fold a role's levels open or shut; the choice survives re-renders (STATE.swOpen).
@@ -11641,11 +11726,10 @@ function saveScoringPage_() {
   }
   function done() {
     if (btn) btn.textContent = 'Save';
-    if (st) {
-      st.textContent = '✓ Saved' + (p.base ? ' the company default' : '') +
-        (n ? (p.base ? ' and ' : ' ') + n + ' role' + (n === 1 ? '' : 's') : '') + ' — scores update on the next refresh';
-      st.classList.remove('sw-bad');
-    }
+    // Kept across the refetch re-render (renderScoringSummary_ shows STATE.swFlash).
+    STATE.swFlash = '✓ Saved' + (p.base ? ' the company default' : '') +
+      (n ? (p.base ? ' and ' : ' ') + n + ' role' + (n === 1 ? '' : 's') : '') + ' — scores update on the next data refresh';
+    if (st) { st.textContent = STATE.swFlash + ' · refreshing the table…'; st.classList.remove('sw-bad'); }
     loadScoringMatrix_(true);
   }
   function saveMatrix() {
@@ -11668,18 +11752,22 @@ function saveScoringPage_() {
 // Scoring config from getScoringConfig() — summary for everyone; editors also get
 // the matrix of the teams they may write (cfg.editTeams) and canEditBase.
 var MATRIX_CFG = null;
+var _matrixLoading = false;   // a getScoringConfig call is in flight — do not start another
 
 // Fetches the scoring config once and renders the page from it; a team switch
 // re-renders from the same config (the payload covers every team the caller may
 // see). `force` refetches — after a save; the Refresh button clears it too.
 function loadScoringMatrix_(force) {
   if (!force && MATRIX_CFG && MATRIX_CFG.ok) { renderScoringSummary_(); return; }
+  _matrixLoading = true;
   google.script.run
     .withSuccessHandler(function(cfg) {
+      _matrixLoading = false;
       MATRIX_CFG = cfg;
       renderScoringSummary_();
     })
     .withFailureHandler(function(e) {
+      _matrixLoading = false;
       var msg = esc(String(e.message || e));
       var sum = document.getElementById("scoringSummary");
       if (sum) sum.innerHTML = '<div class="mx-err">Failed to load scoring weights: ' + msg + '</div>';

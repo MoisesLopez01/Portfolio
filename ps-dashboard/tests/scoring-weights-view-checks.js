@@ -243,6 +243,21 @@ ck('the editable test for the team on screen is server truth (cfg.editTeams), no
 const tab = fnBody(html, 'renderWeightsTab_');
 ck('renderWeightsTab_ renders the overview for everyone and nothing else',
    /renderScoringOverview_\(canEditScoring_\(\)\)/.test(tab) && /loadScoringMatrix_\(\);/.test(tab));
+ck('a background re-render never rebuilds the page while it shows the same team/scope (unsaved cells survive)',
+   /container\.getAttribute\('data-sw-key'\) === key && document\.getElementById\('scoringSummary'\)/.test(tab) &&
+   /\(\(MATRIX_CFG && MATRIX_CFG\.ok\) \|\| _matrixLoading\)\) return;/.test(tab) &&
+   /swTeamKey_\(\) \+ '\|' \+ \(\(DATA && DATA\.managerScopeName\) \|\| ''\)/.test(tab));
+ck('the saved / reset note survives the refetch re-render (STATE.swFlash)',
+   /STATE\.swFlash = '✓ Saved'/.test(fnBody(html, 'saveScoringPage_')) &&
+   /if \(STATE\.swFlash\) \{[\s\S]*?fl\.textContent = STATE\.swFlash;[\s\S]*?STATE\.swFlash = null;/.test(fnBody(html, 'renderScoringSummary_')));
+const reset = fnBody(html, 'swResetDefaults_');
+ck('Reset all to defaults is offered to editors, needs a second click, and clears every block of every editable team',
+   /id="swResetBtn" onclick="swResetDefaults_\(\)"/.test(fnBody(html, 'renderScoringSummary_')) &&
+   /if \(!btn\.getAttribute\('data-armed'\)\) \{/.test(reset) && /var teams = MATRIX_CFG\.editTeams \|\| \[\];/.test(reset) &&
+   /mx\[k\] = \{\};/.test(reset) && /mx\[k\]\[f\] = \{\};/.test(reset) && /\.saveScoringMatrix\(\{ matrix: MATRIX_CFG\.matrix \}\)/.test(reset));
+ck('Reset keeps the company default (it never calls saveWeightSettings)', !/saveWeightSettings/.test(reset));
+ck('a role that carries its own ALL cell is tagged "custom" for editors',
+   /function swRowCustom_\(r\)/.test(html) && /editable && swRowCustom_\(r\) \? ' <span class="sw-tag sw-tag-custom"/.test(fnBody(html, 'renderScoringSummary_')));
 ck('no separate editor anywhere: no Advanced settings fold, no matrix editor, no flat-base editor',
    html.indexOf('Advanced settings') === -1 && html.indexOf('weightsEditor') === -1 && html.indexOf('matrixSection') === -1 &&
    html.indexOf('renderMatrixSection_') === -1 && html.indexOf('saveWeightsToSheet') === -1 && html.indexOf('class="weight-num"') === -1);

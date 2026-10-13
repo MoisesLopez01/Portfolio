@@ -1,6 +1,6 @@
 # Scoring Weights — one team at a time, edited by Super Admins and Org Admins — design
 
-**Date:** 2026-10-12 (2026.W42) · **Status:** implemented on branch `worktree-scoring-weights-prod`; deployed 2026-10-12 as @289 under GTT-935, centralized editor as @290
+**Date:** 2026-10-12 (2026.W42) · **Status:** implemented on branch `worktree-scoring-weights-prod`; deployed 2026-10-12 as @289 under GTT-935, centralized editor as @290, reset + stable editor as @291
 **Report (plain English):** `ps-dashboard/docs/reports/2026-W42-scoring-weights-team-scoped-editing.md`
 **Reference build:** the thesis demo replica (Vantara) Scoring Weights page, which carries the 2026.W41 design
 **Builds on:** `2026-07-09-team-aligned-scoring-design.md` (team gates, family tunes), the 2026.W41 Scoring Weights
@@ -29,6 +29,12 @@ page (company default strip + one "Points by role" table whose rows fold open to
   `saveWeightSettings` only when it changed, then the matrix through `saveScoringMatrix`: a role row becomes the
   `ALL` cell only when it changed (inheriting families keep inheriting), a level becomes its own cell when it
   differs from the row and loses its cell when it matches.
+- **Stable under re-renders, with a reset (second follow-up).** `renderWeightsTab_` rebuilds the page only when its
+  `data-sw-key` (team, scope, previewed person, edit rights) changes or no config is loaded — `renderAll()` fires on
+  every tab switch, filter change and background data refresh, and each rebuild emptied the editor ("save is not
+  working"). The saved note is kept in `STATE.swFlash` across the refetch. `swResetDefaults_` (editors, two clicks)
+  posts an empty block for every family of every editable team so every role and level scores with its team's
+  defaults by metrics; the company default is kept; a role with its own `ALL` cell shows a `custom` tag.
 - **Config is fetched once.** `loadScoringMatrix_(force)` renders from `MATRIX_CFG` when it is already loaded, so a
   team switch is instant; a save (`saveRoleWeights_`, `saveMatrixToSheet_`) forces a refetch, and `loadData(true)`
   (Refresh) clears the cache.

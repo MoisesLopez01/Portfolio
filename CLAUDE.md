@@ -382,6 +382,22 @@ becomes its own cell when it differs from the role row and loses its cell (inher
 matches — then a refetch. A change applies to every rocketeer of that team in that role, and
 the table says so.
 
+Two things that must stay true (both broke once, 2026.W42 — "save is not working"):
+
+- **`renderWeightsTab_` is idempotent.** `renderAll()` calls it on every re-render (tab switch,
+  filter change, background data refresh). It rebuilds the page only when the `data-sw-key`
+  (team · scope · previewed person · edit rights) changes or no config is loaded; otherwise an
+  editor's unsaved cells would vanish and Save would go grey mid-edit. A save or a reset forces
+  the rebuild through `loadScoringMatrix_(true)`; Refresh clears `MATRIX_CFG`.
+- **The confirmation survives the refetch.** `STATE.swFlash` is set by the save / reset and
+  shown by `renderScoringSummary_` after the re-render.
+
+**Reset all to defaults** (`swResetDefaults_`, editors, two clicks): posts an empty block for
+every family of every team in `cfg.editTeams`, so every role scores with its team's fill and
+every level follows its role — the sheet had explicit cells on almost every level, which is why
+a role-row change reached nobody. The company default is kept. Editors see a `custom` tag on a
+role that still carries its own `ALL` cell.
+
 **Two edit gates, both in PS Security.js, both re-checked by the save endpoints:**
 
 - `canEditScoring_` — superadmin + **orgadmin**; plain admin, viewer and manager read only.

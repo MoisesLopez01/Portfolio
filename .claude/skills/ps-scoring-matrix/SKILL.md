@@ -72,5 +72,11 @@ family tunes**. Spec: `ps-dashboard/docs/specs/2026-07-09-team-aligned-scoring-d
   `saveScoringMatrix()` still validates metrics against the team's set, refuses teams outside
   `scoringEditTeams_`, and busts the cache. The team catch-all ("Other job titles") has no
   inputs (`targets` empty).
+- **Stays put, resets (2026.W42)**: `renderWeightsTab_` is idempotent — it rebuilds only when
+  `data-sw-key` (team · scope · viewAs · edit rights) changes or no config is loaded, because
+  `renderAll()` fires on every tab switch / filter / background refresh and a rebuild empties the
+  editor. `STATE.swFlash` carries the saved note across the refetch. `swResetDefaults_` (two
+  clicks) posts `{}` for every family of every `editTeams` team → everything inherits
+  `blockFillBase_`; company default untouched; `swRowCustom_` tags roles with an `ALL` cell.
 - Tests: `_test_weightsResolver()` and `_test_matrixMigration()` — GAS editor or Node
   (eval both PS files with a stubbed `Logger`).
