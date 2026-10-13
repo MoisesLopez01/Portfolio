@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title>Run for one org</title>
+  <style>
+    :root {
+      --void: #0F1941; --orbe: #058CDC; --royal: #2864E6; --june: #FF9B87;
+      --cream: #FFFAF5; --ivory: #DCCDBE; --ink: #1A1A2E; --muted: #5A6478;
+      --line: #E6E0D8; --ok: #1B5E20; --err: #B71C1C;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font: 13px/1.45 Roboto, Arial, sans-serif; color: var(--ink);
+      background: var(--cream); display: flex; flex-direction: column; height: 100vh;
+    }
+    header { background: var(--void); color: #fff; padding: 12px 16px; }
+    header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+    header p  { margin: 4px 0 0; font-size: 12px; color: #CCDDFF; }
+    main { flex: 1; display: flex; flex-direction: column; padding: 12px 16px; gap: 10px; min-height: 0; }
+    .search { width: 100%; padding: 8px 10px; border: 1px solid var(--ivory); border-radius: 6px; font: inherit; }
+    .search:focus { outline: 2px solid var(--orbe); border-color: transparent; }
+    .list { flex: 1; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; min-height: 120px; }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .row:last-child { border-bottom: 0; }
+    .row:hover { background: #F2F5FB; }
+    .row.sel { background: #EEF4FF; box-shadow: inset 3px 0 0 var(--royal); }
+    .row .name { font-weight: 600; }
+    .row .title { color: var(--muted); font-size: 12px; }
+    .row .n { color: var(--muted); font-size: 12px; text-align: right; white-space: nowrap; }
+    .row .n b { color: var(--ink); }
+    .empty { padding: 16px; color: var(--muted); text-align: center; }
+    .note { font-size: 12px; color: var(--muted); }
+    .note b { color: var(--ink); }
+    footer { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line); background: #fff; }
+    footer .spacer { flex: 1; }
+    button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--ivory); background: #fff; color: var(--ink); cursor: pointer; }
+    button.primary { background: var(--royal); border-color: var(--royal); color: #fff; font-weight: 600; }
+    button:disabled { opacity: .5; cursor: default; }
+    .status { font-size: 12px; min-height: 18px; }
+    .status.ok  { color: var(--ok); }
+    .status.err { color: var(--err); }
+    .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--ivory); border-top-color: var(--orbe); border-radius: 50%; animation: s .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+    @keyframes s { to { transform: rotate(360deg); } }
+    .result { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 12px; }
+    .result h2 { margin: 0 0 6px; font-size: 13px; }
+    .result ul { margin: 6px 0 0 16px; padding: 0; }
+    .result code { background: #F2F5FB; padding: 1px 4px; border-radius: 3px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Run Contributor Intelligence for one org</h1>
+    <p>Pick a leader. The three reports are written for everyone under them — managers and individual contributors — on tabs named “… · &lt;Leader&gt;”. The leader's own record is left out.</p>
+  </header>
+  <main>
+    <input id="q" class="search" type="search" placeholder="Search by name or title…" autocomplete="off" disabled>
+    <div id="list" class="list"><div class="empty"><span class="spin"></span>Loading org leaders from the Roster…</div></div>
+    <div id="pick" class="note">No leader selected.</div>
+    <div id="result" class="result hidden"></div>
+  </main>
+  <footer>
+    <div id="status" class="status"></div>
+    <div class="spacer"></div>
+    <button id="close" type="button" onclick="google.script.host.close()">Close</button>
+    <button id="run" class="primary" type="button" disabled>Run for this org</button>
+  </footer>
+
+  <script>
+    var ALL = [], selected = null, running = false;
+    var $ = function (id) { return document.getElementById(id); };
+
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+    function render() {
+      var q = $('q').value.trim().toLowerCase();
+      var rows = ALL.filter(function (c) {
+        return !q || (c.name + ' ' + c.title).toLowerCase().indexOf(q) !== -1;
+      });
+      if (!rows.length) { $('list').innerHTML = '<div class="empty">' + (ALL.length ? 'No leader matches that search.' : 'No one on the Roster has active reports.') + '</div>'; return; }
+      $('list').innerHTML = rows.map(function (c) {
+        var sel = selected && selected.name === c.name ? ' sel' : '';
+        return '<div class="row' + sel + '" data-name="' + esc(c.name) + '" role="option" aria-selected="' + (sel ? 'true' : 'false') + '">' +
+          '<div><div class="name">' + esc(c.name) + '</div><div class="title">' + esc(c.title || '—') + '</div></div>' +
+          '<div class="n"><b>' + c.orgSize + '</b> in org<br>' + c.directReports + ' direct</div></div>';
+      }).join('');
+    }
+
+    function select(name) {
+      selected = ALL.filter(function (c) { return c.name === name; })[0] || null;
+      $('run').disabled = !selected || running;
+      $('pick').innerHTML = selected
+        ? 'Selected: <b>' + esc(selected.name) + '</b> — ' + selected.orgSize + ' active rocketeer' + (selected.orgSize === 1 ? '' : 's') + ' under them (' + selected.directReports + ' direct). Their own row will not be in the export.'
+        : 'No leader selected.';
+      render();
+    }
+
+    $('list').addEventListener('click', function (ev) {
+      var row = ev.target.closest('.row');
+      if (row && !running) select(row.getAttribute('data-name'));
+    });
+    $('q').addEventListener('input', render);
+
+    function setStatus(msg, cls, spinning) {
+      $('status').className = 'status' + (cls ? ' ' + cls : '');
+      $('status').innerHTML = (spinning ? '<span class="spin"></span>' : '') + esc(msg);
+    }
+
+    $('run').addEventListener('click', function () {
+      if (!selected || running) return;
+      running = true;
+      $('run').disabled = true; $('q').disabled = true; $('close').disabled = true;
+      $('result').className = 'result hidden';
+      setStatus('Running for ' + selected.name + '… this takes a few minutes (Roster, RCR, Goals, Tempo, Jira, Kudos).', '', true);
+      google.script.run
+        .withSuccessHandler(onDone)
+        .withFailureHandler(onFail)
+        .runContributorIntelligenceForOrg(selected.name);
+    });
+
+    function onDone(r) {
+      running = false;
+      $('run').disabled = false; $('q').disabled = false; $('close').disabled = false;
+      setStatus('Done.', 'ok', false);
+      var rcr = r && r.rcr && r.rcr.value != null
+        ? 'Org RCR (' + esc(r.rcr.month) + '): <b>' + Number(r.rcr.value).toFixed(2) + '</b> — ' +
+          (r.rcr.method === 'direct-rate' ? 'direct rate, mean of ' + r.rcr.n + ' tracking-mandated rocketeers (New RCR tab)'
+           : r.rcr.method === 'sum-ratio' ? 'SUM(RC)/SUM(TCC) over ' + r.rcr.n + ' rocketeers (3. RCR tabs)'
+           : 'mean of ' + r.rcr.n + ' individual values')
+        : 'Org RCR: no value for the latest month.';
+      $('result').className = 'result';
+      $('result').innerHTML =
+        '<h2>' + esc(r.leader) + ' org — ' + r.orgSize + ' active rocketeer' + (r.orgSize === 1 ? '' : 's') + '</h2>' +
+        '<div>' + r.contributors + ' contributors · ' + r.nonContributors + ' non-contributors · ' + r.crew + ' crew</div>' +
+        '<div>' + rcr + '</div>' +
+        '<div>Tabs written:</div><ul>' + (r.sheets || []).map(function (s) { return '<li><code>' + esc(s) + '</code></li>'; }).join('') + '</ul>';
+    }
+
+    function onFail(err) {
+      running = false;
+      $('run').disabled = !selected; $('q').disabled = false; $('close').disabled = false;
+      setStatus((err && err.message) || String(err), 'err', false);
+    }
+
+    google.script.run
+      .withSuccessHandler(function (rows) {
+        ALL = rows || [];
+        $('q').disabled = false;
+        setStatus(ALL.length + ' leaders with active reports.', '', false);
+        render();
+      })
+      .withFailureHandler(function (err) {
+        $('list').innerHTML = '<div class="empty">Could not load the Roster.</div>';
+        setStatus((err && err.message) || String(err), 'err', false);
+      })
+      .listOrgReportCandidates();
+  </script>
+</body>
+</html>

@@ -18,7 +18,10 @@ const CONFIG = {
   // ── Source sheet names ────────────────────────────────────
   SHEET_RC:       "1. Revenue Contribution",
   SHEET_TCC:      "2. TCC A+B",
-  SHEET_RCR:      "3. RCR",
+  SHEET_RCR:      "3. RCR",        // FY26 and earlier — "Jun 26" month columns + YTD; SUM(RC)/SUM(TCC) team ratio
+  SHEET_RCR_NEW:  "New RCR",       // FY27 on — "2026.07 RCR" month columns, a direct per-person rate joined by
+                                   // Internal ID (name fallback). Both tabs feed ONE month axis — see readRcrAxis_,
+                                   // which mirrors readRCR_PS_ in PS Contribution Report.js.
   SHEET_GOALS:    "Goals",
   SHEET_SI:       "SI",
   SHEET_BILLABLE: "Billable Time",
@@ -67,20 +70,30 @@ const CONFIG = {
   // ── Kudos ─────────────────────────────────────────────────
   SHEET_KUDOS: "Kudos_Normalized",
 
-  // ── RCR Tier Thresholds (ABC Framework) ──────────────────
+  // ── RCR Tier Thresholds ───────────────────────────────────
+  // Aligned to the PS Dashboard (CONFIG_PS.RCR_* in PS Contribution Report.js)
+  // on 2026.W42, so a rocketeer's tier here is the tier the dashboard shows.
+  // Applied to the LATEST closed month on the merged RCR axis, not to YTD.
   RCR_CRITICAL: 1.0,  // ≤ 1.0  → Critical
-  RCR_WATCH:    2.0,  // ≤ 2.0  → Watch
-  RCR_HEALTHY:  3.0,  // ≤ 3.0  → Healthy
-  //             > 3.0 → Champion
+  RCR_WATCH:    1.5,  // ≤ 1.5  → Watch
+  RCR_HEALTHY:  2.5,  // ≤ 2.5  → Healthy
+  //             > 2.5 → Champion
 
-  // ── All fiscal month columns in source sheets (in order) ─
-  MONTH_COLS: [
-    "Jul 25","Aug 25","Sep 25","Oct 25","Nov 25","Dec 25",
-    "Jan 26","Feb 26","Mar 26","Apr 26","May 26","Jun 26"
-  ],
+  // ── RCR month axis ────────────────────────────────────────
+  // Month columns are no longer listed here: readRcrAxis_ discovers them from
+  // the headers of BOTH RCR tabs ("Jun 26" and "2026.07 RCR" spellings), sorts
+  // them chronologically and keeps every populated one, so the trend window and
+  // the latest month roll across the fiscal-year boundary on their own.
 
-  // ── YTD column header ─────────────────────────────────────
+  // ── YTD column header (3. RCR only — FY26 and earlier) ────
   COL_YTD: "YTD",
+  LEGACY_YTD_LABEL: "FY26 YTD RCR",   // the YTD column is frozen at the last FY the 3. RCR tab covers
+
+  // ── Org-scoped runs ───────────────────────────────────────
+  // runContributorIntelligenceForOrg(leader) writes the three reports for one
+  // org tree (everyone under the leader, managers and ICs, minus the leader's
+  // own row) to sheets named "<output name><ORG_SHEET_SEP><leader>".
+  ORG_SHEET_SEP: " · ",
 
   // ── Number of recent closed months to surface in the report
   TREND_MONTHS: 3,
@@ -424,6 +437,12 @@ function blankEmployee_(internalId) {
     supervisor: "", region: "", empStatus: "", tenure: null,
     monthlyRCR: [], lastMonthsRCR: [],
     ytdRCR: null, ytdRevenue: 0, ytdTCC: 0, trend: "Insufficient Data",
+    // Latest closed month on the merged RCR axis — the value the PS Dashboard
+    // shows for this person. Drives tier, sort order and the group summaries.
+    rcrCurrent: null, rcrCurrentMonth: null, rcrSource: null,
+    rcLatest: 0, tccLatest: 0,                 // latest-month RC / TCC (legacy ratio months only)
+    // Dashboard population flags (joinDashboardFlags_) — default to "counts".
+    tracksTime: true, isRampUp: false, onLeave: false, isManager: false,
     tierInfo: classifyRCR_(null, ""),
     siScores: [], validSI: [], latestSI: null, avgSI: null, siTrend: "—",
     goalsCompleted: null, goalsInProgress: null, goalsTotal: null,
@@ -486,9 +505,152 @@ function strVal_(row, headers, colName) {
  * @returns {{ month: string, value: number }[]}
  */
 function getMonthlyValues_(row, headers) {
-  return CONFIG.MONTH_COLS
-    .map(m => ({ month: m, value: numVal_(row, headers, m) }))
+  // Legacy single-sheet reader kept for callers that hold a 3. RCR row; the
+  // report itself takes per-person months from readRcrAxis_ (both tabs).
+  return rcrMonthColumns_(headers)
+    .map(c => ({ month: c.name, value: numVal_(row, headers, headers[c.col]), source: "ratio" }))
     .filter(x => x.value !== null);
+}
+
+// ── RCR month axis — two tabs, one axis ───────────────────────────────────
+// Mirrors readRCR_PS_ (PS Contribution Report.js) so this export and the
+// dashboard agree on which month is "latest" and what each person's value is:
+//   "3. RCR"  — FY26 and earlier, "Jun 26" headers, joined by Employee ID
+//               (the Roster Internal ID). A derived ratio: the team value for
+//               one of these months is SUM(RC)/SUM(TCC) over the same IDs.
+//   "New RCR" — FY27 on, "2026.07 RCR" headers, joined by Internal ID with a
+//               name fallback. A direct per-person rate; the team value is the
+//               mean of the tracking-mandated subset.
+// A month both tabs carry resolves to the New RCR rate. A month column with no
+// numeric value for any joined row is skipped, so a pre-created, still-empty
+// column never becomes "the latest month". rcrMonthColumns_ / rcrMonthFromHeader_
+// come from PS Contribution Report.js (same Apps Script project).
+//
+// @param {{headers,rows}|null} rcrData     3. RCR
+// @param {{headers,rows}|null} newRcrData  New RCR
+// @param {Map<string,string>}  rosterNameToId  normalized name → Internal ID (name fallback)
+// @returns {{ months: {name,sortKey,source}[], latest: {name,sortKey,source}|null,
+//             lastMonths: string[], byId: Map<string, Map<string,{value,source}>> }}
+function readRcrAxis_(rcrData, newRcrData, rosterNameToId) {
+  const bySort = new Map();                     // sortKey → { name, sortKey, source }
+  const byId   = new Map();                     // internalId → Map<monthName, { value, source }>
+  const excluded = new Set(CONFIG.EXCLUDED_INTERNAL_IDS.map(x => String(x).trim().toLowerCase()));
+
+  const ingest = (data, source, resolveId) => {
+    if (!data || !data.headers || !data.rows) return;
+    const cols = rcrMonthColumns_(data.headers);
+    const ids  = data.rows.map(resolveId);
+    cols.forEach(c => {
+      let populated = false;
+      data.rows.forEach((row, ri) => {
+        const id = ids[ri];
+        if (!id) return;
+        const v = parseFloat(row[c.col]);
+        if (isNaN(v)) return;
+        populated = true;
+        if (!byId.has(id)) byId.set(id, new Map());
+        byId.get(id).set(c.name, { value: v, source });   // later ingest (rate) overwrites earlier (ratio)
+      });
+      if (!populated) return;
+      if (source === "rate" && bySort.has(c.sortKey) && bySort.get(c.sortKey).source !== "rate") {
+        Logger.log(`ℹ️ RCR: "${c.name}" is in both tabs — using the New RCR rate.`);
+      }
+      bySort.set(c.sortKey, { name: c.name, sortKey: c.sortKey, source });
+    });
+  };
+
+  // Only roster people join (the dashboard drops rows whose ID and name both
+  // miss the roster — terminated people the roster no longer carries). With no
+  // roster map at all every well-formed ID is accepted.
+  const knownIds = rosterNameToId && rosterNameToId.size ? new Set(rosterNameToId.values()) : null;
+  const cleanId  = v => String(v || "").replace(/,/g, "").trim();
+  const okId     = id => id && !excluded.has(id.toLowerCase()) && (!knownIds || knownIds.has(id)) ? id : "";
+
+  // 3. RCR — Employee ID; rows with a Termination Date are skipped (as in the main join)
+  if (rcrData && rcrData.headers) {
+    const iTerm = colIdx_CR_(rcrData.headers, "Termination Date");
+    ingest(rcrData, "ratio", row => {
+      if (iTerm !== -1 && String(row[iTerm] || "").trim()) return "";
+      return okId(cleanId(strVal_(row, rcrData.headers, "Employee ID")));
+    });
+  }
+  // New RCR — Internal ID, name fallback
+  if (newRcrData && newRcrData.headers) {
+    const hdrs  = newRcrData.headers;
+    const iId   = hdrs.findIndex(h => /^internal.?id/i.test(String(h).trim()));
+    let   iName = hdrs.findIndex(h => /^employee(\s*name)?$/i.test(String(h).trim()));
+    if (iName === -1) iName = hdrs.findIndex(h => /^name/i.test(String(h).trim()));
+    ingest(newRcrData, "rate", row => {
+      const id = iId !== -1 ? okId(cleanId(row[iId])) : "";
+      if (id) return id;
+      if (iName === -1 || !rosterNameToId) return "";
+      return rosterNameToId.get(normalizeName_(row[iName])) || "";
+    });
+  }
+
+  const months = Array.from(bySort.values()).sort((a, b) => a.sortKey - b.sortKey);
+  const latest = months.length ? months[months.length - 1] : null;
+  const lastMonths = months.slice(-CONFIG.TREND_MONTHS).map(m => m.name);
+  Logger.log(`RCR axis: ${months.length} populated month(s) — ` +
+             (months.length ? `${months[0].name} → ${latest.name} (latest from ${latest.source === "rate" ? CONFIG.SHEET_RCR_NEW : CONFIG.SHEET_RCR})` : "none") +
+             `; ${byId.size} people with a value`);
+  return { months, latest, lastMonths, byId };
+}
+
+/**
+ * Per-person monthly series from the axis, oldest → newest.
+ * @returns {{ month, value, source }[]}
+ */
+function rcrSeriesFor_(axis, internalId) {
+  const m = axis.byId.get(internalId);
+  if (!m) return [];
+  return axis.months
+    .filter(x => m.has(x.name))
+    .map(x => ({ month: x.name, value: m.get(x.name).value, source: m.get(x.name).source }));
+}
+
+/**
+ * Team RCR for a group of employees in the latest month, by the dashboard's
+ * method (readRCR_PS_): mean of the direct rates when the latest month comes
+ * from New RCR; SUM(RC)/SUM(TCC) over the group's Employee IDs when it comes
+ * from 3. RCR (mean of individual values as the documented fallback).
+ * The population is the dashboard's: FTE, tracking-mandated, not ramping up,
+ * not on long leave — see joinDashboardFlags_ — and only people who have a
+ * value for the month.
+ * @param {object[]} emps
+ * @param {{ latest }} axis
+ * @returns {{ value: number|null, method: string|null, n: number, month: string|null }}
+ */
+function groupRcr_(emps, axis) {
+  const latest = axis && axis.latest;
+  if (!latest) return { value: null, method: null, n: 0, month: null };
+  const pool = emps.filter(e => rcrCountsForTeam_(e) && e.rcrCurrent !== null && e.rcrCurrent !== undefined);
+  const round2 = v => Math.round(v * 100) / 100;
+  if (!pool.length) return { value: null, method: latest.source === "rate" ? "direct-rate" : "sum-ratio", n: 0, month: latest.name };
+  if (latest.source === "rate") {
+    const mean = pool.reduce((a, e) => a + e.rcrCurrent, 0) / pool.length;
+    return { value: round2(mean), method: "direct-rate", n: pool.length, month: latest.name };
+  }
+  let sumRC = 0, sumTCC = 0;
+  pool.forEach(e => { sumRC += e.rcLatest || 0; sumTCC += e.tccLatest || 0; });
+  if (sumRC > 0 && sumTCC > 0) {
+    return { value: round2(sumRC / sumTCC), method: "sum-ratio", n: pool.length, month: latest.name };
+  }
+  const mean = pool.reduce((a, e) => a + e.rcrCurrent, 0) / pool.length;
+  return { value: round2(mean), method: "mean-fallback", n: pool.length, month: latest.name };
+}
+
+/** The dashboard's RCR population test for one employee record. */
+function rcrCountsForTeam_(e) {
+  return !e.isCrewMember && e.tracksTime !== false && !e.isRampUp && !e.onLeave;
+}
+
+/** Short human label for a groupRcr_ method. */
+function rcrMethodLabel_(method) {
+  return method === "direct-rate"   ? "direct rate — mean of tracking-mandated rocketeers (New RCR tab)"
+       : method === "sum-ratio"     ? "SUM(Revenue Contribution) / SUM(TCC A+B) over the group (3. RCR tabs)"
+       : method === "mean-fallback" ? "mean of individual 3. RCR values (RC/TCC unavailable)"
+       : "—";
 }
 
 /**
@@ -1214,21 +1376,13 @@ function spacer_(row) { return row + 2; }
 // ============================================================
 
 /**
- * Auto-detects the last N populated fiscal months from the RCR sheet.
- * A month is "populated" if at least one employee has a non-blank value for it.
- * @param {object} rcrData  { headers, rows }
+ * The last N populated months of the merged RCR axis (both tabs), oldest → newest.
+ * Kept as a named step so the run log still says which window was used.
+ * @param {object} axis  readRcrAxis_() result
  * @returns {string[]}  up to CONFIG.TREND_MONTHS month names
  */
-function detectLastClosedMonths_(rcrData) {
-  const populated = CONFIG.MONTH_COLS.filter(m => {
-    const idx = colIdx_CR_(rcrData.headers, m);
-    if (idx < 0) return false;
-    return rcrData.rows.some(row => {
-      const v = row[idx];
-      return v !== "" && v !== null && v !== undefined && !isNaN(parseFloat(v));
-    });
-  });
-  return populated.slice(-CONFIG.TREND_MONTHS);
+function detectLastClosedMonths_(axis) {
+  return axis && axis.lastMonths ? axis.lastMonths.slice() : [];
 }
 
 /**
@@ -1239,7 +1393,7 @@ function detectLastClosedMonths_(rcrData) {
  * @param {object} rdGoalsData  — loaded from external Goals RD tab via loadGoalsRD_()
  * @param {object} rcData
  * @param {object} tccData
- * @param {string[]} lastMonths  auto-detected closed months
+ * @param {object} axis  readRcrAxis_() result — merged 3. RCR + New RCR month axis
  * @param {object} rosterData  Roster sheet data for Job Title lookup
  * @param {Set<string>} exclusivitySet  normalized names from ExclusivityContracts
  * @param {Set<string>} deliveryMgrSet  normalized names from Delivery Managers
@@ -1247,15 +1401,18 @@ function detectLastClosedMonths_(rcrData) {
  * @param {object[]} weeks  — the CONFIG.WEEKS_WINDOW completed week windows used for bucketing
  * @returns {Map<string, object>}
  */
-function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraReportMap, lastMonths, rosterData, exclusivitySet, deliveryMgrSet, kudosMap, weeks, contractorData) {
+function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraReportMap, axis, rosterData, exclusivitySet, deliveryMgrSet, kudosMap, weeks, contractorData) {
   Logger.log("Entering buildEmployeeMap_");
   try {
-    if (!lastMonths) {
-      Logger.log("   → WARNING: lastMonths is undefined, using empty array");
-      lastMonths = [];
+    if (!axis) {
+      Logger.log("   → WARNING: RCR axis is undefined, using an empty axis");
+      axis = { months: [], latest: null, lastMonths: [], byId: new Map() };
     }
     const employees = new Map();
-    const safeLastMonths = lastMonths;
+    const safeLastMonths = axis.lastMonths || [];
+    // Latest-month RC / TCC are only meaningful while the latest month is a
+    // legacy ratio month — New RCR months have nothing to sum.
+    const latestRatioMonth = axis.latest && axis.latest.source === "ratio" ? axis.latest.name : null;
     Logger.log("lastMonths count: " + safeLastMonths.length);
 
     // ── Aggregate/summary IDs to exclude from all seeding steps ─────
@@ -1410,6 +1567,7 @@ function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraRe
         if (!employees.has(empId)) employees.set(empId, blankEmployee_(empId));
         const emp = employees.get(empId);
         emp.ytdRevenue  = numVal_(row, rcData.headers, CONFIG.COL_YTD) || emp.ytdRevenue;
+        if (latestRatioMonth) emp.rcLatest = numVal_(row, rcData.headers, latestRatioMonth) || 0;
         if (!emp.empStatus)   emp.empStatus   = strVal_(row, rcData.headers, "Employee Status") || strVal_(row, rcData.headers, "Status");
         if (!emp.jobCategory) emp.jobCategory = strVal_(row, rcData.headers, "Job Category");
         if (!emp.empClass)    emp.empClass    = strVal_(row, rcData.headers, "Employee Class");
@@ -1429,6 +1587,7 @@ function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraRe
         if (!employees.has(empId)) employees.set(empId, blankEmployee_(empId));
         const emp = employees.get(empId);
         emp.ytdTCC = numVal_(row, tccData.headers, CONFIG.COL_YTD) || emp.ytdTCC;
+        if (latestRatioMonth) emp.tccLatest = numVal_(row, tccData.headers, latestRatioMonth) || 0;
         if (!emp.empStatus)   emp.empStatus   = strVal_(row, tccData.headers, "Employee Status") || strVal_(row, tccData.headers, "Status");
         if (!emp.jobCategory) emp.jobCategory = strVal_(row, tccData.headers, "Job Category");
         if (!emp.empClass)    emp.empClass    = strVal_(row, tccData.headers, "Employee Class");
@@ -1460,14 +1619,38 @@ function buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraRe
         if (!emp.region)      emp.region      = strVal_(row, rcrData.headers, "Resource Region");
         if (emp.tenure === null) emp.tenure   = numVal_(row, rcrData.headers, "Tenure (years)");
 
-        emp.monthlyRCR    = getMonthlyValues_(row, rcrData.headers);
-        emp.ytdRCR        = numVal_(row, rcrData.headers, CONFIG.COL_YTD);
-        emp.lastMonthsRCR = safeLastMonths.map(m => ({
-          month: m, value: numVal_(row, rcrData.headers, m),
-        }));
-        emp.trend    = computeTrend_(emp.monthlyRCR);
-        emp.tierInfo = classifyRCR_(emp.ytdRCR, emp.jobLevel, false);
+        // YTD is the 3. RCR tab's own figure — frozen at the last FY that tab
+        // covers (CONFIG.LEGACY_YTD_LABEL). Monthly values come from the axis below.
+        emp.ytdRCR = numVal_(row, rcrData.headers, CONFIG.COL_YTD);
       });
+    }
+
+    // ── 4b. Apply the merged RCR axis (3. RCR + New RCR) to every record ────
+    // One series per person across both tabs; the latest populated month on the
+    // axis is the dashboard's number for them and decides tier + sort order.
+    // Someone with history but no value for the latest month reads "No Data" —
+    // exactly as the dashboard's byEmployee map does.
+    {
+      let withSeries = 0, withCurrent = 0;
+      const latestName = axis.latest ? axis.latest.name : null;
+      employees.forEach(emp => {
+        const series = rcrSeriesFor_(axis, emp.internalId || emp.key);
+        if (!series.length) return;
+        withSeries++;
+        emp.monthlyRCR    = series;
+        emp.lastMonthsRCR = safeLastMonths.map(m => {
+          const pt = series.find(p => p.month === m);
+          return { month: m, value: pt ? pt.value : null, source: pt ? pt.source : null };
+        });
+        const cur = latestName ? series.find(p => p.month === latestName) : null;
+        emp.rcrCurrent      = cur ? cur.value : null;
+        emp.rcrCurrentMonth = cur ? cur.month : null;
+        emp.rcrSource       = cur ? cur.source : null;
+        if (cur) withCurrent++;
+        emp.trend    = computeTrend_(series);
+        emp.tierInfo = classifyRCR_(emp.rcrCurrent, emp.jobLevel, false);
+      });
+      Logger.log(`RCR axis applied: ${withSeries} records with a series, ${withCurrent} with a value for ${latestName || "—"}`);
     }
 
     // ── 5. Join SI data (via Employee Number) ─────────────
@@ -1725,7 +1908,7 @@ function getJobCluster_(emp) {
  */
 function buildSignal_(emp) {
   const signals = [];
-  const rcr = emp.ytdRCR;
+  const rcr = emp.rcrCurrent;   // latest closed month — the dashboard's number
   const si  = emp.latestSI;
   const eng = emp.goalEngagementPct;
   const lvl = String(emp.jobLevel || "").toUpperCase();
@@ -1806,37 +1989,55 @@ function buildSignal_(emp) {
  * @param {string} field  "contributorType" | "supervisor" | "region"
  * @returns {object[]}
  */
-function buildDimensionSummary_(empList, field) {
+function buildDimensionSummary_(empList, field, axis) {
+  return buildGroupSummary_(empList, emp => emp[field] || "(Unassigned)", axis)
+    .sort((a, b) => (a.avgRCR ?? 999) - (b.avgRCR ?? 999));
+}
+
+/**
+ * Shared group roll-up for the dimension and job-cluster summaries.
+ * Tier counts use each person's LATEST-month RCR (the dashboard's number);
+ * the group RCR is groupRcr_ — the dashboard's team method for that month.
+ * @param {object[]} empList
+ * @param {function(object): string} keyOf
+ * @param {object} axis  readRcrAxis_() result
+ * @returns {object[]} unsorted
+ */
+function buildGroupSummary_(empList, keyOf, axis) {
   const groups = new Map();
   empList.forEach(emp => {
-    const key = emp[field] || "(Unassigned)";
+    const key = keyOf(emp);
     if (!groups.has(key)) {
-      groups.set(key, { label: key, count: 0, sumRev: 0, sumTCC: 0,
+      groups.set(key, { label: key, count: 0, members: [],
                         critical: 0, watch: 0, healthy: 0, champion: 0,
                         sumGoal: 0, cntGoal: 0, sumSI: 0, cntSI: 0 });
     }
     const g = groups.get(key);
     g.count++;
-    
-    // Weighted Average components
-    g.sumRev += (emp.ytdRevenue || 0);
-    g.sumTCC += (emp.ytdTCC || 0);
+    g.members.push(emp);
 
-    if (emp.ytdRCR !== null) {
-      if      (emp.ytdRCR <= CONFIG.RCR_CRITICAL) g.critical++;
-      else if (emp.ytdRCR <= CONFIG.RCR_WATCH)    g.watch++;
-      else if (emp.ytdRCR <= CONFIG.RCR_HEALTHY)  g.healthy++;
-      else                                         g.champion++;
+    const v = emp.rcrCurrent;
+    if (v !== null && v !== undefined) {
+      if      (v <= CONFIG.RCR_CRITICAL) g.critical++;
+      else if (v <= CONFIG.RCR_WATCH)    g.watch++;
+      else if (v <= CONFIG.RCR_HEALTHY)  g.healthy++;
+      else                               g.champion++;
     }
     if (emp.goalEngagementPct !== null) { g.sumGoal += emp.goalEngagementPct; g.cntGoal++; }
     if (emp.avgSI !== null)             { g.sumSI   += emp.avgSI;             g.cntSI++;   }
   });
-  return Array.from(groups.values()).map(g => ({
-    ...g,
-    avgRCR:  g.sumTCC > 0 ? g.sumRev / g.sumTCC : null,
-    avgGoal: g.cntGoal > 0 ? Math.round(g.sumGoal / g.cntGoal) : null,
-    avgSI:   g.cntSI  > 0 ? (g.sumSI  / g.cntSI).toFixed(1)   : "—",
-  })).sort((a, b) => (a.avgRCR ?? 999) - (b.avgRCR ?? 999));
+  return Array.from(groups.values()).map(g => {
+    const rcr = groupRcr_(g.members, axis);
+    const { members, ...rest } = g;
+    return {
+      ...rest,
+      avgRCR:    rcr.value,
+      rcrN:      rcr.n,
+      rcrMethod: rcr.method,
+      avgGoal:   g.cntGoal > 0 ? Math.round(g.sumGoal / g.cntGoal) : null,
+      avgSI:     g.cntSI  > 0 ? (g.sumSI  / g.cntSI).toFixed(1)   : "—",
+    };
+  });
 }
 
 // ============================================================
@@ -1881,12 +2082,14 @@ function prepareOutputSheet_(ss, sheetName, widths) {
  * @param {string[]} lastMonths
  * @returns {number} next row
  */
-function writeBanner_(sh, row, lastMonths, isNonContrib, totalCols) {
+function writeBanner_(sh, row, lastMonths, isNonContrib, totalCols, ctx) {
   const ts           = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "MMMM dd, yyyy  HH:mm");
   const windowLabel  = (lastMonths && lastMonths.length) ? lastMonths.join("  ·  ") : "—";
   const cols         = totalCols || sh.getLastColumn() || TOTAL_COLS;
+  ctx = ctx || {};
 
-  const title = isNonContrib ? "NON-CONTRIBUTOR INTELLIGENCE ENGINE" : "CONTRIBUTOR INTELLIGENCE ENGINE";
+  const base  = isNonContrib ? "NON-CONTRIBUTOR INTELLIGENCE ENGINE" : "CONTRIBUTOR INTELLIGENCE ENGINE";
+  const title = ctx.orgLeader ? `${base}  —  ${ctx.orgLeader.toUpperCase()} ORG` : base;
 
   sh.getRange(row, 1, 1, cols)
     .merge()
@@ -1901,28 +2104,43 @@ function writeBanner_(sh, row, lastMonths, isNonContrib, totalCols) {
   sh.setRowHeight(row, 38);
   row++;
 
-  let subText = isNonContrib 
+  let subText = isNonContrib
     ? `Generated: ${ts}     ·     Focus: Goal Engagement & Development Engagement`
-    : `Generated: ${ts}     ·     Trend window: ${windowLabel} + YTD` +
-      `     ·     Tiers:  ≤ 1.0  Critical    1.01–2.0  Watch    2.01–3.0  Healthy    > 3.0  Champion`;
+    : `Generated: ${ts}     ·     Trend window: ${windowLabel} + ${CONFIG.LEGACY_YTD_LABEL}` +
+      `     ·     ${tierLegend_()}`;
 
   const legend = isNonContrib
     ? `     ·     Logged Time: Tempo tracked hrs per week     Avg Comments/Wk: Goal activity intensity     *Goal Engage: (In Progress + Done) / Total`
-    : `     ·     RCR: Revenue/Cost     Logged Time: Tempo tracked hrs per week     *Goal Engage: (In Progress + Done) / Total     Note: Critical w/ Short Tenure (FTE <= 4mo, Contractor <= 1mo) = High Onboarding Risk`;
+    : `     ·     RCR: Revenue/Cost — FY26 from "3. RCR", FY27 on from "New RCR" (direct rate)     Logged Time: Tempo tracked hrs per week     *Goal Engage: (In Progress + Done) / Total     Note: Critical w/ Short Tenure (FTE <= 4mo, Contractor <= 1mo) = High Onboarding Risk`;
 
   subText += legend;
 
-  sh.getRange(row, 1, 1, cols)
-    .merge()
-    .setValue(subText)
-    .setBackground(EXEC.SUBBAR_BG)
-    .setFontColor(EXEC.SUBBAR_TEXT)
-    .setFontSize(8)
-    .setFontFamily("Arial")
-    .setHorizontalAlignment("center")
-    .setVerticalAlignment("middle");
-  sh.setRowHeight(row, 20);
-  return row + 1;
+  const subBar = (text) => {
+    sh.getRange(row, 1, 1, cols)
+      .merge()
+      .setValue(text)
+      .setBackground(EXEC.SUBBAR_BG)
+      .setFontColor(EXEC.SUBBAR_TEXT)
+      .setFontSize(8)
+      .setFontFamily("Arial")
+      .setHorizontalAlignment("center")
+      .setVerticalAlignment("middle");
+    sh.setRowHeight(row, 20);
+    row++;
+  };
+  subBar(subText);
+
+  // Org-scoped run: say whose tree this is, who is in it, and that the leader's
+  // own row is deliberately absent — a reader should never wonder if it was lost.
+  // The group RCR line is the dashboard's team number for this org.
+  if (ctx.orgLeader) {
+    const n   = ctx.orgSize !== undefined ? `${ctx.orgSize} rocketeer${ctx.orgSize === 1 ? "" : "s"} (managers and ICs under ${ctx.orgLeader})` : "org tree";
+    const rcr = ctx.rcr && ctx.rcr.value !== null && ctx.rcr.value !== undefined
+      ? `${rcrColLabel_({ latest: { name: ctx.rcr.month } })}: ${ctx.rcr.value.toFixed(2)}  —  ${rcrMethodLabel_(ctx.rcr.method)}, n = ${ctx.rcr.n}`
+      : `RCR: no value for this org in the latest month`;
+    subBar(`Org scope: ${n}     ·     ${ctx.orgLeader}'s own record is excluded from this report     ·     ${rcr}`);
+  }
+  return row;
 }
 
 /**
@@ -1963,29 +2181,30 @@ function empsToRows_(emps, lastMonths) {
       emp.supervisor  || "—",                                              // 6
       emp.region      || "—",                                              // 7
       emp.tenure !== null ? Number(emp.tenure).toFixed(1) : "—",          // 8
-      fmt_(emp.ytdRCR),                                                    // 9
-      m[0], m[1], m[2],                                                    // 10-12
-      emp.goalEngagementPct !== null ? `${emp.goalEngagementPct}%` : "—", // 13
+      fmt_(emp.ytdRCR),                                                    // 9  legacy FY YTD (3. RCR)
+      m[0], m[1], m[2],                                                    // 10-12 trend window, newest last
+      emp.tierInfo ? emp.tierInfo.badge : "—",                             // 13 tier on the latest month
+      emp.goalEngagementPct !== null ? `${emp.goalEngagementPct}%` : "—", // 14
       ...wc,                                                               // comments, oldest → LW
-      emp.kudosL3W || 0,                                                   // 17
-      siScore,                                                             // 18
+      emp.kudosL3W || 0,                                                   // Kudos
+      siScore,                                                             // SI Score
       ...ch.map(h => h > 0 ? h.toFixed(1) : "0"),                         // logged time, oldest → LW
       ...(emp.jiraEpicCounts || weekZeros_()).slice().reverse().map(c => c || 0), // Jira, LW → oldest
     ]);
 
-    const rcrFg = emp.ytdRCR !== null && emp.ytdRCR <= CONFIG.RCR_CRITICAL ? EXEC.FG_CRITICAL
-                : emp.ytdRCR !== null && emp.ytdRCR <= CONFIG.RCR_WATCH    ? EXEC.FG_WATCH
-                : null;
+    // Colour the LATEST month — that is the dashboard's number and the tier basis.
+    const rcrFg = rcrFontColor_(emp.rcrCurrent);
 
     fontColors.push([
       null, null, null,                          // 0-2: ID, EmpNum, Name
       null, null, null, null, null, null,        // 3-8: JobTitle-Tenure
-      rcrFg,                                     // 9: YTD RCR
-      null, null, null,                          // 10-12: M-2, M-1, M0 RCR
-      null,                                      // 13: Goal Engage
+      null,                                      // 9: legacy YTD RCR
+      null, null, rcrFg,                         // 10-12: M-2, M-1, latest RCR
+      null,                                      // 13: Tier (tinted by writeData_)
+      null,                                      // 14: Goal Engage
       ...wc.map(() => null),                     // comments
-      null,                                      // 17: Kudos
-      null,                                      // 18: SI Score
+      null,                                      // Kudos
+      null,                                      // SI Score
       ...ch.map(h => h <= 0 ? EXEC.TC_RED : null), // logged time
       ...weekZeros_().map(() => null),          // Jira
     ]);
@@ -1993,6 +2212,25 @@ function empsToRows_(emps, lastMonths) {
     tierInfos.push(emp.tierInfo);
   });
   return { rows, fontColors, tierInfos };
+}
+
+/** Font colour for an RCR value by tier (Critical / Watch only; Healthy+ stay dark). */
+function rcrFontColor_(v) {
+  if (v === null || v === undefined) return null;
+  if (v <= CONFIG.RCR_CRITICAL) return EXEC.FG_CRITICAL;
+  if (v <= CONFIG.RCR_WATCH)    return EXEC.FG_WATCH;
+  return null;
+}
+
+/** Column label for the latest-month RCR of a group ("RCR (Sep 26)"). */
+function rcrColLabel_(axis) {
+  return axis && axis.latest ? `RCR (${axis.latest.name})` : "RCR (latest)";
+}
+
+/** Tier legend for banners — derived from CONFIG so a threshold change shows up. */
+function tierLegend_() {
+  const c = CONFIG.RCR_CRITICAL, w = CONFIG.RCR_WATCH, h = CONFIG.RCR_HEALTHY;
+  return `Tiers (latest month):  ≤ ${c.toFixed(1)}  Critical    ${(c + 0.01).toFixed(2)}–${w.toFixed(1)}  Watch    ${(w + 0.01).toFixed(2)}–${h.toFixed(1)}  Healthy    > ${h.toFixed(1)}  Champion`;
 }
 
 /**
@@ -2080,8 +2318,9 @@ function writeSummaryOverview_(sh, row, counts, sectionTitle) {
 function writeMainTable_(sh, row, emps, lastMonths, weeks) {
   const dynCols = [
     "Internal ID","Employee Number","Name","Job Title","Level","Contributor Type","Supervisor","Region","Tenure",
-    "YTD RCR",
+    CONFIG.LEGACY_YTD_LABEL,
     (lastMonths[0] || "M−2") + " RCR", (lastMonths[1] || "M−1") + " RCR", (lastMonths[2] || "Latest") + " RCR",
+    "RCR Tier",
     "Goal Engage (%)",
     ...weekHeaders_(weeks, "", " Comments"),
     "Kudos",
@@ -2103,10 +2342,14 @@ function writeMainTable_(sh, row, emps, lastMonths, weeks) {
     return spacer_(row + 1);
   }
 
-  const { rows, fontColors } = empsToRows_(emps, lastMonths);
-  writeData_(sh, row, rows, fontColors);
+  const { rows, fontColors, tierInfos } = empsToRows_(emps, lastMonths);
+  writeData_(sh, row, rows, fontColors, tierInfos, MAIN_TIER_COL_IDX);
   return spacer_(row + rows.length);
 }
+
+// 0-based index of the "RCR Tier" badge column in the Contributor table
+// (Internal ID … Tenure = 0-8, legacy YTD = 9, three trend months = 10-12).
+const MAIN_TIER_COL_IDX = 13;
 
 /**
  * Writes the Non-Contributor table with enhanced goal metrics.
@@ -2201,7 +2444,7 @@ function nonContribEmpsToRows_(emps) {
 function writeCrewTable_(sh, row, emps, lastMonths, weeks) {
   const dynCols = [
     "Internal ID","Name","Department","Job Title","Supervisor","Region","Tenure",
-    "YTD RCR",
+    CONFIG.LEGACY_YTD_LABEL,
     (lastMonths[0] || "M−2") + " RCR", (lastMonths[1] || "M−1") + " RCR", (lastMonths[2] || "Latest") + " RCR",
     "Kudos",
     ...weekHeaders_(weeks, "Logged Time ", ""),
@@ -2255,14 +2498,12 @@ function crewEmpsToRows_(emps, lastMonths) {
       ...(emp.jiraEpicCounts || weekZeros_()).slice().reverse().map(c => c || 0), // Jira, LW → oldest
     ]);
 
-    const rcrFg = emp.ytdRCR !== null && emp.ytdRCR <= CONFIG.RCR_CRITICAL ? EXEC.FG_CRITICAL
-                : emp.ytdRCR !== null && emp.ytdRCR <= CONFIG.RCR_WATCH    ? EXEC.FG_WATCH
-                : null;
+    const rcrFg = rcrFontColor_(emp.rcrCurrent);   // latest month — the dashboard's number
 
     fontColors.push([
       null, null, null, null, null, null, null, // 0-6
-      rcrFg,                                    // 7: YTD RCR
-      null, null, null,                         // 8-10: M-2, M-1, M0 RCR
+      null,                                     // 7: legacy YTD RCR
+      null, null, rcrFg,                        // 8-10: M-2, M-1, latest RCR
       null,                                     // 11: Kudos
       ...ch.map(h => h <= 0 ? EXEC.TC_RED : null), // logged time
       ...weekZeros_().map(() => null),          // Jira
@@ -2351,38 +2592,12 @@ function costEmpsToRows_(emps) {
  * @param {string} label
  * @returns {number} next row
  */
-function writeJobClusterSummary_(sh, row, empList, label) {
-  const groups = new Map();
-  empList.forEach(emp => {
-    const key = getJobCluster_(emp);
-    if (!groups.has(key)) {
-      groups.set(key, { label: key, count: 0, sumRev: 0, sumTCC: 0,
-                        critical: 0, watch: 0, healthy: 0, champion: 0,
-                        sumGoal: 0, cntGoal: 0, sumSI: 0, cntSI: 0 });
-    }
-    const g = groups.get(key);
-    g.count++;
-    g.sumRev += (emp.ytdRevenue || 0);
-    g.sumTCC += (emp.ytdTCC || 0);
-    if (emp.ytdRCR !== null) {
-      if      (emp.ytdRCR <= CONFIG.RCR_CRITICAL) g.critical++;
-      else if (emp.ytdRCR <= CONFIG.RCR_WATCH)    g.watch++;
-      else if (emp.ytdRCR <= CONFIG.RCR_HEALTHY)  g.healthy++;
-      else                                         g.champion++;
-    }
-    if (emp.goalEngagementPct !== null) { g.sumGoal += emp.goalEngagementPct; g.cntGoal++; }
-    if (emp.avgSI !== null)             { g.sumSI   += emp.avgSI;             g.cntSI++;   }
-  });
-
-  const summary = Array.from(groups.values()).map(g => ({
-    ...g,
-    avgRCR:  g.sumTCC > 0 ? g.sumRev / g.sumTCC : null,
-    avgGoal: g.cntGoal > 0 ? Math.round(g.sumGoal / g.cntGoal) : null,
-    avgSI:   g.cntSI  > 0 ? (g.sumSI  / g.cntSI).toFixed(1)   : "—",
-  })).sort((a, b) => a.label.localeCompare(b.label));
+function writeJobClusterSummary_(sh, row, empList, label, axis) {
+  const summary = buildGroupSummary_(empList, getJobCluster_, axis)
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   const COLS = [
-    "Job Profile Cluster","Headcount","Avg YTD RCR",
+    "Job Profile Cluster","Headcount", rcrColLabel_(axis),
     "Critical","Watch","Healthy","Champion",
     "Avg Goal Engage","Avg SI Score","ABC Metric Rationale",
   ];
@@ -2456,7 +2671,7 @@ function writeSignalIntelligenceSummary_(sh, row, allEmps) {
     // Skip employees with no RCR data or Non-Contributor tier
     if (emp.tierInfo && (emp.tierInfo.tier === "No Data" || emp.tierInfo.tier === "Non-Contributor")) return;
 
-    const rcr = emp.ytdRCR;
+    const rcr = emp.rcrCurrent;   // latest closed month — the dashboard's number
     const lwHrs = emp.lastWeekTotalHrs;
 
     // Output Risks
@@ -2514,10 +2729,10 @@ function writeSignalIntelligenceSummary_(sh, row, allEmps) {
  * @param {string} label
  * @returns {number} next row
  */
-function writeDimSummary_(sh, row, empList, field, label) {
-  const summary = buildDimensionSummary_(empList, field);
+function writeDimSummary_(sh, row, empList, field, label, axis) {
+  const summary = buildDimensionSummary_(empList, field, axis);
   const COLS = [
-    "Group","Headcount","Avg YTD RCR",
+    "Group","Headcount", rcrColLabel_(axis),
     "Critical","Watch","Healthy","Champion",
     "Avg Goal Engage","Avg SI Score","Risk Profile",
   ];
@@ -2573,8 +2788,14 @@ function writeDimSummary_(sh, row, empList, field, label) {
 // ── SECTION: MAIN ENTRY POINT ────────────────────────────────
 // ============================================================
 
+// Inactive-status test shared by the company run, the org run and the org
+// picker, so all three agree on who is "active". Crew rows are additionally
+// pre-filtered on Termination/Release Date when they are seeded.
+const INACTIVE_STATUS_RE_ = /terminat|resign|left|inactive|former|offboard/i;
+
 /**
- * Main entry point. Run from Apps Script editor or the custom menu.
+ * Main entry point — the whole company. Run from the Apps Script editor or
+ * the custom menu. Errors are logged, not thrown (editor / menu caller).
  */
 function runContributorIntelligence() {
   // Web-reachable via google.script.run by anyone the deployment admits, so it is
@@ -2584,171 +2805,244 @@ function runContributorIntelligence() {
   // dashboard's callable surface at all. Hard-calling it would break every export.
   if (typeof requireMaintainer_ === 'function') requireMaintainer_('runContributorIntelligence');
   else Logger.log('⚠️ [runContributorIntelligence] requireMaintainer_ not in this project — running ungated.');
-  Logger.log(`▶ [runContributorIntelligence] Started at ${new Date().toISOString()}`);
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    return runContributorIntelligence_(null);
+  } catch (e) {
+    Logger.log("❌ [runContributorIntelligence] " + e.message);
+    return null;
+  }
+}
 
-    Logger.log("📂 Loading source sheets...");
-    const rcrData   = loadSheet_(ss, CONFIG.SHEET_RCR);
-    const rcData    = loadSheet_(ss, CONFIG.SHEET_RC);
-    const tccData   = loadSheet_(ss, CONFIG.SHEET_TCC);
-    const siData    = loadSheet_(ss, CONFIG.SHEET_SI);
-    Logger.log("📂 Loading Goals from external RD sheet...");
-    const rdGoalsData = loadGoalsRD_();
-    Logger.log("📂 Loading Roster from external spreadsheet...");
-    const rosterData = loadRosterSheet_();
+/**
+ * Org-scoped entry point — one leader's org tree (every manager and IC under
+ * them, walked through the Roster's Supervisor column), MINUS the leader's own
+ * row: a rocketeer's evaluation belongs on their manager's dashboard, never on
+ * one they can hand out themselves. Output goes to sheets named
+ * "<report> · <Leader>" so the company-wide tabs are untouched.
+ *
+ * Called by the org picker dialog (google.script.run), so it THROWS on a bad
+ * name or an empty org — the dialog shows the message.
+ *
+ * @param {string} leaderName  Roster "Name" of the org leader (aliases in NAME_MAPS resolve)
+ * @returns {{ leader, orgSize, contributors, nonContributors, crew, sheets, latestMonth, rcr }}
+ */
+function runContributorIntelligenceForOrg(leaderName) {
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('runContributorIntelligenceForOrg');
+  else Logger.log('⚠️ [runContributorIntelligenceForOrg] requireMaintainer_ not in this project — running ungated.');
+  const name = String(leaderName || "").trim();
+  if (!name) throw new Error("Pick an org leader first.");
+  return runContributorIntelligence_({ orgLeader: name });
+}
 
-    Logger.log("📂 Loading ExclusivityContracts...");
-    const exclusivitySet = loadExclusivitySet_();
+/**
+ * The run itself. `opts.orgLeader` scopes everything to that leader's org tree.
+ * @param {{ orgLeader?: string }|null} opts
+ * @returns {object} run summary (also what the org dialog displays)
+ */
+function runContributorIntelligence_(opts) {
+  opts = opts || {};
+  const orgLeader = opts.orgLeader ? String(opts.orgLeader).trim() : "";
+  Logger.log(`▶ [runContributorIntelligence_] Started at ${new Date().toISOString()}${orgLeader ? `  —  org: ${orgLeader}` : ""}`);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    Logger.log("📂 Loading Delivery Managers...");
-    const deliveryMgrSet = loadNameSet_(CONFIG.SHEET_DELIVERY_MGRS, "Delivery Managers");
+  Logger.log("📂 Loading source sheets...");
+  const rcrData    = loadSheet_(ss, CONFIG.SHEET_RCR);
+  const newRcrData = loadSheetOptional_(ss, CONFIG.SHEET_RCR_NEW);
+  const rcData     = loadSheet_(ss, CONFIG.SHEET_RC);
+  const tccData    = loadSheet_(ss, CONFIG.SHEET_TCC);
+  const siData     = loadSheet_(ss, CONFIG.SHEET_SI);
+  Logger.log("📂 Loading Goals from external RD sheet...");
+  const rdGoalsData = loadGoalsRD_();
+  Logger.log("📂 Loading Roster from external spreadsheet...");
+  const rosterData = loadRosterSheet_();
+  Logger.log("📂 Loading Contractors Data (Crew Members)...");
+  const contractorData = loadContractorsSheet_();
 
-    const lastMonths = detectLastClosedMonths_(rcrData);
-    Logger.log(`   → Trend window: ${lastMonths.join(", ")}`);
+  Logger.log("📂 Loading ExclusivityContracts...");
+  const exclusivitySet = loadExclusivitySet_();
 
-    Logger.log("📂 Calculating weekly windows...");
-    const weeks = getLastNCompletedWeeks_(CONFIG.WEEKS_WINDOW);
+  Logger.log("📂 Loading Delivery Managers...");
+  const deliveryMgrSet = loadNameSet_(CONFIG.SHEET_DELIVERY_MGRS, "Delivery Managers");
 
-    Logger.log("📂 Loading Kudos data...");
-    const kudosMap = getKudosData_(ss, weeks);
+  // One RCR month axis across "3. RCR" (FY26-) and "New RCR" (FY27+) — the
+  // dashboard's reading. The trend window is its last three populated months.
+  const axis       = readRcrAxis_(rcrData, newRcrData, rosterNameIdMap_(rosterData, contractorData));
+  const lastMonths = detectLastClosedMonths_(axis);
+  Logger.log(`   → Trend window: ${lastMonths.join(", ") || "—"}` +
+             (axis.latest ? `  (latest: ${axis.latest.name}, ${axis.latest.source === "rate" ? "New RCR direct rate" : "3. RCR ratio"})` : ""));
 
-    const jiraReportMap = getJiraCountsFromRaw_(ss, weeks);
-    Logger.log("Jira weekly counts derived from Raw for " + (jiraReportMap ? jiraReportMap.size : 0) + " assignees");
+  Logger.log("📂 Calculating weekly windows...");
+  const weeks = getLastNCompletedWeeks_(CONFIG.WEEKS_WINDOW);
 
-    Logger.log("📂 Loading Contractors Data (Crew Members)...");
-    const contractorData = loadContractorsSheet_();
+  Logger.log("📂 Loading Kudos data...");
+  const kudosMap = getKudosData_(ss, weeks);
 
-    Logger.log("Building employee records...");
-    const empMap = buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraReportMap, lastMonths, rosterData, exclusivitySet, deliveryMgrSet, kudosMap, weeks, contractorData);
-    Logger.log("Employee map built successfully");
+  const jiraReportMap = getJiraCountsFromRaw_(ss, weeks);
+  Logger.log("Jira weekly counts derived from Raw for " + (jiraReportMap ? jiraReportMap.size : 0) + " assignees");
 
-    // All hours = actual Tempo tracked time: the Logged Time columns, and the
-    // last-week figure the Satellite risk override below reads.
-    Logger.log("📂 Loading Tempo tracked time...");
-    const trackedMap = getTempoTrackedHrs_(Array.from(empMap.values(), e => e.name), weeks);
-    empMap.forEach(emp => {
-      const hrs = trackedMap.get(normPS_(emp.name)) || weekZeros_();
-      emp.weeklyTrackedHrs = hrs;
-      emp.lastWeekTotalHrs = hrs[hrs.length - 1];
-      emp.prevWeekTotalHrs = hrs[hrs.length - 2];
-      emp.avgTotalHrs      = hrs.reduce((a, b) => a + b, 0) / hrs.length;
-    });
+  Logger.log("Building employee records...");
+  const empMap = buildEmployeeMap_(siData, rcrData, rdGoalsData, rcData, tccData, jiraReportMap, axis, rosterData, exclusivitySet, deliveryMgrSet, kudosMap, weeks, contractorData);
+  Logger.log("Employee map built successfully");
 
-    Logger.log("📝 Writing contributor intelligence sheet...");
-    // 16 + 3×WEEKS_WINDOW cols (28 @ 4 wks): ID, EmpNum, Name, JobTitle, Level, ContribType, Supervisor, Region, Tenure, YTD RCR,
-    //          M-2 RCR, M-1 RCR, Latest RCR, Goal Engage,
-    //          Wk-2 Comments, Wk-1 Comments, LW Comments, Kudos, SI Score,
-    //          Logged Wk-2, Logged Wk-1, Logged LW, Jira LW, Jira Wk-1, Jira Wk-2
-    const wkW = (w) => weekZeros_().map(() => w);  // one width per week column
-    const contribWidths = [100, 100, 145, 180, 50, 145, 145, 115, 52, 65, 62, 62, 72, 75, ...wkW(65), 55, 75, ...wkW(70), ...wkW(60)];
-    const sh = prepareOutputSheet_(ss, CONFIG.SHEET_OUTPUT, contribWidths);
-    
-    // Active-only pool — all three output sheets draw from this.
-    // Crew members are already pre-filtered in buildEmployeeMap_ (only active rows seeded).
-    const INACTIVE_STATUS_RE = /terminat|resign|left|inactive|former|offboard/i;
-    const all = Array.from(empMap.values()).filter(e =>
-      !INACTIVE_STATUS_RE.test(String(e.empStatus || ""))
-    );
+  // Dashboard population flags (tracking mandate, ramp-up, long leave, manager
+  // cohort) so group RCR here is the same number the PS Dashboard shows.
+  joinDashboardFlags_(empMap);
 
-    // ── Calculate Critical Satellites (Team Risk) ──────────
-    // A satellite is a subordinate with low RCR, low goal engagement, < 10 hours, and a poor trend
-    const isSatellite = (e) => 
-      (e.ytdRCR !== null && e.ytdRCR <= CONFIG.RCR_CRITICAL) &&
-      (e.goalEngagementPct !== null && e.goalEngagementPct < 40) &&
-      (e.lastWeekTotalHrs !== null && e.lastWeekTotalHrs > 0 && e.lastWeekTotalHrs < 10) &&
-      (e.trend === "Sustained Low" || e.trend === "Declining" || e.trend === "Flat – Low");
+  // All hours = actual Tempo tracked time: the Logged Time columns, and the
+  // last-week figure the Satellite risk override below reads.
+  Logger.log("📂 Loading Tempo tracked time...");
+  const trackedMap = getTempoTrackedHrs_(Array.from(empMap.values(), e => e.name), weeks);
+  empMap.forEach(emp => {
+    const hrs = trackedMap.get(normPS_(emp.name)) || weekZeros_();
+    emp.weeklyTrackedHrs = hrs;
+    emp.lastWeekTotalHrs = hrs[hrs.length - 1];
+    emp.prevWeekTotalHrs = hrs[hrs.length - 2];
+    emp.avgTotalHrs      = hrs.reduce((a, b) => a + b, 0) / hrs.length;
+  });
 
-    // Override Tier for Satellites and Map to Supervisors
-    const supervisorSatelliteMap = new Map();
-    all.forEach(e => {
-      const isContractor = getJobCluster_(e) === "5. Contractors";
-      const onboardingLimit = isContractor ? 0.083 : 0.34; // 1 month vs 4 months
-      const isNewHire = e.tenure !== null && e.tenure <= onboardingLimit;
+  // Active-only pool — all three output sheets draw from this.
+  // Crew members are already pre-filtered in buildEmployeeMap_ (only active rows seeded).
+  let all = Array.from(empMap.values()).filter(e =>
+    !INACTIVE_STATUS_RE_.test(String(e.empStatus || ""))
+  );
 
-      if (isSatellite(e)) {
-        // Force tier to Critical if they hit all risk vectors
-        if (e.tierInfo && e.tierInfo.tier !== "Non-Contributor") {
-          const baseNote = "Risk Profile: Low RCR + Low Activity + Low Engagement + Poor Trend";
-          e.tierInfo = { 
-            tier: "Critical", 
-            badge: "Critical", 
-            tint: EXEC.CRITICAL_TINT, 
-            fg: EXEC.FG_CRITICAL, 
-            note: isNewHire ? `ONBOARDING RISK: ${baseNote} (Tenure <= 4 mo)` : baseNote
-          };
-        }
+  // ── Org scope ──────────────────────────────────────────────
+  // BFS over Supervisor across the FULL map (inactive rows bridge, so a
+  // terminated mid-level manager whose reports are not re-parented yet does
+  // not sever the tree), then intersect with the active pool. The leader's own
+  // row is never in the scope set — see resolveOrgScope_.
+  let orgCtx = null;
+  if (orgLeader) {
+    const { anchor, scope } = resolveOrgScope_(empMap, orgLeader);
+    if (!anchor) throw new Error(`"${orgLeader}" was not found on the Roster (Data / Contractors Data).`);
+    all = all.filter(e => scope.has(e.key));
+    if (!all.length) throw new Error(`${anchor.name} has no active reports on the Roster — nothing to export.`);
+    orgCtx = { orgLeader: anchor.name, orgSize: all.length, rcr: groupRcr_(all, axis) };
+    Logger.log(`🏢 Org scope "${anchor.name}": ${scope.size} in tree, ${all.length} active (leader excluded). ` +
+               `Group RCR ${orgCtx.rcr.month || "—"}: ${orgCtx.rcr.value === null ? "n/a" : orgCtx.rcr.value} [${orgCtx.rcr.method || "—"}, n=${orgCtx.rcr.n}]`);
+  }
 
-        if (e.supervisor) {
-          const supKey = normalizeName_(e.supervisor);
-          supervisorSatelliteMap.set(supKey, (supervisorSatelliteMap.get(supKey) || 0) + 1);
-        }
-      } else if (e.tierInfo && e.tierInfo.tier === "Critical" && isNewHire) {
-        // Just RCR critical but also new hire
-        e.tierInfo.note = "NEW HIRE CRITICAL: Tenure <= 4 mo. Assessment should consider ramp-up phase.";
+  // ── Calculate Critical Satellites (Team Risk) ──────────
+  // A satellite is a subordinate with low RCR (latest month), low goal engagement,
+  // < 10 hours, and a poor trend
+  const isSatellite = (e) =>
+    (e.rcrCurrent !== null && e.rcrCurrent <= CONFIG.RCR_CRITICAL) &&
+    (e.goalEngagementPct !== null && e.goalEngagementPct < 40) &&
+    (e.lastWeekTotalHrs !== null && e.lastWeekTotalHrs > 0 && e.lastWeekTotalHrs < 10) &&
+    (e.trend === "Sustained Low" || e.trend === "Declining" || e.trend === "Flat – Low");
+
+  // Override Tier for Satellites and Map to Supervisors
+  const supervisorSatelliteMap = new Map();
+  all.forEach(e => {
+    const isContractor = getJobCluster_(e) === "5. Contractors";
+    const onboardingLimit = isContractor ? 0.083 : 0.34; // 1 month vs 4 months
+    const isNewHire = e.tenure !== null && e.tenure <= onboardingLimit;
+
+    if (isSatellite(e)) {
+      // Force tier to Critical if they hit all risk vectors
+      if (e.tierInfo && e.tierInfo.tier !== "Non-Contributor") {
+        const baseNote = "Risk Profile: Low RCR + Low Activity + Low Engagement + Poor Trend";
+        e.tierInfo = {
+          tier: "Critical",
+          badge: "Critical",
+          tint: EXEC.CRITICAL_TINT,
+          fg: EXEC.FG_CRITICAL,
+          note: isNewHire ? `ONBOARDING RISK: ${baseNote} (Tenure <= 4 mo)` : baseNote
+        };
       }
-    });
 
-    all.forEach(e => {
-      e.criticalSatelliteCount = supervisorSatelliteMap.get(normalizeName_(e.name)) || 0;
-    });
+      if (e.supervisor) {
+        const supKey = normalizeName_(e.supervisor);
+        supervisorSatelliteMap.set(supKey, (supervisorSatelliteMap.get(supKey) || 0) + 1);
+      }
+    } else if (e.tierInfo && e.tierInfo.tier === "Critical" && isNewHire) {
+      // Just RCR critical but also new hire
+      e.tierInfo.note = "NEW HIRE CRITICAL: Tenure <= 4 mo. Assessment should consider ramp-up phase.";
+    }
+  });
 
-    // ── Segment the active pool into three mutually exclusive groups ──
-    //
-    //  Crew Members      — seeded from 'Contractors Data' tab (isCrewMember flag)
-    //  Contributors      — Roster 'Data' employees with Class = 'Professional Services'
-    //  Non-Contributors  — all other active Roster employees (G&A, Ops, etc.)
+  all.forEach(e => {
+    e.criticalSatelliteCount = supervisorSatelliteMap.get(normalizeName_(e.name)) || 0;
+  });
 
-    // isCrewMember flag covers 'Contractors Data' seeds.
-    // getJobCluster_ === "5. Contractors" catches any contractor-level employees
-    // that entered via the main Roster — they belong in the crew bucket, not non-contributors.
-    const isCrew        = e => e.isCrewMember === true || getJobCluster_(e) === "5. Contractors";
-    const isPSEmployee  = e => String(e.empClass || "").trim() === "Professional Services" && !isCrew(e);
+  // ── Segment the active pool into three mutually exclusive groups ──
+  //
+  //  Crew Members      — seeded from 'Contractors Data' tab (isCrewMember flag)
+  //  Contributors      — Roster 'Data' employees with Class = 'Professional Services'
+  //  Non-Contributors  — all other active Roster employees (G&A, Ops, etc.)
 
-    const crewMembers     = all.filter(isCrew);
-    const contributors    = all.filter(isPSEmployee);
-    const nonContributors = all.filter(e => !isCrew(e) && !isPSEmployee(e));
+  // isCrewMember flag covers 'Contractors Data' seeds.
+  // getJobCluster_ === "5. Contractors" catches any contractor-level employees
+  // that entered via the main Roster — they belong in the crew bucket, not non-contributors.
+  const isCrew        = e => e.isCrewMember === true || getJobCluster_(e) === "5. Contractors";
+  const isPSEmployee  = e => String(e.empClass || "").trim() === "Professional Services" && !isCrew(e);
 
-    // Apply goal-engagement-based classification to operational non-contributors
-    nonContributors.forEach(e => {
-      e.tierInfo = classifyNonContributor_(e);
-      e.isInternalGA = true;
-    });
+  const crewMembers     = all.filter(isCrew);
+  const contributors    = all.filter(isPSEmployee);
+  const nonContributors = all.filter(e => !isCrew(e) && !isPSEmployee(e));
 
-    let row = 1;
+  // Apply goal-engagement-based classification to operational non-contributors
+  nonContributors.forEach(e => {
+    e.tierInfo = classifyNonContributor_(e);
+    e.isInternalGA = true;
+  });
 
-    // ── 1. CONTRIBUTOR SHEET ───────────────────────────────────
-    row = writeBanner_(sh, row, lastMonths, false, contribWidths.length);
+  // Sheet names: company run → the configured tabs; org run → "<tab> · <Leader>".
+  // An org run writes only the segments that have people (a director's org is
+  // often pure consultants) and removes a stale same-named tab from an earlier run.
+  const nameContrib = orgSheetName_(CONFIG.SHEET_OUTPUT,             orgCtx);
+  const nameNC      = orgSheetName_(CONFIG.SHEET_OUTPUT_NON_CONTRIB, orgCtx);
+  const nameCrew    = orgSheetName_(CONFIG.SHEET_OUTPUT_CREW,        orgCtx);
+  const writeSegment = (list) => !orgCtx || list.length > 0;
+  const written = [];
+
+  const wkW = (w) => weekZeros_().map(() => w);  // one width per week column
+  let row = 1, rowNC = 1, rowCrew = 1;
+  let sh = null;
+
+  // ── 1. CONTRIBUTOR SHEET ───────────────────────────────────
+  // 17 + 3×WEEKS_WINDOW cols (29 @ 4 wks): ID, EmpNum, Name, JobTitle, Level, ContribType, Supervisor, Region, Tenure,
+  //          legacy YTD RCR, M-2 RCR, M-1 RCR, Latest RCR, RCR Tier, Goal Engage,
+  //          Wk comments…, Kudos, SI Score, Logged Wk…, Jira Wk…
+  if (writeSegment(contributors)) {
+    Logger.log("📝 Writing contributor intelligence sheet...");
+    const contribWidths = [100, 100, 145, 180, 50, 145, 145, 115, 52, 65, 62, 62, 72, 70, 75, ...wkW(65), 55, 75, ...wkW(70), ...wkW(60)];
+    sh = prepareOutputSheet_(ss, nameContrib, contribWidths);
+    row = writeBanner_(sh, row, lastMonths, false, contribWidths.length, orgCtx);
     row = spacer_(row);
 
-    // ── Main Contributor Table ─────────────────────────────
-    const critSorted  = contributors.filter(e => e.ytdRCR !== null && e.ytdRCR <= CONFIG.RCR_CRITICAL).sort((a, b) => a.ytdRCR - b.ytdRCR);
-    const watchSorted = contributors.filter(e => e.ytdRCR !== null && e.ytdRCR > CONFIG.RCR_CRITICAL && e.ytdRCR <= CONFIG.RCR_WATCH).sort((a, b) => a.ytdRCR - b.ytdRCR);
-    const healthSorted = contributors.filter(e => e.ytdRCR !== null && e.ytdRCR > CONFIG.RCR_WATCH && e.ytdRCR <= CONFIG.RCR_HEALTHY).sort((a, b) => b.ytdRCR - a.ytdRCR);
-    const champSorted = contributors.filter(e => e.ytdRCR !== null && e.ytdRCR > CONFIG.RCR_HEALTHY).sort((a, b) => b.ytdRCR - a.ytdRCR);
-    const ndList      = contributors.filter(e => e.ytdRCR === null);
+    // ── Main Contributor Table — tier buckets on the LATEST month ──
+    const cur = e => e.rcrCurrent;
+    const critSorted   = contributors.filter(e => cur(e) !== null && cur(e) <= CONFIG.RCR_CRITICAL).sort((a, b) => cur(a) - cur(b));
+    const watchSorted  = contributors.filter(e => cur(e) !== null && cur(e) > CONFIG.RCR_CRITICAL && cur(e) <= CONFIG.RCR_WATCH).sort((a, b) => cur(a) - cur(b));
+    const healthSorted = contributors.filter(e => cur(e) !== null && cur(e) > CONFIG.RCR_WATCH && cur(e) <= CONFIG.RCR_HEALTHY).sort((a, b) => cur(b) - cur(a));
+    const champSorted  = contributors.filter(e => cur(e) !== null && cur(e) > CONFIG.RCR_HEALTHY).sort((a, b) => cur(b) - cur(a));
+    const ndList       = contributors.filter(e => cur(e) === null);
 
     const mainList = [].concat(critSorted, watchSorted, healthSorted, champSorted, ndList);
     row = writeMainTable_(sh, row, mainList, lastMonths, weeks);
 
     // ── Dimension Summaries ───────────────────────────────
-    row = writeJobClusterSummary_(sh, row, contributors, "JOB PROFILE CLUSTERING (ABC Strategy)");
-    row = writeDimSummary_(sh, row, contributors, "supervisor",  "SUPERVISOR SUMMARY");
-    row = writeDimSummary_(sh, row, contributors, "region",      "RESOURCE REGION SUMMARY");
+    row = writeJobClusterSummary_(sh, row, contributors, "JOB PROFILE CLUSTERING (ABC Strategy)", axis);
+    row = writeDimSummary_(sh, row, contributors, "supervisor",  "SUPERVISOR SUMMARY", axis);
+    row = writeDimSummary_(sh, row, contributors, "region",      "RESOURCE REGION SUMMARY", axis);
 
-    // Freeze top 3 rows
-    sh.setFrozenRows(5);
+    sh.setFrozenRows(orgCtx ? 6 : 5);
+    written.push(nameContrib);
+  } else {
+    dropStaleSheet_(ss, nameContrib);
+  }
 
-    // ── 2. NON-CONTRIBUTOR SHEET ───────────────────────────────
+  // ── 2. NON-CONTRIBUTOR SHEET ───────────────────────────────
+  if (writeSegment(nonContributors)) {
     Logger.log("📝 Writing non-contributor intelligence sheet...");
     // 14 + 3×WEEKS_WINDOW cols (26 @ 4 wks): ID, EmpNum, Name, Dept, JobTitle, Level, ContribType, Supervisor, Region, Tenure,
     //          Goal Engage, Wk-2 Comments, Wk-1 Comments, LW Comments, Avg Comments/Wk, Kudos,
     //          SI Score, Logged Wk-2, Logged Wk-1, Logged LW, Jira LW, Jira Wk-1, Jira Wk-2
     const nonContribWidths = [100, 100, 145, 120, 180, 50, 145, 115, 115, 52, 80, ...wkW(65), 90, 55, 100, ...wkW(70), ...wkW(60)];
-    const shNC = prepareOutputSheet_(ss, CONFIG.SHEET_OUTPUT_NON_CONTRIB, nonContribWidths);
-    
-    let rowNC = 1;
-    rowNC = writeBanner_(shNC, rowNC, null, true, nonContribWidths.length);
+    const shNC = prepareOutputSheet_(ss, nameNC, nonContribWidths);
+
+    rowNC = writeBanner_(shNC, rowNC, null, true, nonContribWidths.length, orgCtx);
     rowNC = spacer_(rowNC);
 
     // Non-Contributor Table
@@ -2761,34 +3055,274 @@ function runContributorIntelligence() {
     });
     rowNC = writeNonContributorTable_(shNC, rowNC, ncList, weeks);
 
-    rowNC = writeDimSummary_(shNC, rowNC, nonContributors, "supervisor",  "SUPERVISOR SUMMARY (Non-Contributors)");
+    rowNC = writeDimSummary_(shNC, rowNC, nonContributors, "supervisor",  "SUPERVISOR SUMMARY (Non-Contributors)", axis);
 
-    shNC.setFrozenRows(3);
-    
-    // ── 3. CREW MEMBER SHEET ───────────────────────────────────
+    shNC.setFrozenRows(orgCtx ? 4 : 3);
+    written.push(nameNC);
+  } else {
+    dropStaleSheet_(ss, nameNC);
+  }
+
+  // ── 3. CREW MEMBER SHEET ───────────────────────────────────
+  if (writeSegment(crewMembers)) {
     Logger.log("📝 Writing crew member intelligence sheet...");
-    // 12 + 2×WEEKS_WINDOW cols (20 @ 4 wks): ID, Name, Dept, JobTitle, ContribType, Supervisor, Region, Tenure, YTD RCR,
-    //          M-2 RCR, M-1 RCR, Latest RCR, Kudos,
-    //          Logged Wk-2, Logged Wk-1, Logged LW, Jira LW, Jira Wk-1, Jira Wk-2
+    // 12 + 2×WEEKS_WINDOW cols (20 @ 4 wks): ID, Name, Dept, JobTitle, Supervisor, Region, Tenure, legacy YTD RCR,
+    //          M-2 RCR, M-1 RCR, Latest RCR, Kudos, Logged Wk…, Jira Wk…
     const crewWidths = [100, 145, 120, 180, 145, 115, 52, 65, 62, 62, 72, 55, ...wkW(65), ...wkW(60)];
-    const shCrew = prepareOutputSheet_(ss, CONFIG.SHEET_OUTPUT_CREW, crewWidths);
-    
-    let rowCrew = 1;
-    rowCrew = writeBanner_(shCrew, rowCrew, lastMonths, false, crewWidths.length);
+    const shCrew = prepareOutputSheet_(ss, nameCrew, crewWidths);
+
+    rowCrew = writeBanner_(shCrew, rowCrew, lastMonths, false, crewWidths.length, orgCtx);
     rowCrew = spacer_(rowCrew);
 
-    const crewSorted = crewMembers.sort((a, b) => (b.ytdRCR || 0) - (a.ytdRCR || 0));
+    const crewSorted = crewMembers.sort((a, b) => (b.rcrCurrent || 0) - (a.rcrCurrent || 0));
     rowCrew = writeCrewTable_(shCrew, rowCrew, crewSorted, lastMonths, weeks);
-    
-    shCrew.setFrozenRows(5);
 
-    ss.setActiveSheet(sh); // Set focus back to main sheet
-    Logger.log(`✅ [runContributorIntelligence] Done. Contributor rows: ${row}, Non-Contributor rows: ${rowNC}, Crew rows: ${rowCrew}`);
-
-
-  } catch (e) {
-    Logger.log("❌ [runContributorIntelligence] " + e.message);
+    shCrew.setFrozenRows(orgCtx ? 6 : 5);
+    written.push(nameCrew);
+  } else {
+    dropStaleSheet_(ss, nameCrew);
   }
+
+  if (sh) ss.setActiveSheet(sh); // Set focus back to main sheet
+  Logger.log(`✅ [runContributorIntelligence_] Done. Contributor rows: ${row}, Non-Contributor rows: ${rowNC}, Crew rows: ${rowCrew}`);
+
+  return {
+    leader:          orgCtx ? orgCtx.orgLeader : null,
+    orgSize:         orgCtx ? orgCtx.orgSize : all.length,
+    contributors:    contributors.length,
+    nonContributors: nonContributors.length,
+    crew:            crewMembers.length,
+    sheets:          written,
+    latestMonth:     axis.latest ? axis.latest.name : null,
+    rcrMethod:       axis.latest ? (axis.latest.source === "rate" ? "direct-rate" : "sum-ratio") : null,
+    rcr:             orgCtx ? orgCtx.rcr : groupRcr_(all, axis),
+  };
+}
+
+// ============================================================
+// ── SECTION: ORG SCOPE ───────────────────────────────────────
+// ============================================================
+
+/**
+ * Builds a leader's org tree from the employee map: BFS over the Supervisor
+ * field, starting at the leader, through every record in the map — ACTIVE OR
+ * NOT. Inactive rows are traversal nodes (they bridge a terminated mid-level
+ * manager to the people still under them) and are filtered out later by the
+ * active-pool test, exactly as resolveManagerScope_ does in the dashboard.
+ *
+ * The leader's own row seeds the walk and is never added to `scope`: nobody
+ * gets an export that contains their own evaluation.
+ *
+ * @param {Map<string, object>} empMap  buildEmployeeMap_() output (key = Internal ID)
+ * @param {string} leaderName           Roster "Name" (NAME_MAPS aliases resolve)
+ * @returns {{ anchor: object|null, scope: Set<string> }}  scope = Internal IDs under the leader
+ */
+function resolveOrgScope_(empMap, leaderName) {
+  const target = normalizeToRosterKey_(leaderName);
+  const scope  = new Set();
+  if (!target) return { anchor: null, scope };
+
+  // Anchor: the leader's record. Prefer an active row when a name repeats.
+  let anchor = null;
+  empMap.forEach(e => {
+    if (normalizeName_(e.name) !== target) return;
+    const inactive = r => INACTIVE_STATUS_RE_.test(String(r.empStatus || ""));
+    if (!anchor || (inactive(anchor) && !inactive(e))) anchor = e;
+  });
+  if (!anchor) return { anchor: null, scope };
+
+  const seen  = new Set([target]);
+  const queue = [target];
+  while (queue.length) {
+    const supNorm = queue.shift();
+    empMap.forEach((e, key) => {
+      if (normalizeName_(e.supervisor) !== supNorm) return;
+      const n = normalizeName_(e.name);
+      if (!n || seen.has(n)) return;
+      seen.add(n);
+      queue.push(n);          // this person may supervise others
+      scope.add(key);
+    });
+  }
+  return { anchor, scope };
+}
+
+/**
+ * Sheet name for a run: the configured tab for the company run, or
+ * "<tab> · <Leader>" for an org run (Sheets caps tab names at 100 chars).
+ */
+function orgSheetName_(base, orgCtx) {
+  if (!orgCtx || !orgCtx.orgLeader) return base;
+  const name = base + CONFIG.ORG_SHEET_SEP + orgCtx.orgLeader;
+  return name.length > 100 ? name.slice(0, 100) : name;
+}
+
+/** Removes a tab an earlier run of the same org left behind for a now-empty segment. */
+function dropStaleSheet_(ss, name) {
+  const sh = ss.getSheetByName(name);
+  if (!sh) return;
+  if (ss.getSheets().length <= 1) return;   // a spreadsheet must keep one sheet
+  ss.deleteSheet(sh);
+  Logger.log(`🧹 Removed stale tab "${name}" — that segment has no one in this org now.`);
+}
+
+/**
+ * Like loadSheet_ but a missing tab is a logged null, not an error — the
+ * New RCR tab may not exist yet in a copy of the dataset.
+ */
+function loadSheetOptional_(ss, sheetName) {
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) { Logger.log(`ℹ️ Sheet "${sheetName}" not found — skipped.`); return null; }
+  return loadSheet_(ss, sheetName);
+}
+
+/** normalized Name → Internal ID across the Data and Contractors Data tabs. */
+function rosterNameIdMap_(rosterData, contractorData) {
+  const m = new Map();
+  [rosterData, contractorData].forEach(data => {
+    if (!data || !data.rows || !data.headers) return;
+    data.rows.forEach(row => {
+      const name = strVal_(row, data.headers, "Name");
+      const id   = strVal_(row, data.headers, "Internal ID");
+      if (name && id && !m.has(normalizeName_(name))) m.set(normalizeName_(name), id);
+    });
+  });
+  return m;
+}
+
+/**
+ * Copies the PS Dashboard's population flags onto the employee records so the
+ * group RCR here is computed over the same people the dashboard aggregates:
+ * tracking mandate (job family allowlist), ramp-up, long leave, people-manager
+ * cohort. All four come from PS Contribution Report.js (same project); when it
+ * is not in scope, or the roster read fails, everyone keeps the defaults — which
+ * is "counts toward the group", the same fail-open direction tracksTime_ takes.
+ * @param {Map<string, object>} empMap
+ * @returns {number} records matched to a dashboard roster profile
+ */
+function joinDashboardFlags_(empMap) {
+  if (typeof readPSRoster_ !== "function" || typeof tracksTime_ !== "function") {
+    Logger.log("ℹ️ Dashboard roster helpers not in this project — everyone counts toward group RCR.");
+    return 0;
+  }
+  try {
+    const roster  = readPSRoster_();
+    const catalog = typeof readJobCatalog_ === "function" ? readJobCatalog_() : null;
+    const sups    = typeof activeSupervisorNames_ === "function" ? activeSupervisorNames_(roster) : null;
+    let matched = 0, exempt = 0, ramp = 0, leave = 0;
+    empMap.forEach(emp => {
+      const p = roster.get(normPS_(emp.name || ""));
+      if (!p) return;
+      matched++;
+      emp.tracksTime = tracksTime_(p, catalog);
+      emp.isRampUp   = !!p.isRampUp;
+      emp.onLeave    = !!p.onLeave;
+      emp.isManager  = typeof isPeopleManager_ === "function" ? isPeopleManager_(p, catalog, sups) : false;
+      if (emp.tracksTime === false) exempt++;
+      if (emp.isRampUp) ramp++;
+      if (emp.onLeave)  leave++;
+    });
+    Logger.log(`Dashboard flags: ${matched} of ${empMap.size} records matched — ${exempt} tracking-exempt, ${ramp} ramping up, ${leave} on long leave (all outside group RCR).`);
+    return matched;
+  } catch (e) {
+    Logger.log(`⚠️ joinDashboardFlags_: ${e.message} — everyone counts toward group RCR.`);
+    return 0;
+  }
+}
+
+// ============================================================
+// ── SECTION: ORG PICKER (menu dialog) ────────────────────────
+// ============================================================
+
+/**
+ * Flattens the Roster tabs to the fields the org picker needs.
+ * @returns {{ name, supervisor, status, title, termDate, isCrew }[]}
+ */
+function rosterPeople_(rosterData, contractorData) {
+  const out = [];
+  const take = (data, isCrew) => {
+    if (!data || !data.rows || !data.headers) return;
+    data.rows.forEach(row => {
+      const name = strVal_(row, data.headers, "Name");
+      if (!name) return;
+      out.push({
+        name,
+        supervisor: strVal_(row, data.headers, "Supervisor"),
+        status:     strVal_(row, data.headers, "Employee Status"),
+        title:      strVal_(row, data.headers, "Job Title"),
+        termDate:   strVal_(row, data.headers, "Termination/Release Date"),
+        isCrew,
+      });
+    });
+  };
+  take(rosterData, false);
+  take(contractorData, true);
+  return out;
+}
+
+/**
+ * Everyone who leads at least one active person, with the size of the org
+ * under them. Pure — fed by rosterPeople_, tested in Node.
+ * Active = not an inactive status and (for crew) no release date. The walk
+ * passes through inactive rows so a tree is not cut at a terminated manager,
+ * but only active people are counted.
+ * @returns {{ name, title, directReports, orgSize }[]} sorted by name
+ */
+function orgCandidatesFrom_(people) {
+  const isActive = p => !INACTIVE_STATUS_RE_.test(String(p.status || "")) && !(p.isCrew && p.termDate);
+  const byName   = new Map();                        // norm → person (first active row wins)
+  const kids     = new Map();                        // supNorm → [person]
+  people.forEach(p => {
+    const n = normalizeName_(p.name);
+    if (!n) return;
+    const prev = byName.get(n);
+    if (!prev || (!isActive(prev) && isActive(p))) byName.set(n, p);
+    const s = normalizeName_(p.supervisor);
+    if (!s || s === n) return;
+    if (!kids.has(s)) kids.set(s, []);
+    kids.get(s).push(p);
+  });
+
+  const out = [];
+  byName.forEach((p, n) => {
+    if (!isActive(p)) return;
+    const direct = (kids.get(n) || []).filter(isActive).length;
+    if (!direct) return;
+    // Org size: active people anywhere below, through inactive bridges.
+    const seen = new Set([n]); const queue = [n]; let size = 0;
+    while (queue.length) {
+      (kids.get(queue.shift()) || []).forEach(k => {
+        const kn = normalizeName_(k.name);
+        if (seen.has(kn)) return;
+        seen.add(kn); queue.push(kn);
+        if (isActive(k)) size++;
+      });
+    }
+    out.push({ name: p.name, title: p.title || "", directReports: direct, orgSize: size });
+  });
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Org leaders for the picker dialog — the people the org run can anchor on.
+ * Admin-gated like every other export entry point in this file.
+ * @returns {{ name, title, directReports, orgSize }[]}
+ */
+function listOrgReportCandidates() {
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('listOrgReportCandidates');
+  else Logger.log('⚠️ [listOrgReportCandidates] requireMaintainer_ not in this project — running ungated.');
+  const people = rosterPeople_(loadRosterSheet_(), loadContractorsSheet_());
+  const out = orgCandidatesFrom_(people);
+  Logger.log(`Org picker: ${out.length} leaders with active reports.`);
+  return out;
+}
+
+/** Opens the org picker dialog (menu item). */
+function showOrgPicker_() {
+  const html = HtmlService.createHtmlOutputFromFile("Contribution Org Picker")
+    .setWidth(560)
+    .setHeight(620);
+  SpreadsheetApp.getUi().showModalDialog(html, "Contributor Intelligence — run for one org");
 }
 
 /**
@@ -2798,6 +3332,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("🚀 Contributor Intelligence")
     .addItem("▶  Run Full Analysis", "runContributorIntelligence")
+    .addItem("🏢  Run for an org…", "showOrgPicker_")
     .addSeparator()
     .addItem("ℹ️  About", "showAbout_")
     .addToUi();
@@ -2806,9 +3341,12 @@ function onOpen() {
 /** About dialog. */
 function showAbout_() {
   SpreadsheetApp.getUi().alert(
-    `${CONFIG.SCRIPT_LABEL}  v2.0.0\n\n` +
+    `${CONFIG.SCRIPT_LABEL}  v2.1.0\n\n` +
     `Executive RCR signal analysis with goal engagement and SI\n` +
-    `manager score correlation.\n\nABC Framework — ServiceRocket.`
+    `manager score correlation. RCR reads "3. RCR" (FY26-) and\n` +
+    `"New RCR" (FY27+) on one month axis, as the PS Dashboard does.\n` +
+    `"Run for an org…" exports one leader's tree, minus the leader.\n\n` +
+    `ABC Framework — ServiceRocket.`
   );
 }
 

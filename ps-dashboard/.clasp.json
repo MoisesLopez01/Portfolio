@@ -16,6 +16,7 @@
     "TempoPlanExport.js",
     "TempoTrackedTime.js",
     "TempoCapacityTime.js",
-    "PS Usage.js"
+    "PS Usage.js",
+    "Contribution Org Picker.html"
   ]
 }

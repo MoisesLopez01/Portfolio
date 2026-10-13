@@ -297,6 +297,26 @@ column with ≥1 numeric roster value in either tab. `meta.rcrMethod`
 `exact: true` by definition. Spec: `docs/specs/2026-10-13-new-rcr-direct-rate-design.md`,
 tests: `tests/rcr-source-checks.js`.
 
+### Contributor Intelligence export (Contribution.js) reads the same axis
+
+The sheet exporter behind the 🚀 Contributor Intelligence menu (`Contribution.js`,
+same Apps Script project) used to list FY26 month columns by hand and tier people on
+the `3. RCR` YTD. Since 2026.W42 `readRcrAxis_` builds the same two-tab axis (reusing
+`rcrMonthColumns_`), the trend window is the last three populated months, and tier /
+sort / signals use the **latest month** with the dashboard thresholds
+(`CONFIG.RCR_*` = 1.0 / 1.5 / 2.5). The YTD column stays, labelled `FY26 YTD RCR`.
+Group RCR in the summaries is `groupRcr_` — the dashboard's team method over the
+dashboard's population (`joinDashboardFlags_` copies `tracksTime` / `isRampUp` /
+`onLeave` from `readPSRoster_`).
+
+**Org-scoped run** — menu › *Run for an org…* opens `Contribution Org Picker.html`;
+`runContributorIntelligenceForOrg(leader)` walks the Roster Supervisor column from
+the leader (through inactive rows, like `resolveManagerScope_`), **excludes the
+leader's own row**, and writes `"<tab> · <Leader>"` sheets for the non-empty segments
+only. Both endpoints are `requireMaintainer_`-gated. Spec:
+`docs/specs/2026-10-13-org-scoped-contributor-intelligence-design.md`, tests:
+`tests/contribution-org-scope-checks.js`.
+
 ## Data join keys
 
 | Metric | Joined by |
