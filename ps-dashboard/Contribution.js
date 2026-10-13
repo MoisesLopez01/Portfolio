@@ -3349,8 +3349,10 @@ function listOrgReportCandidates() {
   return out;
 }
 
-/** Opens the org picker dialog (menu item). */
-function showOrgPicker_() {
+/** Opens the org picker dialog (menu item). Menu handlers must be public (a
+ * trailing underscore gives "Script function not found"), so it is gated. */
+function showOrgPicker() {
+  if (typeof requireMaintainer_ === "function") requireMaintainer_("showOrgPicker");
   const html = HtmlService.createHtmlOutputFromFile("Contribution Org Picker")
     .setWidth(560)
     .setHeight(620);
@@ -3364,14 +3366,15 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("🚀 Contributor Intelligence")
     .addItem("▶  Run Full Analysis", "runContributorIntelligence")
-    .addItem("🏢  Run for an org…", "showOrgPicker_")
+    .addItem("🏢  Run for an org…", "showOrgPicker")
     .addSeparator()
-    .addItem("ℹ️  About", "showAbout_")
+    .addItem("ℹ️  About", "showAbout")
     .addToUi();
 }
 
-/** About dialog. */
-function showAbout_() {
+/** About dialog (menu item; public, reads nothing). */
+function showAbout() {
+  if (typeof requireMaintainer_ === "function") requireMaintainer_("showAbout");
   SpreadsheetApp.getUi().alert(
     `${CONFIG.SCRIPT_LABEL}  v2.1.0\n\n` +
     `Executive RCR signal analysis with goal engagement and SI\n` +
