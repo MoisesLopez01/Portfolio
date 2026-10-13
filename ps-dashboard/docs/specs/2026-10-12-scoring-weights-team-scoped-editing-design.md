@@ -1,6 +1,6 @@
 # Scoring Weights — one team at a time, edited by Super Admins and Org Admins — design
 
-**Date:** 2026-10-12 (2026.W42) · **Status:** implemented on branch `worktree-scoring-weights-prod`; deployed 2026-10-12 as @289 under GTT-935
+**Date:** 2026-10-12 (2026.W42) · **Status:** implemented on branch `worktree-scoring-weights-prod`; deployed 2026-10-12 as @289 under GTT-935, centralized editor as @290
 **Report (plain English):** `ps-dashboard/docs/reports/2026-W42-scoring-weights-team-scoped-editing.md`
 **Reference build:** the thesis demo replica (Vantara) Scoring Weights page, which carries the 2026.W41 design
 **Builds on:** `2026-07-09-team-aligned-scoring-design.md` (team gates, family tunes), the 2026.W41 Scoring Weights
@@ -21,8 +21,14 @@ page (company default strip + one "Points by role" table whose rows fold open to
   page changes: company default strip, level folds, "How a score is built".
 - **Org-scoped callers** (payload carries `managerScopeName`: managers, delegates, org admins) still get
   `buildScopedRows_` — only the roles and levels their own people hold, with headcounts — now inside the team on screen.
-- **Advanced settings** renders the per-level matrix of the team on screen only (one separator, its family blocks,
-  its catch-all). The company default editor (flat base) is built for super admins only.
+- **One place to edit (follow-up the same day).** The user found the scoring duplicated between the table and
+  "Advanced settings", so the fold, the flat-base editor and the Team → Family × Level matrix editor were removed.
+  The page's cells are the inputs: company default chips (super admins), role cells, and level cells inside each
+  role's fold (per-level total, "follow role" reset). A role-row edit flows down to the levels that were following
+  it; a level typed on its own stays. One Save (`saveScoringPage_`) writes the company default through
+  `saveWeightSettings` only when it changed, then the matrix through `saveScoringMatrix`: a role row becomes the
+  `ALL` cell only when it changed (inheriting families keep inheriting), a level becomes its own cell when it
+  differs from the row and loses its cell when it matches.
 - **Config is fetched once.** `loadScoringMatrix_(force)` renders from `MATRIX_CFG` when it is already loaded, so a
   team switch is instant; a save (`saveRoleWeights_`, `saveMatrixToSheet_`) forces a refetch, and `loadData(true)`
   (Refresh) clears the cache.

@@ -1240,13 +1240,7 @@ body.dark-mode .pr-siq { background: #16214A; }
 body.dark-mode .pr-table tr.pr-row:hover td { background: rgba(255,255,255,.05); }
 
 /* ── Scoring matrix editor — theme-aware ── */
-.mx-lvl-ic { background: #F0FAF9; }
-.mx-lvl-mg { background: #F4F4FD; }
-.mx-badge { display:inline-block; font-size:10px; font-weight:800; padding:2px 8px; border-radius:999px;
-  text-transform:uppercase; letter-spacing:.04em; line-height:1.5; white-space:nowrap; }
 .mx-badge-custom  { background:#E0E7FF; color:#3730A3; }
-.mx-badge-default { background:#E2E8F0; color:#475569; }
-.mx-default-ref { margin:10px 0 16px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:var(--th-bg); }
 .mx-unmapped { margin:10px 0; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
 .mx-unmapped > summary { cursor:pointer; padding:8px 12px; font-size:12px; font-weight:700; color:#9A3412; background:#FFF7ED; list-style:none; }
 .mx-unmapped > summary::-webkit-details-marker { display:none; }
@@ -1339,6 +1333,10 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .sw-rate { width: 58px; padding: 5px 6px; text-align: center; font: inherit; font-weight: 800; color: var(--void);
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .sw-rate:focus { outline: 2px solid var(--orbe); outline-offset: 1px; border-color: var(--orbe); }
+.sw-rate-sm { width: 48px; padding: 2px 4px; font-size: 11px; border-radius: 6px; }
+.sw-chip .sw-rate-sm { width: 46px; }
+.sw-default-tot { margin-left: auto; }
+.sw-sub .sw-link { font-size: 10px; padding: 0 2px; white-space: nowrap; }
 .sw-tot { font-weight: 800; color: var(--success); }
 .sw-tot.sw-bad, .sw-status.sw-bad { color: var(--june); }
 .sw-status { font-size: 12px; font-weight: 700; color: var(--slate); align-self: center; }
@@ -1349,10 +1347,6 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .sw-lead a { color: var(--sky); font-weight: 700; text-decoration: none; }
 .sw-lvl { display: inline-block; font-size: 10px; font-weight: 800; color: var(--void); background: var(--th-bg);
   border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; margin-left: 4px; }
-.sw-editor { border-top: 1px solid var(--border); padding-top: 12px; }
-.sw-editor > summary { cursor: pointer; font-size: 14px; font-weight: 800; color: var(--void); padding: 6px 0; }
-.sw-editor-hint { font-size: 11px; font-weight: 600; color: var(--muted); margin-left: 6px; }
-.sw-editor[open] > summary { margin-bottom: 12px; }
 /* Company default strip (level 1), role fold (level 3) and the folded process note */
 .sw-default { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--card-bg, transparent);
   display: flex; flex-direction: column; gap: 10px; }
@@ -1396,43 +1390,7 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .sw-steps { margin: 10px 0 2px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; line-height: 1.55; color: var(--slate); }
 .sw-steps b { color: var(--void); }
 body.dark-mode .sw-tag, body.dark-mode .sw-diff { background: #1E2A5E; color: #C7D2FE; }
-.weight-list { display: flex; flex-direction: column; gap: 14px; }
-.weight-row {
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  padding: 16px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border);
-}
-.weight-info { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 220px; }
 .weight-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-.weight-label { font-size: 13px; font-weight: 800; color: var(--void); }
-.weight-desc  { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.weight-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.weight-slider {
-  width: 160px; height: 4px; cursor: pointer; accent-color: var(--orbe);
-  -webkit-appearance: none; appearance: none;
-  background: var(--border); border-radius: 99px;
-}
-.weight-slider::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
-  background: var(--orbe); cursor: pointer; border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,.2);
-}
-.weight-num {
-  width: 56px; height: 34px; border: 1px solid var(--border); border-radius: 8px;
-  text-align: center; font-size: 14px; font-weight: 800; color: var(--void);
-  background: #fff; outline: none; transition: border-color .15s;
-}
-.weight-num:focus-visible { border-color: var(--orbe); }
-.weight-pct { font-size: 12px; font-weight: 700; color: var(--muted); }
-.weight-total-row {
-  display: flex; align-items: center; justify-content: flex-end; gap: 14px;
-  padding: 12px 16px; border-top: 2px solid var(--border); margin-top: 4px;
-}
-.weight-total-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--void); }
-.weight-total-val { font-size: 24px; font-weight: 900; min-width: 60px; text-align: right; transition: color .2s; }
-.weight-warning {
-  background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B;
-  border-radius: 8px; padding: 10px 14px; font-size: 12px; font-weight: 700;
-}
 .settings-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .settings-btn {
   padding: 9px 20px; border-radius: 8px; font-size: 12px; font-weight: 800;
@@ -1450,11 +1408,6 @@ body.dark-mode .sw-tag, body.dark-mode .sw-diff { background: #1E2A5E; color: #C
 .settings-btn-primary:hover:not(:disabled) { background: #1a2d6b; }
 .settings-note { font-size: 11px; color: var(--muted); font-style: italic; line-height: 1.6; }
 .settings-save-flash { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--success); margin-left: 6px; }
-.weight-strip { display: flex; height: 10px; border-radius: 8px; overflow: hidden; margin-bottom: 10px; background: var(--border); }
-.weight-strip-seg { transition: flex .25s ease; min-width: 0; }
-.weight-strip-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 20px; }
-.weight-strip-leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--slate); }
-.weight-strip-leg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
 /* ── INLINE SELECT (Radar / Rocketeers week-group controls) ── */
 .inline-select {
@@ -1629,7 +1582,6 @@ body.dark-mode .va-btn-primary { background: #B45309; color: #fff; }
 body.dark-mode .role-badge-viewas { background: #2A1F0A; color: #FCD34D; border-color: #B45309; }
 
 /* ── SECURITY SECTION ── */
-.sec-divider { border: none; border-top: 2px solid var(--border); margin: 20px 0 24px; }
 .sec-header { font-size: 14px; font-weight: 800; color: var(--void); display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .sec-sub { font-size: 12px; color: var(--slate); line-height: 1.6; margin-bottom: 16px; }
 .sec-user-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font-size: 12px; color: var(--slate); margin-bottom: 20px; }
@@ -11180,102 +11132,19 @@ function usageFilterRows_(q) {
   });
 }
 
-// ── SCORING WEIGHTS TAB (every role reads; Admin / Super Admin edit) ──
-// Since 2026.W41 the page opens on a plain summary for everyone: the company default
-// strip, then ONE "Points by role" table (job family × the seven metrics, each cell
-// the metric's points out of 100) whose rows fold open to the role's levels. The full
-// editor (flat base + Team → Family × Level matrix) is unchanged and sits folded under
-// "Advanced settings" for canEditScoring_() only.
+// ── SCORING WEIGHTS TAB (every role reads; Super Admin / Org Admin edit) ──
+// Since 2026.W42 the page is ONE place to read and to tune the weights: the company
+// default strip (rate inputs for super admins), the "Points by role" table for the
+// team on screen (role cells editable), and each role's fold (▸) where its level
+// cells are editable too. There is no separate editor: one Save writes the company
+// default (saveWeightSettings) and the matrix (saveScoringMatrix).
 function renderWeightsTab_() {
   var container = document.getElementById("weightsBody");
   if (!container) return;
-
-  var canEdit = canEditScoring_();
-  var canBase = canEditScoringBase_();
-  var html = renderScoringOverview_(canEdit);
-  if (!canEdit) {
-    container.innerHTML = html;
-    loadScoringMatrix_();
-    return;
-  }
-
-  // Advanced settings: the company default (Super Admin only) and the per-level
-  // matrix for the team on screen (Super Admin: any team; Org Admin: their own).
-  html += '<details class="sw-editor" id="weightsEditor"' + (STATE.weightsEditorOpen ? ' open' : '') +
-    ' ontoggle="STATE.weightsEditorOpen = this.open">' +
-    '<summary>⚙️ Advanced settings <span class="sw-editor-hint">' +
-      (canBase ? 'company default and per-level fine-tuning · Super Admins'
-               : 'per-level fine-tuning for your teams · Org Admins') + '</span></summary>';
-  html += '<div class="settings-body">';
-
-  if (canBase) {
-  html += '<p class="settings-intro">Each rocketeer receives a composite score (0–100) that blends the metrics below. ' +
-    'Adjust the percentage each metric contributes to reflect your team\'s priorities. ' +
-    '<strong>Set a metric\'s weight to 0 to exclude it from scoring entirely.</strong> ' +
-    'SI Rating and PTO Health are off by default — turn them on by assigning a percentage. ' +
-    '<strong>Active weights must sum to exactly 100%.</strong> Use <em>Preview</em> to see the impact before saving. ' +
-    'Saved weights are stored in the spreadsheet and loaded for every user on the next refresh.</p>';
-
-  html += '<div id="weightStrip" class="weight-strip"></div>' +
-    '<div id="weightStripLegend" class="weight-strip-legend"></div>';
-
-  html += '<div class="weight-list">';
-  WEIGHT_DEFS.forEach(function(d) {
-    var v = SCORE_W[d.key] !== undefined ? SCORE_W[d.key] : 0;
-    html +=
-      '<div class="weight-row">' +
-        '<div class="weight-info">' +
-          '<div class="weight-dot" style="background:' + d.color + '"></div>' +
-          '<div>' +
-            '<div class="weight-label">' + esc(d.label) + '</div>' +
-            '<div class="weight-desc">' + esc(d.desc) + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="weight-controls">' +
-          '<input type="number" class="weight-num" id="wn-' + d.key + '" min="0" max="100" step="1" value="' + v + '" ' +
-            'oninput="syncWeightNum(\'' + d.key + '\')">' +
-          '<span class="weight-pct">%</span>' +
-        '</div>' +
-      '</div>';
-  });
-  html += '</div>';
-
-  html += '<div class="weight-total-row">' +
-    '<span class="weight-total-label">Total</span>' +
-    '<span id="weightTotal" class="weight-total-val">—</span>' +
-  '</div>';
-
-  html += '<div id="weightWarning" class="weight-warning" style="display:none">' +
-    'Weights must sum to exactly 100% before saving or previewing.' +
-  '</div>';
-
-  html += '<div class="settings-actions">' +
-    '<button class="settings-btn settings-btn-secondary" onclick="resetWeightsToDefault()">Reset to Defaults</button>' +
-    '<button class="settings-btn settings-btn-preview" onclick="previewWeights()">Preview on Performance Record ↗</button>' +
-    '<button class="settings-btn settings-btn-primary" id="saveWeightsBtn" onclick="saveWeightsToSheet()" disabled>Save</button>' +
-    '<span id="saveFlash" class="settings-save-flash" style="display:none">✓ Saved</span>' +
-  '</div>' +
-  '<div id="saveError" style="display:none;margin-top:8px;padding:8px 12px;background:#FEE2E2;border-radius:6px;font-size:12px;color:#B71C1C;font-weight:600"></div>' +
-  '<div id="saveTimestamp" style="margin-top:6px;font-size:11px;color:var(--muted)"></div>';
-
-  html += '<p class="settings-note">Only editors of the source spreadsheet can save changes. ' +
-    'All users will see the new weights on their next page refresh.</p>';
-  html += '<hr class="sec-divider">';
-  }   // canBase — company default
-
-  html += '</div>';
-
-  // Family × Level overrides for the team on screen — loaded async
-  html += '<div id="matrixSection">' +
-      '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
-      '<span style="font-size:12px;color:var(--muted)">Loading scoring matrix…</span></div>' +
-    '</div>';
-
-  html += '</details>';
-  container.innerHTML = html;
-  if (canBase) updateWeightTotal();
+  container.innerHTML = renderScoringOverview_(canEditScoring_());
   loadScoringMatrix_();
 }
+
 
 // ⚖️ Scoring Weights read view — ONE table, colour signals, no definitions on the
 // page (those live in 📖 Documentation). Three levels of disclosure, top to bottom:
@@ -11449,24 +11318,36 @@ function renderCompanyDefault_(cfg, editable) {
   return '<div class="sw-default">' +
     '<div class="sw-default-h"><span class="sw-default-t">Company default</span>' +
       '<span class="sw-code">the starting split — each role below tunes it' +
-      (editable ? ' · change it under Advanced settings' : '') + '</span></div>' +
-    '<div class="sw-mix sw-mix-lg">' + roleMixBar_(pts) + '</div>' +
+      (editable ? ' · type to change it (every team starts from it)' : '') + '</span>' +
+      (editable ? '<span class="sw-code sw-default-tot">Total <b class="sw-tot" id="swTot-base">100</b></span>' : '') +
+    '</div>' +
+    '<div class="sw-mix sw-mix-lg" id="swMix-base">' + roleMixBar_(pts) + '</div>' +
     '<div class="sw-chips">' + WEIGHT_DEFS.map(function(d) {
       var v = pts[d.key] || 0;
-      return '<span class="sw-chip' + (v ? '' : ' sw-chip-off') + '"><span class="weight-dot" style="background:' + d.color + '"></span>' +
-        esc(d.label) + ' <b>' + v + '</b></span>';
+      return '<span class="sw-chip' + (v || editable ? '' : ' sw-chip-off') + '"><span class="weight-dot" style="background:' + d.color + '"></span>' +
+        esc(d.label) + ' ' + (editable
+          ? '<input type="number" class="sw-rate sw-rate-sm" min="0" max="100" step="1" inputmode="numeric" value="' + v + '"' +
+            ' data-base="1" data-key="' + d.key + '" aria-label="Company default — ' + esc(d.label) + ' points" oninput="swOnInput_(this)">'
+          : '<b>' + v + '</b>') + '</span>';
     }).join('') + '</div>' +
   '</div>';
 }
 
+
 // Level 3 — the fold under a role row: its levels, the titles at each, (headcount for
 // org-scoped callers) and the points that level scores with; a point that differs
 // from the role row is highlighted.
-function renderLevelFold_(r, scoped, editable) {
+// Level 3 — the fold under a role row: its levels, the titles at each, (headcount for
+// org-scoped callers) and the points that level scores with; a point that differs
+// from the role row is highlighted. For editors the level cells are inputs: a level
+// that matches the role row follows it (no cell of its own), a level that differs is
+// tuned on its own; "follow role" snaps it back.
+function renderLevelFold_(r, i, scoped, editable) {
   var html = '<div class="sw-fold"><table class="sw-sub"><thead><tr>' +
     '<th title="I = individual-contributor track · M = management track">Level</th>' +
     '<th class="sw-sub-t">Job titles at this level</th>' + (scoped ? '<th>People</th>' : '') +
     WEIGHT_DEFS.map(function(d) { return '<th>' + esc(d.label) + '</th>'; }).join('') +
+    (editable ? '<th>Total</th><th></th>' : '') +
     '</tr></thead><tbody>';
   r.levels.forEach(function(l) {
     html += '<tr><td><span class="sw-lvl">' + esc(l.key) + '</span></td>' +
@@ -11477,18 +11358,25 @@ function renderLevelFold_(r, scoped, editable) {
     WEIGHT_DEFS.forEach(function(d) {
       if (r.metrics.indexOf(d.key) === -1) { html += '<td><span class="sw-off">—</span></td>'; return; }
       var v = l.points[d.key] || 0, base = r.points[d.key] || 0, diff = v !== base;
-      html += '<td><span class="sw-pts sw-pts-sm' + (diff ? ' sw-diff' : (v ? '' : ' sw-zero')) + '"' +
-        (diff ? ' title="Role row: ' + base + ' pts"' : '') + '>' + v + '</span></td>';
+      html += '<td>' + (editable
+        ? '<input type="number" class="sw-rate sw-rate-sm' + (diff ? ' sw-diff' : '') + '" min="0" max="100" step="1" inputmode="numeric" value="' + v + '"' +
+          ' data-row="' + i + '" data-lvl="' + esc(l.key) + '" data-key="' + d.key + '"' +
+          ' aria-label="' + esc(r.name + ' ' + l.key + ' — ' + d.label) + ' points" oninput="swOnInput_(this)">'
+        : '<span class="sw-pts sw-pts-sm' + (diff ? ' sw-diff' : (v ? '' : ' sw-zero')) + '"' +
+          (diff ? ' title="Role row: ' + base + ' pts"' : '') + '>' + v + '</span>') + '</td>';
     });
+    if (editable) html += '<td><span class="sw-tot" id="swTot-' + i + '-' + esc(l.key) + '">100</span></td>' +
+      '<td><button type="button" class="sw-link" onclick="swFollowRole_(' + i + ',\'' + esc(l.key) + '\')" title="Reset this level to the role row">follow role</button></td>';
     html += '</tr>';
   });
   html += '</tbody></table><div class="sw-fold-note">' +
     (r.varies ? 'A highlighted cell is where this level is tuned on its own; everything else follows the role row.'
               : 'Every level of this role scores with the same points as the role row.') +
-    (editable ? ' Level-specific points are set under Advanced settings.' : '') +
+    (editable ? ' Type in a level cell to tune that level; a level that matches the role row keeps following it.' : '') +
   '</div></div>';
   return html;
 }
+
 
 // Folded process note — the four steps, no metric definitions (📖 Documentation).
 function renderHowItWorks_() {
@@ -11564,21 +11452,21 @@ function renderScoringSummary_() {
       html += '<td>' + (rowEdit
         ? '<input type="number" class="sw-rate" min="0" max="100" step="1" inputmode="numeric" value="' + v + '"' +
           ' data-row="' + i + '" data-key="' + d.key + '" aria-label="' + esc(r.name + ' — ' + d.label) + ' points"' +
-          ' oninput="swRateInput_(' + i + ')">'
+          ' oninput="swOnInput_(this)">'
         : '<span class="sw-pts' + (v ? '' : ' sw-zero') + '">' + v + '</span>') + '</td>';
     });
     if (editable) html += '<td>' + (rowEdit ? '<span class="sw-tot" id="swTot-' + i + '">100</span>' : '') + '</td>';
     html += '</tr>';
     if (hasLv) html += '<tr class="sw-detail" id="swD-' + i + '"' + (open ? '' : ' hidden') + '><td colspan="' + nCols + '">' +
-      renderLevelFold_(r, scoped, editable) + '</td></tr>';
+      renderLevelFold_(r, i, scoped, rowEdit) + '</td></tr>';
   });
   if (!rows.length) html += '<tr><td colspan="' + nCols + '" class="sw-off">No roles to show for ' + esc(teamLabel) + '.</td></tr>';
   html += '</tbody></table></div>';
-  if (editable) {
+  if (editable || canEditScoringBase_()) {
     html += '<div class="settings-actions" style="margin-top:12px">' +
       '<button class="settings-btn settings-btn-secondary" onclick="renderScoringSummary_()">Undo changes</button>' +
-      '<button class="settings-btn settings-btn-primary" id="swSaveBtn" onclick="saveRoleWeights_()" disabled>Save</button>' +
-      '<span id="swStatus" class="sw-status">Type a rate in any cell — each role must add up to 100</span>' +
+      '<button class="settings-btn settings-btn-primary" id="swSaveBtn" onclick="saveScoringPage_()" disabled>Save</button>' +
+      '<span id="swStatus" class="sw-status">Type a rate in any cell — the company default, each role and each level must add up to 100</span>' +
     '</div>';
   }
   html += renderHowItWorks_();
@@ -11619,474 +11507,189 @@ function swAllBtn_() {
   btn.textContent = swAnyFoldClosed_() ? 'Expand all levels' : 'Collapse all levels';
 }
 
-function swRowValues_(i) {
+// Reads the rate inputs matching `sel` into { metricKey: 0..100 }.
+function swVals_(sel) {
   var vals = {};
-  Array.prototype.forEach.call(document.querySelectorAll('.sw-rate[data-row="' + i + '"]'), function(inp) {
+  Array.prototype.forEach.call(document.querySelectorAll(sel), function(inp) {
     vals[inp.getAttribute('data-key')] = Math.max(0, Math.min(100, parseInt(inp.value, 10) || 0));
   });
   return vals;
 }
-
-// Live feedback while typing: the row total, the score-mix bar, and whether Save
-// can run (every row at exactly 100 and at least one row changed).
-function swRateInput_(i) {
-  var vals = swRowValues_(i);
-  var tot = Object.keys(vals).reduce(function(s, k) { return s + vals[k]; }, 0);
-  var totEl = document.getElementById('swTot-' + i);
-  if (totEl) { totEl.textContent = tot; totEl.classList.toggle('sw-bad', tot !== 100); }
-  var mix = document.getElementById('swMix-' + i);
-  if (mix) mix.innerHTML = roleMixBar_(vals);
-  var allOk = true, changed = false;
-  SW_ROWS.forEach(function(r, j) {
-    var v = swRowValues_(j);
-    if (!Object.keys(v).length) return;   // read-only row (no inputs) — nothing to check
-    var t = Object.keys(v).reduce(function(s, k) { return s + v[k]; }, 0);
-    if (t !== 100) allOk = false;
-    if (Object.keys(v).some(function(k) { return v[k] !== (r.points[k] || 0); })) changed = true;
-  });
-  var btn = document.getElementById('swSaveBtn');
-  if (btn) btn.disabled = !(allOk && changed);
-  var st = document.getElementById('swStatus');
-  if (st) { st.textContent = allOk ? (changed ? 'Unsaved changes' : '') : 'Each role must add up to 100'; st.classList.toggle('sw-bad', !allOk); }
+function swRowValues_(i)        { return swVals_('.sw-rate[data-row="' + i + '"]:not([data-lvl])'); }
+function swLevelValues_(i, lk)  { return swVals_('.sw-rate[data-row="' + i + '"][data-lvl="' + lk + '"]'); }
+function swLevelInputs_(i, lk)  { return document.querySelectorAll('.sw-rate[data-row="' + i + '"][data-lvl="' + lk + '"]'); }
+function swBaseValues_()        { return swVals_('.sw-rate[data-base]'); }
+function swSum_(v) { return Object.keys(v).reduce(function(s, k) { return s + v[k]; }, 0); }
+function swSame_(a, b) { return WEIGHT_DEFS.every(function(d) { return (a[d.key] || 0) === (b[d.key] || 0); }); }
+function swSetTotal_(id, tot) {
+  var el = document.getElementById(id);
+  if (el) { el.textContent = tot; el.classList.toggle('sw-bad', tot !== 100); }
 }
 
-// Writes each CHANGED role's points as that family's block-wide (ALL) cell in every
-// team the row covers, then saves the matrix (server re-checks canEditScoring_ and
-// drops any metric outside the team's set). Level-specific cells are left as they are.
-function saveRoleWeights_() {
-  var btn = document.getElementById('swSaveBtn');
-  var st = document.getElementById('swStatus');
-  var n = 0;
+// Live feedback while typing. A role-row change flows down to the levels that were
+// following it (equal to the row before the edit); a level the user typed in stays
+// on its own. The company default has its own total and mix bar.
+function swOnInput_(inp) {
+  var i = inp.getAttribute('data-row'), lk = inp.getAttribute('data-lvl');
+  if (inp.hasAttribute('data-base')) {
+    var b = swBaseValues_();
+    swSetTotal_('swTot-base', swSum_(b));
+    var bm = document.getElementById('swMix-base'); if (bm) bm.innerHTML = roleMixBar_(b);
+  } else if (lk) {
+    swLevelRefresh_(i, lk);
+  } else {
+    var r = SW_ROWS[i], vals = swRowValues_(i), prev = r.live || r.points;
+    swSetTotal_('swTot-' + i, swSum_(vals));
+    var mix = document.getElementById('swMix-' + i); if (mix) mix.innerHTML = roleMixBar_(vals);
+    (r.levels || []).forEach(function(l) {
+      var lv = swLevelValues_(i, l.key);
+      if (!Object.keys(lv).length || !swSame_(lv, prev)) return;   // tuned on its own — leave it
+      Array.prototype.forEach.call(swLevelInputs_(i, l.key), function(el) { el.value = vals[el.getAttribute('data-key')] || 0; });
+      swLevelRefresh_(i, l.key);
+    });
+    r.live = vals;
+  }
+  swRefreshSave_();
+}
+
+// A level's total and its highlighted (differs-from-role) cells.
+function swLevelRefresh_(i, lk) {
+  var row = swRowValues_(i), lv = swLevelValues_(i, lk);
+  swSetTotal_('swTot-' + i + '-' + lk, swSum_(lv));
+  Array.prototype.forEach.call(swLevelInputs_(i, lk), function(el) {
+    var k = el.getAttribute('data-key');
+    el.classList.toggle('sw-diff', (lv[k] || 0) !== (row[k] || 0));
+  });
+}
+
+// Snap a level back to its role row (it then inherits, and follows future changes).
+function swFollowRole_(i, lk) {
+  var row = swRowValues_(i);
+  Array.prototype.forEach.call(swLevelInputs_(i, lk), function(el) { el.value = row[el.getAttribute('data-key')] || 0; });
+  swLevelRefresh_(i, lk);
+  swRefreshSave_();
+}
+
+// What a Save would write. `base`: the company default when it changed. `blocks`:
+// for every (team, family) on screen with a change — the role row as the block's
+// ALL cell when the row changed, and each level whose values moved: its own cell
+// when it differs from the role row, `null` (inherit — the cell is removed) when it
+// matches. A row that did not change is never written, so a family that inherits
+// the company default keeps inheriting it. `ok` is false while any edited total is
+// not exactly 100.
+function swPending_() {
+  var out = { ok: true, changed: false, base: null, blocks: [] };
+  var cfg = MATRIX_CFG || {};
+  if (document.querySelector('.sw-rate[data-base]')) {
+    var b = swBaseValues_();
+    if (swSum_(b) !== 100) out.ok = false;
+    var keys = WEIGHT_DEFS.map(function(d) { return d.key; });
+    if (!swSame_(b, sharesOf100_(cfg.baseWeights || SCORE_W, keys))) { out.base = b; out.changed = true; }
+  }
   SW_ROWS.forEach(function(r, i) {
     var vals = swRowValues_(i);
-    if (!Object.keys(vals).some(function(k) { return vals[k] !== (r.points[k] || 0); })) return;
-    n++;
+    if (!Object.keys(vals).length) return;                      // read-only row (no inputs)
+    if (swSum_(vals) !== 100) out.ok = false;
+    var rowChanged = !swSame_(vals, r.points);
+    var levels = {};                                            // lk → cell | null (inherit)
+    (r.levels || []).forEach(function(l) {
+      var lv = swLevelValues_(i, l.key);
+      if (!Object.keys(lv).length) return;
+      if (swSum_(lv) !== 100) out.ok = false;
+      if (!swSame_(lv, l.points)) levels[l.key] = swSame_(lv, vals) ? null : lv;
+    });
+    if (!rowChanged && !Object.keys(levels).length) return;
+    out.changed = true;
     r.targets.forEach(function(t) {
-      var mx = MATRIX_CFG.matrix;
-      if (!mx[t.team]) mx[t.team] = {};
-      if (!mx[t.team][t.code]) mx[t.team][t.code] = {};
-      var cell = {};
-      t.metrics.forEach(function(k) { cell[k] = vals[k] || 0; });
-      mx[t.team][t.code].ALL = cell;
+      out.blocks.push({ team: t.team, code: t.code, metrics: t.metrics, row: rowChanged ? vals : null, levels: levels });
     });
   });
-  if (!n) return;
+  return out;
+}
+
+function swRefreshSave_() {
+  var p = swPending_();
+  var btn = document.getElementById('swSaveBtn');
+  if (btn) btn.disabled = !(p.ok && p.changed);
+  var st = document.getElementById('swStatus');
+  if (st) { st.textContent = p.ok ? (p.changed ? 'Unsaved changes' : '') : 'Every edited row must add up to 100'; st.classList.toggle('sw-bad', !p.ok); }
+}
+
+// The one Save: the company default first (saveWeightSettings, super admins), then
+// the matrix (saveScoringMatrix — the server re-checks canEditScoring_ and the
+// caller's teams, and drops any metric outside the team's set), then a refetch so
+// the table shows what the server resolved.
+function saveScoringPage_() {
+  var p = swPending_();
+  if (!p.ok || !p.changed) return;
+  var btn = document.getElementById('swSaveBtn'), st = document.getElementById('swStatus');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (btn) btn.textContent = 'Save';
-      if (res && res.ok) {
-        if (st) { st.textContent = '✓ Saved ' + n + ' role' + (n === 1 ? '' : 's') + ' — scores update on the next refresh'; st.classList.remove('sw-bad'); }
-        loadScoringMatrix_(true);
-      } else if (st) {
-        st.textContent = 'Save failed: ' + ((res && res.error) || 'unknown error'); st.classList.add('sw-bad');
-        if (btn) btn.disabled = false;
-      }
-    })
-    .withFailureHandler(function(e) {
-      if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
-      if (st) { st.textContent = 'Save failed: ' + String(e.message || e); st.classList.add('sw-bad'); }
-    })
-    .saveScoringMatrix({ matrix: MATRIX_CFG.matrix });
-}// ── SCORING MATRIX EDITOR — Team → Family × Level weights (Admin / Super Admin) ──
-// Backed by getScoringConfig() / saveScoringMatrix(). Families are grouped under
-// the org-team separators (same teams as the dashboard toggle); blank cells
-// inherit the per-(team, family) fill defaults shipped in cfg.sections.
+  var mx = MATRIX_CFG.matrix || (MATRIX_CFG.matrix = {});
+  p.blocks.forEach(function(b) {
+    if (!mx[b.team]) mx[b.team] = {};
+    var block = mx[b.team][b.code] || (mx[b.team][b.code] = {});
+    function cellOf(v) { var c = {}; b.metrics.forEach(function(k) { c[k] = v[k] || 0; }); return c; }
+    if (b.row) block.ALL = cellOf(b.row);
+    Object.keys(b.levels).forEach(function(lk) {
+      if (b.levels[lk] === null) delete block[lk]; else block[lk] = cellOf(b.levels[lk]);
+    });
+  });
+  var n = p.blocks.length;
+  function fail(msg) {
+    if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
+    if (st) { st.textContent = 'Save failed: ' + msg; st.classList.add('sw-bad'); }
+  }
+  function done() {
+    if (btn) btn.textContent = 'Save';
+    if (st) {
+      st.textContent = '✓ Saved' + (p.base ? ' the company default' : '') +
+        (n ? (p.base ? ' and ' : ' ') + n + ' role' + (n === 1 ? '' : 's') : '') + ' — scores update on the next refresh';
+      st.classList.remove('sw-bad');
+    }
+    loadScoringMatrix_(true);
+  }
+  function saveMatrix() {
+    if (!n) { done(); return; }
+    google.script.run
+      .withSuccessHandler(function(res) { if (res && res.ok) done(); else fail((res && res.error) || 'unknown error'); })
+      .withFailureHandler(function(e) { fail(String(e.message || e)); })
+      .saveScoringMatrix({ matrix: MATRIX_CFG.matrix });
+  }
+  if (p.base) {
+    google.script.run
+      .withSuccessHandler(function(res) { if (res && res.ok) { SCORE_W = p.base; saveMatrix(); } else fail((res && res.error) || 'unknown error'); })
+      .withFailureHandler(function(e) { fail(String(e.message || e)); })
+      .saveWeightSettings(p.base);
+  } else {
+    saveMatrix();
+  }
+}
+
+// Scoring config from getScoringConfig() — summary for everyone; editors also get
+// the matrix of the teams they may write (cfg.editTeams) and canEditBase.
 var MATRIX_CFG = null;
 
 // Fetches the scoring config once and renders the page from it; a team switch
 // re-renders from the same config (the payload covers every team the caller may
 // see). `force` refetches — after a save; the Refresh button clears it too.
 function loadScoringMatrix_(force) {
-  if (!force && MATRIX_CFG && MATRIX_CFG.ok) { renderScoringFromCfg_(); return; }
+  if (!force && MATRIX_CFG && MATRIX_CFG.ok) { renderScoringSummary_(); return; }
   google.script.run
     .withSuccessHandler(function(cfg) {
       MATRIX_CFG = cfg;
-      renderScoringFromCfg_();
+      renderScoringSummary_();
     })
     .withFailureHandler(function(e) {
       var msg = esc(String(e.message || e));
       var sum = document.getElementById("scoringSummary");
       if (sum) sum.innerHTML = '<div class="mx-err">Failed to load scoring weights: ' + msg + '</div>';
-      var el = document.getElementById("matrixSection");
-      if (el) el.innerHTML = '<p style="color:#B71C1C;font-size:12px;padding:8px 0">Failed to load scoring matrix: ' + msg + '</p>';
     })
     .getScoringConfig();
-}
-
-function renderScoringFromCfg_() {
-  var cfg = MATRIX_CFG;
-  renderScoringSummary_();
-  // The editor needs the full config, which the server ships to editors only.
-  if (!document.getElementById("matrixSection")) return;
-  if (cfg && cfg.canEdit) renderMatrixSection_();
-  else document.getElementById("matrixSection").innerHTML =
-    '<div class="mx-err">The scoring matrix can only be edited by Super Admins and Org Admins.</div>';
-}
-
-// Section lookup helpers — cfg.sections is ordered like the dashboard team toggle.
-function matrixSection_(team) {
-  var secs = (MATRIX_CFG && MATRIX_CFG.sections) || [];
-  for (var i = 0; i < secs.length; i++) if (secs[i].team.key === team) return secs[i];
-  return null;
-}
-
-// Fill defaults a (team, family) block inherits — shipped per family by the server
-// (blockFillBase_), so the client never re-derives the policy rule.
-function matrixFill_(team, fam) {
-  var sec = matrixSection_(team);
-  if (!sec) return {};
-  if (fam !== 'ALL') {
-    for (var i = 0; i < sec.families.length; i++) {
-      if (sec.families[i].code === fam) return sec.families[i].fill || {};
-    }
-  }
-  return (sec.catchAll && sec.catchAll.fill) || {};
-}
-
-function teamWeightDefs_(sec) {
-  return WEIGHT_DEFS.filter(function(d) { return sec.team.metrics.indexOf(d.key) !== -1; });
-}
-
-function renderMatrixSection_() {
-  var el = document.getElementById("matrixSection");
-  if (!el) return;
-  var cfg = MATRIX_CFG;
-  if (!cfg || !cfg.ok) {
-    el.innerHTML = '<div class="mx-err">Scoring matrix unavailable' +
-      (cfg && cfg.error ? ': ' + esc(cfg.error) : '') + '</div>';
-    return;
-  }
-
-  // One group at a time: the team the toggle shows, and only if the caller may
-  // tune it (cfg.editTeams — Super Admin: every team; Org Admin: their own).
-  var teamKey = swTeamKey_(), teamLabel = swTeamLabel_();
-  var secs = (cfg.sections || []).filter(function(s) { return s.team.key === teamKey; });
-  var html = '<div class="sec-header">⚖️ ' + esc(teamLabel) + ' — weights by family &amp; level</div>' +
-    '<p class="sec-sub">The families below are the ones with active <strong>' + esc(teamLabel) + '</strong> members; ' +
-    'switch the team toggle above for another group. A family with members in two teams is tuned independently in each. ' +
-    'The team scores only on its own metric set; blank cells inherit the placeholder ' +
-    'weights shown. Each level column should total 100% (other totals are renormalized at scoring time).</p>';
-
-  if ((cfg.editTeams || []).indexOf(teamKey) === -1) {
-    el.innerHTML = html + '<div class="mx-err">The ' + esc(teamLabel) + ' weights can only be changed by Super Admins and the ' +
-      esc(teamLabel) + ' Org Admins.</div>';
-    return;
-  }
-  if (!secs.length) {
-    el.innerHTML = html + '<div class="mx-err">No ' + esc(teamLabel) + ' families with active members.</div>';
-    return;
-  }
-
-  secs.forEach(function(sec) {
-    html += renderTeamSeparator_(sec);
-    if (sec.team.key === 'services') html += renderDefaultRef_(cfg);
-    sec.families.forEach(function(f) {
-      var fam = cfg.rolesByFamily[f.code];
-      var levels = fam ? cfg.levelCols.filter(function(lk) { return fam.levels[lk]; }) : [];
-      html += renderFamilyBlock_(sec, f, levels, fam);
-    });
-    html += renderTeamCatchAll_(sec);
-  });
-
-  html += '<div class="settings-actions" style="margin-top:14px">' +
-    '<button class="settings-btn settings-btn-primary" id="saveMatrixBtn" onclick="saveMatrixToSheet_()">Save Scoring Matrix</button>' +
-    '<span id="matrixSaveFlash" class="settings-save-flash" style="display:none">✓ Saved</span>' +
-  '</div>' +
-  '<div id="matrixSaveError" class="mx-err" style="display:none;margin-top:8px"></div>' +
-  '<p class="settings-note">Weights are stored in the <strong>PS Scoring Matrix</strong> sheet (Team + Family rows); role mappings in <strong>Job Catalog</strong>. ' +
-  'Both can also be edited directly in the spreadsheet. Changes apply on the next data refresh.</p>';
-
-  el.innerHTML = html;
-}
-
-// Team separator — a visual group header; carries no weights of its own.
-function renderTeamSeparator_(sec) {
-  var n = (sec.catchAll && sec.catchAll.count) || 0;
-  sec.families.forEach(function(f) { n += f.count || 0; });
-  var chips = teamWeightDefs_(sec).map(function(d) {
-    return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">' +
-      '<span style="width:7px;height:7px;border-radius:50%;background:' + d.color + '"></span>' + esc(d.label) + '</span>';
-  }).join('<span style="color:var(--border)">·</span>');
-  return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 6px;padding:8px 2px;border-bottom:2px solid var(--border)">' +
-    '<span style="font-size:14px;font-weight:900;color:var(--void)">' + esc(sec.team.label) + '</span>' +
-    '<span style="font-size:11px;font-weight:600;color:var(--muted)">' + sec.families.length + ' famil' +
-      (sec.families.length !== 1 ? 'ies' : 'y') + ' · ' + n + ' rocketeer' + (n !== 1 ? 's' : '') + '</span>' +
-    '<span style="display:inline-flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap">' + chips + '</span>' +
-  '</div>';
-}
-
-// Read-only Services base panel — mirrors the flat base weights (the single source
-// the Services-team natives inherit).
-function renderDefaultRef_(cfg) {
-  var bw = cfg.baseWeights || {};
-  var chips = WEIGHT_DEFS.map(function(d) {
-    var v = bw[d.key] || 0;
-    return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--void);' +
-      'border:1px solid var(--border);border-radius:999px;padding:3px 10px">' +
-      '<span style="width:8px;height:8px;border-radius:50%;background:' + d.color + '"></span>' +
-      esc(d.label) + ' ' + v + '%</span>';
-  }).join('');
-  return '<div class="mx-default-ref">' +
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-      '<span style="font-size:13px;font-weight:800;color:var(--void)">Services Base</span>' +
-      '<span class="mx-badge mx-badge-default">Services families inherit this</span>' +
-    '</div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px">' + chips + '</div>' +
-    '<div style="font-size:11px;color:var(--muted);margin-top:8px">Edit these in <strong>Scoring Weights</strong> above. ' +
-    'Operational families embedded in Services inherit their policy placeholders instead (tracked/planned/RCR stay 0).</div>' +
-  '</div>';
 }
 
 function shortRole_(t) {
   var i = t.lastIndexOf(', ');
   return i > 0 ? t.slice(0, i) : t;
-}
-
-// Effective weight after inheritance: level cell → family ALL cell → fill defaults.
-function matrixEffectiveW_(team, fam, lk, met) {
-  var block = ((MATRIX_CFG.matrix || {})[team] || {})[fam] || {};
-  if (block[lk] && block[lk][met] !== undefined) return block[lk][met];
-  if (lk !== 'ALL' && block.ALL && block.ALL[met] !== undefined) return block.ALL[met];
-  return matrixFill_(team, fam)[met] || 0;
-}
-
-// A block is "custom" once it carries any explicit (non-blank) weight.
-function familyHasOverride_(team, code) {
-  var m = ((MATRIX_CFG.matrix || {})[team] || {})[code];
-  if (!m) return false;
-  for (var lk in m) {
-    if (!m.hasOwnProperty(lk)) continue;
-    for (var met in m[lk]) {
-      if (m[lk].hasOwnProperty(met) && m[lk][met] !== undefined && m[lk][met] !== '') return true;
-    }
-  }
-  return false;
-}
-
-function matrixColSum_(team, fam, lk) {
-  var sec = matrixSection_(team);
-  var mets = sec ? sec.team.metrics : MATRIX_CFG.metrics;
-  var s = 0;
-  mets.forEach(function(met) { s += +matrixEffectiveW_(team, fam, lk, met) || 0; });
-  return Math.round(s * 10) / 10;
-}
-
-// One (team, family) block: read-only roles reference + editable weights grid over
-// the family's catalog levels plus the block-wide ALL column.
-function renderFamilyBlock_(sec, f, levels, famData) {
-  var team = sec.team.key, code = f.code, name = f.name;
-  var isCustom = familyHasOverride_(team, code);
-  var cols = levels.concat(['ALL']);
-  var defs = teamWeightDefs_(sec);
-  var roleCount = 0, groupSet = {};
-  levels.forEach(function(lk) {
-    ((famData && famData.levels[lk]) || []).forEach(function(r) { roleCount++; groupSet[r.group || name] = true; });
-  });
-  var groups = Object.keys(groupSet);
-
-  var thStyle = 'padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:center;min-width:54px';
-  function lvlCls(lk) { return lk.charAt(0) === 'I' ? 'mx-lvl-ic' : 'mx-lvl-mg'; }
-  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + team + '-' + code + '">' +
-    (isCustom ? 'Custom' : 'Inheriting') + '</span>';
-
-  var html = '<details style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
-    '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font-size:13px;font-weight:800;color:var(--void)">' + esc(name) + '</span>' + badge +
-      '<span style="font-weight:600;color:var(--muted);font-size:11px">' + esc(code) + ' · ' + f.count + ' rocketeer' +
-        (f.count !== 1 ? 's' : '') + ' · ' + roleCount + ' role' + (roleCount !== 1 ? 's' : '') + '</span>' +
-    '</summary>' +
-    '<div style="padding:6px 14px 12px;overflow-x:auto">';
-
-  // Read-only roles reference, one row per role group
-  if (groups.length) {
-    html += '<table style="border-collapse:collapse;margin:6px 0 10px;width:max-content"><thead><tr>' +
-      '<th style="' + thStyle + ';text-align:left;min-width:150px">Roles at each level</th>' +
-      levels.map(function(lk) {
-        return '<th class="' + lvlCls(lk) + '" style="' + thStyle + '">' + lk + '</th>';
-      }).join('') + '</tr></thead><tbody>';
-    groups.forEach(function(g) {
-      html += '<tr><th style="padding:5px 6px;font-size:11px;font-weight:700;color:var(--slate);text-align:left;border-bottom:1px solid var(--border)">' + esc(g) + '</th>' +
-        levels.map(function(lk) {
-          var roles = ((famData && famData.levels[lk]) || []).filter(function(r) { return (r.group || name) === g; });
-          return '<td style="padding:4px 6px;font-size:10px;color:var(--slate);border-bottom:1px solid var(--border);vertical-align:top;max-width:150px">' +
-            roles.map(function(r) { return '<div title="' + esc(r.code + ' — ' + r.title) + '">' + esc(shortRole_(r.title)) + '</div>'; }).join('') +
-          '</td>';
-        }).join('') + '</tr>';
-    });
-    html += '</tbody></table>';
-  }
-
-  // Editable weights grid: team metric rows × (level columns + ALL)
-  html += '<table style="border-collapse:collapse;width:max-content"><thead><tr>' +
-    '<th style="' + thStyle + ';text-align:left;min-width:150px">Metric</th>' +
-    cols.map(function(lk) {
-      return '<th class="' + (lk === 'ALL' ? '' : lvlCls(lk)) + '" style="' + thStyle + '">' + lk + '</th>';
-    }).join('') + '</tr></thead><tbody>';
-
-  defs.forEach(function(d) {
-    html += '<tr><th style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--void);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' +
-      '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + d.color + ';margin-right:6px;vertical-align:1px"></span>' +
-      esc(d.label) + '</th>' +
-      cols.map(function(lk) { return matrixInputCell_(team, code, lk, d.key); }).join('') + '</tr>';
-  });
-
-  // Live per-column totals (soft warn ≠ 100%)
-  html += '<tr><th style="padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:right">Σ / level</th>' +
-    cols.map(function(lk) {
-      var t = matrixColSum_(team, code, lk);
-      return '<td id="msum-' + team + '-' + code + '-' + lk + '" style="padding:4px 6px;font-size:11px;font-weight:800;text-align:center;color:' +
-        (t === 100 ? '#00A86B' : '#D97706') + '">' + t + '%</td>';
-    }).join('') + '</tr>';
-  html += '</tbody></table>';
-
-  html += '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
-    'onclick="resetFamilyMatrix_(\'' + team + '\',\'' + code + '\')">Reset — inherit defaults</button>';
-  html += '</div></details>';
-  return html;
-}
-
-// One editable weight input cell (shared by family blocks and catch-alls).
-function matrixInputCell_(team, fam, lk, met) {
-  var block = ((MATRIX_CFG.matrix || {})[team] || {})[fam] || {};
-  var v = (block[lk] && block[lk][met] !== undefined) ? block[lk][met] : '';
-  return '<td style="padding:3px 4px;border-bottom:1px solid var(--border);text-align:center">' +
-    '<input type="number" min="0" max="100" step="1" value="' + v + '" ' +
-    'placeholder="' + matrixEffectiveW_(team, fam, lk, met) + '" ' +
-    'style="width:50px;font-size:12px;text-align:right;padding:3px 5px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text)" ' +
-    'oninput="matrixCellInput_(\'' + team + '\',\'' + fam + '\',\'' + lk + '\',\'' + met + '\',this.value)"></td>';
-}
-
-// Per-team catch-all block — uncatalogued titles score with this block's weights
-// (single ALL column). The Services section also lists the unmapped titles.
-function renderTeamCatchAll_(sec) {
-  var team = sec.team.key, code = 'ALL';
-  var isCustom = familyHasOverride_(team, code);
-  var n = (sec.catchAll && sec.catchAll.count) || 0;
-  var defs = teamWeightDefs_(sec);
-  var thStyle = 'padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:center;min-width:54px';
-  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + team + '-' + code + '">' +
-    (isCustom ? 'Custom' : 'Inheriting') + '</span>';
-
-  var html = '<details style="margin:8px 0;border:1px dashed var(--border);border-radius:10px;overflow:hidden">' +
-    '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font-size:13px;font-weight:800;color:var(--void)">Uncatalogued titles</span>' + badge +
-      '<span style="font-weight:600;color:var(--muted);font-size:11px">catch-all · ' + n + ' rocketeer' + (n !== 1 ? 's' : '') + '</span>' +
-    '</summary>' +
-    '<div style="padding:6px 14px 12px;overflow-x:auto">' +
-    '<p style="font-size:11px;color:var(--muted);margin:6px 0 10px;max-width:640px">' + esc(sec.team.label) +
-      ' members whose job title is not in the <strong>Job Catalog</strong> score with this block\'s weights ' +
-      '(one set, all levels). Blank cells inherit the placeholders. Add the title to the Job Catalog sheet ' +
-      'to give it real family &amp; level weights instead.</p>';
-
-  if (team === 'services') {
-    var titles = MATRIX_CFG.unmappedTitles || [];
-    if (titles.length) {
-      html += '<details class="mx-unmapped" style="margin:0 0 10px"><summary>' + titles.length + ' title' +
-          (titles.length !== 1 ? 's' : '') + ' — view list</summary>' +
-        '<div style="padding:8px 12px">' +
-          titles.map(function(u) {
-            return '<div style="font-size:12px;color:var(--slate)">' + esc(u.jobTitle) +
-              ' <span style="color:var(--muted)">· ' + u.count + ' rocketeer' + (u.count !== 1 ? 's' : '') + '</span></div>';
-          }).join('') +
-        '</div></details>';
-    } else {
-      html += '<p style="font-size:11px;color:var(--muted);margin:0 0 10px">All Services roster titles are currently mapped in the Job Catalog — nobody scores via this block right now.</p>';
-    }
-  }
-
-  html += '<table style="border-collapse:collapse;width:max-content"><thead><tr>' +
-    '<th style="' + thStyle + ';text-align:left;min-width:150px">Metric</th>' +
-    '<th style="' + thStyle + '">All levels</th>' +
-    '</tr></thead><tbody>';
-  defs.forEach(function(d) {
-    html += '<tr><th style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--void);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' +
-      '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + d.color + ';margin-right:6px;vertical-align:1px"></span>' +
-      esc(d.label) + '</th>' + matrixInputCell_(team, code, 'ALL', d.key) + '</tr>';
-  });
-  var t = matrixColSum_(team, code, 'ALL');
-  html += '<tr><th style="padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:right">Σ / level</th>' +
-    '<td id="msum-' + team + '-' + code + '-ALL" style="padding:4px 6px;font-size:11px;font-weight:800;text-align:center;color:' +
-      (t === 100 ? '#00A86B' : '#D97706') + '">' + t + '%</td></tr>';
-  html += '</tbody></table>';
-
-  html += '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
-    'onclick="resetFamilyMatrix_(\'' + team + '\',\'' + code + '\')">Reset — inherit defaults</button>';
-  html += '</div></details>';
-  return html;
-}
-
-function matrixCellInput_(team, fam, lk, met, val) {
-  var m = MATRIX_CFG.matrix;
-  if (!m[team]) m[team] = {};
-  if (!m[team][fam]) m[team][fam] = {};
-  if (!m[team][fam][lk]) m[team][fam][lk] = {};
-  if (val === '' || val === null) {
-    delete m[team][fam][lk][met]; // blank → inherit
-  } else {
-    m[team][fam][lk][met] = Math.max(0, Math.min(100, parseFloat(val) || 0));
-  }
-  updateMatrixSum_(team, fam, lk);
-  if (lk === 'ALL') {
-    // A block-wide ALL edit changes every level's effective value — refresh all sums.
-    var sec = matrixSection_(team), fRec = null;
-    if (sec) sec.families.forEach(function(x) { if (x.code === fam) fRec = x; });
-    var famData = MATRIX_CFG.rolesByFamily[fam];
-    var levels = famData ? MATRIX_CFG.levelCols.filter(function(k) { return famData.levels[k]; }) : [];
-    levels.forEach(function(k) { updateMatrixSum_(team, fam, k); });
-  }
-  updateFamilyBadge_(team, fam);
-}
-
-function updateMatrixSum_(team, fam, lk) {
-  var cell = document.getElementById('msum-' + team + '-' + fam + '-' + lk);
-  if (!cell) return;
-  var t = matrixColSum_(team, fam, lk);
-  cell.textContent = t + '%';
-  cell.style.color = t === 100 ? '#00A86B' : '#D97706';
-}
-
-// Live Custom/Inheriting badge update as the admin edits a block's cells.
-function updateFamilyBadge_(team, fam) {
-  var b = document.getElementById('mxbadge-' + team + '-' + fam);
-  if (!b) return;
-  var custom = familyHasOverride_(team, fam);
-  b.className = 'mx-badge ' + (custom ? 'mx-badge-custom' : 'mx-badge-default');
-  b.textContent = custom ? 'Custom' : 'Inheriting';
-}
-
-// Reset = empty the rendered block (NOT delete the key): saveScoringMatrix's merge
-// treats a present-but-empty block as "clear my stored weights".
-function resetFamilyMatrix_(team, fam) {
-  if (MATRIX_CFG && MATRIX_CFG.matrix) {
-    if (!MATRIX_CFG.matrix[team]) MATRIX_CFG.matrix[team] = {};
-    MATRIX_CFG.matrix[team][fam] = {};
-    renderMatrixSection_(); // re-render from state; other unsaved edits are kept
-  }
-}
-
-function saveMatrixToSheet_() {
-  var btn = document.getElementById('saveMatrixBtn');
-  var err = document.getElementById('matrixSaveError');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  if (err) err.style.display = 'none';
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Save Scoring Matrix'; }
-      if (res && res.ok) {
-        var flash = document.getElementById('matrixSaveFlash');
-        if (flash) { flash.style.display = 'inline'; setTimeout(function() { flash.style.display = 'none'; }, 2500); }
-        loadScoringMatrix_(true);   // the role table above is server-resolved — refresh it
-      } else if (err) {
-        err.textContent = 'Save failed: ' + ((res && res.error) || 'unknown error');
-        err.style.display = 'block';
-      }
-    })
-    .withFailureHandler(function(e) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Save Scoring Matrix'; }
-      if (err) { err.textContent = 'Save failed: ' + String(e.message || e); err.style.display = 'block'; }
-    })
-    .saveScoringMatrix({ matrix: MATRIX_CFG.matrix });
 }
 
 // ── ACCESS CONTROL LIST EDITOR ────────────────────────────
@@ -12502,130 +12105,6 @@ function saveSecuritySettings_() {
       if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
     })
     .saveAccessSettings(payload);
-}
-
-function syncWeightSlider(key) {
-  var s = document.getElementById("ws-" + key);
-  var n = document.getElementById("wn-" + key);
-  if (n) n.value = s.value;
-  updateWeightTotal();
-}
-
-function syncWeightNum(key) {
-  var n = document.getElementById("wn-" + key);
-  var s = document.getElementById("ws-" + key);
-  var v = Math.max(0, Math.min(100, parseInt(n.value) || 0));
-  n.value = v;
-  if (s) s.value = v;
-  updateWeightTotal();
-}
-
-function getCurrentWeightValues() {
-  var w = {};
-  WEIGHT_DEFS.forEach(function(d) {
-    var el = document.getElementById("wn-" + d.key);
-    w[d.key] = el ? (parseInt(el.value) || 0) : (SCORE_W[d.key] || 0);
-  });
-  return w;
-}
-
-function updateWeightTotal() {
-  var w     = getCurrentWeightValues();
-  var total = WEIGHT_DEFS.reduce(function(sum, d) { return sum + (w[d.key] || 0); }, 0);
-  var ok    = total === 100;
-
-  var totalEl = document.getElementById("weightTotal");
-  var warnEl  = document.getElementById("weightWarning");
-  var saveBtn = document.getElementById("saveWeightsBtn");
-
-  if (totalEl) { totalEl.textContent = total + "%"; totalEl.style.color = ok ? "var(--success)" : "var(--june)"; }
-  if (warnEl)  warnEl.style.display  = ok ? "none" : "block";
-  if (saveBtn) saveBtn.disabled = !ok;
-  updateWeightStrip();
-}
-
-function updateWeightStrip() {
-  var w = getCurrentWeightValues();
-  var strip  = document.getElementById("weightStrip");
-  var legend = document.getElementById("weightStripLegend");
-  if (!strip || !legend) return;
-  strip.innerHTML = WEIGHT_DEFS.map(function(d) {
-    var v = w[d.key] || 0;
-    return '<div class="weight-strip-seg" style="flex:' + v + ';background:' + d.color + '" title="' + esc(d.label) + ' ' + v + '%"></div>';
-  }).join('');
-  legend.innerHTML = WEIGHT_DEFS.map(function(d) {
-    return '<span class="weight-strip-leg-item">' +
-      '<span class="weight-strip-leg-dot" style="background:' + d.color + '"></span>' +
-      esc(d.label) + '&nbsp;<strong>' + (w[d.key] || 0) + '%</strong>' +
-    '</span>';
-  }).join('');
-}
-
-function resetWeightsToDefault() {
-  var defaults = { goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 };
-  WEIGHT_DEFS.forEach(function(d) {
-    var v  = defaults[d.key] || 0;
-    var sl = document.getElementById("ws-" + d.key);
-    var nu = document.getElementById("wn-" + d.key);
-    if (sl) sl.value = v;
-    if (nu) nu.value = v;
-  });
-  updateWeightTotal();
-}
-
-function previewWeights() {
-  var w     = getCurrentWeightValues();
-  var total = WEIGHT_DEFS.reduce(function(sum, d) { return sum + (w[d.key] || 0); }, 0);
-  if (total !== 100) {
-    document.getElementById("weightWarning").style.display = "block";
-    return;
-  }
-  SCORE_W = w;
-  switchTab("perfrecord");
-}
-
-function saveWeightsToSheet() {
-  var w     = getCurrentWeightValues();
-  var total = WEIGHT_DEFS.reduce(function(sum, d) { return sum + (w[d.key] || 0); }, 0);
-  if (total !== 100) return;
-
-  var btn       = document.getElementById("saveWeightsBtn");
-  var flash     = document.getElementById("saveFlash");
-  var errEl     = document.getElementById("saveError");
-  var tsEl      = document.getElementById("saveTimestamp");
-
-  // Apply immediately so score changes are visible right away
-  var prevW = Object.assign({}, SCORE_W);
-  SCORE_W = w;
-
-  if (btn)   { btn.disabled = true; btn.textContent = "Saving…"; }
-  if (flash) flash.style.display = "none";
-  if (errEl) errEl.style.display = "none";
-
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (btn) { btn.textContent = "Save"; btn.disabled = false; }
-      if (result && result.ok) {
-        if (flash) { flash.style.display = "inline-flex"; setTimeout(function() { flash.style.display = "none"; }, 4000); }
-        if (tsEl && result.savedAt) {
-          var d = new Date(result.savedAt);
-          tsEl.textContent = "Last saved: " + d.toLocaleString();
-        }
-      } else {
-        // Roll back optimistic update
-        SCORE_W = prevW;
-        var msg = (result && result.error) ? result.error : "Save failed — check spreadsheet permissions.";
-        if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
-      }
-    })
-    .withFailureHandler(function(err) {
-      // Roll back optimistic update
-      SCORE_W = prevW;
-      if (btn) { btn.disabled = false; btn.textContent = "Save"; }
-      var msg = "Save failed: " + String(err).substring(0, 120);
-      if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
-    })
-    .saveWeightSettings(w);
 }
 
 // ── CONFLUENCE COPY ───────────────────────────────────────

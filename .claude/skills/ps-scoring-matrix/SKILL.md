@@ -45,8 +45,7 @@ family tunes**. Spec: `ps-dashboard/docs/specs/2026-07-09-team-aligned-scoring-d
   (folded four-step note). Org-scoped callers (`DATA.managerScopeName`) get
   `buildScopedRows_`: only the roles/levels their people hold (catalog title, then job-code
   prefix; uncatalogued → "Other job titles" from the team catch-all; crew excluded), with
-  headcounts. Editors type rates inline (`saveRoleWeights_` writes changed rows'
-  `ALL` cells only; level cells untouched — those live in the Advanced editor).
+  headcounts. Editors type rates inline — see "One place to edit" below.
 - **One team at a time (2026.W42)**: the table and the Advanced editor show the team the
   dashboard toggle shows (`swTeamKey_()` = `DATA.meta.team.key`; `renderScoringSummary_`
   filters `cfg.sections` to it before `buildRoleRows_`). Services shows its roles and
@@ -61,10 +60,17 @@ family tunes**. Spec: `ps-dashboard/docs/specs/2026-07-09-team-aligned-scoring-d
   `saveScoringMatrix` refuses a payload naming any other team (whole save, logged). The
   "Other job titles" row never carries inputs (`r.targets` empty). Non-editors get the
   summary payload only (plus `levelCols`). Tests: `tests/scoring-weights-view-checks.js`.
-- **Advanced editor** (folded under "Advanced settings"; company default has rate inputs, no
-  slider, super admins only): the matrix section renders the team on screen — one separator
-  with its family blocks placed by active membership (`getScoringConfig().sections`) plus the
-  team's "Uncatalogued titles" catch-all — and refuses a team outside `cfg.editTeams`.
-  `saveScoringMatrix()` validates metrics against the team's set and busts the cache.
+- **One place to edit (2026.W42)** — no Advanced settings fold, no matrix editor, no
+  flat-base editor: the page's cells are the inputs. Company default chips (`data-base`,
+  super admins only), role cells (`data-row`), level cells inside the fold (`data-row` +
+  `data-lvl`, per-level total, "follow role" reset = `swFollowRole_`). `swOnInput_`: live
+  totals; a role-row edit flows down to levels that were following it (equal to the row before
+  the edit), never to a level tuned on its own. `swPending_` → `saveScoringPage_`:
+  `saveWeightSettings` only when the base changed, then `saveScoringMatrix` — row → `ALL` cell
+  only when the row changed (inheriting families keep inheriting), level → own cell when it
+  differs from the row, cell removed when it matches — then `loadScoringMatrix_(true)`.
+  `saveScoringMatrix()` still validates metrics against the team's set, refuses teams outside
+  `scoringEditTeams_`, and busts the cache. The team catch-all ("Other job titles") has no
+  inputs (`targets` empty).
 - Tests: `_test_weightsResolver()` and `_test_matrixMigration()` — GAS editor or Node
   (eval both PS files with a stubbed `Logger`).

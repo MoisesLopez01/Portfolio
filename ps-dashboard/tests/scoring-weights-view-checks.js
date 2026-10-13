@@ -16,7 +16,9 @@
 //      canEditScoring_() for a team in cfg.editTeams, and never while previewing;
 //      the page is the company default strip + ONE role table (the team the toggle
 //      shows) whose rows fold open to their levels; org-scoped callers get only the
-//      roles and levels their own people hold.
+//      roles and levels their own people hold. Since 2026.W42 (later) there is NO
+//      separate editor: the strip (super admins), the role cells and the level cells
+//      are the inputs, and one Save writes the company default and the matrix.
 //
 // Run: node "ps-dashboard/tests/scoring-weights-view-checks.js"
 const fs   = require('fs');
@@ -239,14 +241,14 @@ ck('client canEditScoringBase_ = super admin only, through isSuperAdmin_()',
 ck('the editable test for the team on screen is server truth (cfg.editTeams), not a role guess',
    /function swCanEditTeam_\(cfg\)\s*\{\s*return canEditScoring_\(\) && !!\(cfg && cfg\.canEdit && cfg\.matrix\) && \(cfg\.editTeams \|\| \[\]\)\.indexOf\(swTeamKey_\(\)\) !== -1;/.test(html));
 const tab = fnBody(html, 'renderWeightsTab_');
-ck('renderWeightsTab_ asks canEditScoring_()', /var canEdit = canEditScoring_\(\);/.test(tab));
-ck('a non-editor returns before any editor markup is built',
-   tab.indexOf('if (!canEdit) {') !== -1 && tab.indexOf('if (!canEdit) {') < tab.indexOf('class="weight-num"'));
-ck('the advanced editor sits folded under "Advanced settings"',
-   /<details class="sw-editor" id="weightsEditor"/.test(tab) && /Advanced settings/.test(tab));
-ck('the company default editor is built for canEditScoringBase_() only',
-   /var canBase = canEditScoringBase_\(\);/.test(tab) && tab.indexOf('if (canBase) {') !== -1 &&
-   tab.indexOf('if (canBase) {') < tab.indexOf('class="weight-num"') && /if \(canBase\) updateWeightTotal\(\);/.test(tab));
+ck('renderWeightsTab_ renders the overview for everyone and nothing else',
+   /renderScoringOverview_\(canEditScoring_\(\)\)/.test(tab) && /loadScoringMatrix_\(\);/.test(tab));
+ck('no separate editor anywhere: no Advanced settings fold, no matrix editor, no flat-base editor',
+   html.indexOf('Advanced settings') === -1 && html.indexOf('weightsEditor') === -1 && html.indexOf('matrixSection') === -1 &&
+   html.indexOf('renderMatrixSection_') === -1 && html.indexOf('saveWeightsToSheet') === -1 && html.indexOf('class="weight-num"') === -1);
+ck('the company default strip carries rate inputs for canEditScoringBase_() only',
+   /renderCompanyDefault_\(cfg, canEditScoringBase_\(\)\)/.test(fnBody(html, 'renderScoringSummary_')) &&
+   /editable\s*\?\s*'<input type="number" class="sw-rate sw-rate-sm"[\s\S]{0,160}data-base="1"/.test(fnBody(html, 'renderCompanyDefault_')));
 ck('a Refresh (live read) drops the cached scoring config', /if \(forceRefresh\) MATRIX_CFG = null;/.test(fnBody(html, 'loadData')));
 ck('everyone gets the summary placeholder', /id="scoringSummary"/.test(fnBody(html, 'renderScoringOverview_')));
 // The read view is ONE table, one row per role, the same seven metric columns.
@@ -262,13 +264,27 @@ ck('the table shows ONE team — the one the toggle shows',
    /var rows = buildRoleRows_\(teamCfg\);/.test(summary));
 ck('the table names its team and, for editors, the blast radius of a change',
    /esc\(teamLabel\) \+ '<\/b> — '/.test(summary) && /a change applies to every ' \+ esc\(teamLabel\) \+ ' rocketeer in that role/.test(summary));
-ck('a read-only row (no inputs) never blocks Save', /if \(!Object\.keys\(v\)\.length\) return;/.test(fnBody(html, 'swRateInput_')));
+const pending = fnBody(html, 'swPending_');
+ck('a read-only row (no inputs) never blocks Save', /if \(!Object\.keys\(vals\)\.length\) return;/.test(pending));
+ck('the base, every edited role row and every edited level must total 100 before Save',
+   /if \(swSum_\(b\) !== 100\) out\.ok = false;/.test(pending) && /if \(swSum_\(vals\) !== 100\) out\.ok = false;/.test(pending) &&
+   /if \(swSum_\(lv\) !== 100\) out\.ok = false;/.test(pending));
 ck('no slider anywhere on the page', !/type="range"/.test(html));
 ck('every row shows its score mix', /roleMixBar_\(r\.points\)/.test(summary));
-const saveRole = fnBody(html, 'saveRoleWeights_');
-ck('Save writes only roles whose points changed', /if \(!Object\.keys\(vals\)\.some\(/.test(saveRole));
-ck('Save writes the family-wide (ALL) cell, leaving level cells alone', /mx\[t\.team\]\[t\.code\]\.ALL = cell;/.test(saveRole));
-ck('Save goes through saveScoringMatrix (server re-checks canEditScoring_)', /\.saveScoringMatrix\(\{ matrix: MATRIX_CFG\.matrix \}\)/.test(saveRole));
+const savePage = fnBody(html, 'saveScoringPage_');
+ck('Save writes a role row as the ALL cell only when the row changed (an inheriting family keeps inheriting)',
+   /var rowChanged = !swSame_\(vals, r\.points\);/.test(pending) && /row: rowChanged \? vals : null/.test(pending) &&
+   /if \(b\.row\) block\.ALL = cellOf\(b\.row\);/.test(savePage));
+ck('Save writes a level as its own cell when it differs from the role row, and removes the cell when it matches',
+   /if \(!swSame_\(lv, l\.points\)\) levels\[l\.key\] = swSame_\(lv, vals\) \? null : lv;/.test(pending) &&
+   /if \(b\.levels\[lk\] === null\) delete block\[lk\]; else block\[lk\] = cellOf\(b\.levels\[lk\]\);/.test(savePage));
+ck('Save goes through saveScoringMatrix (server re-checks canEditScoring_ and the teams)',
+   /\.saveScoringMatrix\(\{ matrix: MATRIX_CFG\.matrix \}\)/.test(savePage));
+ck('a changed company default goes through saveWeightSettings first, then the matrix, then a refetch',
+   /\.saveWeightSettings\(p\.base\)/.test(savePage) && savePage.indexOf('.saveWeightSettings(p.base)') > savePage.indexOf('function saveMatrix()') &&
+   /SCORE_W = p\.base; saveMatrix\(\);/.test(savePage) && /loadScoringMatrix_\(true\);/.test(savePage));
+ck('a role-row edit flows down to the levels that were following it, never to a level tuned on its own',
+   /if \(!Object\.keys\(lv\)\.length \|\| !swSame_\(lv, prev\)\) return;/.test(fnBody(html, 'swOnInput_')));
 // eslint-disable-next-line no-eval
 const sharesOf100_ = eval('(' + fnBody(html, 'sharesOf100_') + ')');
 const thirds = sharesOf100_({ goals: 1, kudos: 1, si: 1 }, ['goals', 'kudos', 'si']);
@@ -287,14 +303,16 @@ ck('level 1 — the company default strip renders from cfg.baseWeights, editable
    /sharesOf100_\(cfg\.baseWeights \|\| SCORE_W, keys\)/.test(fnBody(html, 'renderCompanyDefault_')));
 ck('level 3 — a role with catalog levels gets a fold row, hidden until opened',
    /if \(hasLv\) html \+= '<tr class="sw-detail" id="swD-' \+ i \+ '"' \+ \(open \? '' : ' hidden'\)/.test(summary) &&
-   /renderLevelFold_\(r, scoped, editable\)/.test(summary));
+   /renderLevelFold_\(r, i, scoped, rowEdit\)/.test(summary));
 ck('the fold toggle is a real button with aria-expanded / aria-controls',
    /<button type="button" class="sw-x" id="swX-' \+ i \+ '" aria-expanded="/.test(summary) && /aria-controls="swD-' \+ i \+ '"/.test(summary));
 ck('a role whose levels differ is tagged "varies by level"', /sw-tag[^']*>varies by level</.test(summary));
 const fold = fnBody(html, 'renderLevelFold_');
 ck('the fold lists level, job titles and the seven metric points', /Job titles at this level/.test(fold) && /WEIGHT_DEFS\.map\(function\(d\) \{ return '<th>' \+ esc\(d\.label\)/.test(fold));
 ck('a level point that differs from the role row is highlighted', /diff \? ' sw-diff'/.test(fold));
-ck('the fold never offers inputs (level tuning stays in Advanced settings)', !/<input/.test(fold) && /Level-specific points are set under Advanced settings/.test(fold));
+ck('the fold offers level inputs to editors only, each with a total and a "follow role" reset',
+   /editable\s*\?\s*'<input type="number" class="sw-rate sw-rate-sm'/.test(fold) && /data-lvl="' \+ esc\(l\.key\) \+ '"/.test(fold) &&
+   /if \(editable\) html \+= '<td><span class="sw-tot" id="swTot-' \+ i \+ '-' \+ esc\(l\.key\)/.test(fold) && /swFollowRole_\(/.test(fold));
 ck('"How a score is built" is folded and definition-free', /<details class="sw-how"/.test(fnBody(html, 'renderHowItWorks_')) &&
    !/Hours logged vs/.test(fnBody(html, 'renderHowItWorks_')));
 ck('an expand-all / collapse-all control exists', /id="swAllBtn" onclick="swToggleAll_\(\)"/.test(summary));
@@ -358,16 +376,10 @@ ck('both views share the one table', /if \(scoped\) rows = buildScopedRows_\(tea
   ck('scoped: the Other row carries no fold and no save targets', rows[2].levels.length === 0 && rows[2].targets.length === 0);
 }
 const load = fnBody(html, 'loadScoringMatrix_');
-const fromCfg = fnBody(html, 'renderScoringFromCfg_');
 ck('a team switch re-renders from the config already loaded; a save forces a refetch',
-   /if \(!force && MATRIX_CFG && MATRIX_CFG\.ok\) \{ renderScoringFromCfg_\(\); return; \}/.test(load) &&
-   /loadScoringMatrix_\(true\);/.test(fnBody(html, 'saveRoleWeights_')) && /loadScoringMatrix_\(true\);/.test(fnBody(html, 'saveMatrixToSheet_')));
-ck('the summary renders for every caller', /renderScoringSummary_\(\);/.test(fromCfg));
-ck('the matrix editor renders only on an editor payload', /if \(cfg && cfg\.canEdit\) renderMatrixSection_\(\);/.test(fromCfg));
-const mx = fnBody(html, 'renderMatrixSection_');
-ck('Advanced settings shows the team on screen only, and refuses a team outside cfg.editTeams',
-   /var secs = \(cfg\.sections \|\| \[\]\)\.filter\(function\(s\) \{ return s\.team\.key === teamKey; \}\);/.test(mx) &&
-   /if \(\(cfg\.editTeams \|\| \[\]\)\.indexOf\(teamKey\) === -1\) \{/.test(mx) && /secs\.forEach\(function\(sec\) \{/.test(mx) && !/cfg\.sections\.forEach/.test(mx));
+   /if \(!force && MATRIX_CFG && MATRIX_CFG\.ok\) \{ renderScoringSummary_\(\); return; \}/.test(load) &&
+   /loadScoringMatrix_\(true\);/.test(savePage));
+ck('the summary renders for every caller', /MATRIX_CFG = cfg;\s*renderScoringSummary_\(\);/.test(load));
 
 console.log(fail === 0
   ? `✅ scoring-weights-view-checks: ${pass} checks passed`

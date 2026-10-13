@@ -365,12 +365,22 @@ scores people. Level titles come from the catalog (job titles, never people). **
 callers** (payload carries `managerScopeName` — managers, delegates, org admins) get the same
 table narrowed to the roles and levels their own people hold, with headcounts
 (`buildScopedRows_`: catalog-title-then-job-code match, mirroring the server; uncatalogued →
-an "Other job titles" row; crew excluded). Editors type rates straight into the role cells (no
-sliders anywhere); Save writes only changed rows as the family's `ALL` cell of the team on
-screen (`saveRoleWeights_` → `saveScoringMatrix`) — a change applies to every rocketeer of that
-team in that role, and the table says so; level cells are tuned only under "Advanced
-settings", which shows the per-level matrix **for the team on screen** and, for super admins
-only, the company default.
+an "Other job titles" row; crew excluded).
+
+**One place to edit — there is no separate editor (2026.W42).** The "Advanced settings" fold,
+the flat-base editor and the Team → Family × Level matrix editor are gone; the page's own
+cells are the inputs (plain rate inputs, no sliders anywhere): the company default chips
+(super admins, `data-base`), the role cells (`data-row`) and, inside each role's fold, the
+level cells (`data-row` + `data-lvl`, with a per-level total and a "follow role" reset).
+`swOnInput_` gives live totals and flows a role-row edit down to the levels that were
+following it (equal to the row before the edit), never to a level tuned on its own.
+`swPending_` says what one Save would write and `saveScoringPage_` writes it: the company
+default through `saveWeightSettings` **only when it changed**, then the matrix through
+`saveScoringMatrix` — a role row becomes the family's `ALL` cell **only when the row changed**
+(an inheriting family keeps inheriting the company default), a level whose values moved
+becomes its own cell when it differs from the role row and loses its cell (inherits) when it
+matches — then a refetch. A change applies to every rocketeer of that team in that role, and
+the table says so.
 
 **Two edit gates, both in PS Security.js, both re-checked by the save endpoints:**
 

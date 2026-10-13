@@ -22,8 +22,11 @@ Managers and Org Admins see only the roles and levels their own people hold, wit
 
 ## What an editor can do
 
-- **Super Admin:** type a new rate in any role cell of any team and Save (each role must add up to 100). Under Advanced settings: the company default, and the per-level matrix of the team on screen.
-- **Org Admin:** the same role cells, for their own teams only. Under Advanced settings: the per-level matrix of the team on screen. No company default.
+Everything is edited in the one table; there is no separate "Advanced settings" any more (it duplicated the table and was removed the same day).
+
+- **Super Admin:** type a new rate in the company default chips, in any role cell of any team, or in any level cell inside a role's fold, then Save once. Each edited row must add up to 100.
+- **Org Admin:** the same role and level cells, for their own teams only. No company default.
+- A level that matches its role row follows it, including future changes; a level typed on its own is tuned on its own; "follow role" snaps it back.
 - A save is checked on the server. An Org Admin whose request names another team is refused outright and the attempt is logged.
 
 ## Where the rules live
@@ -37,6 +40,7 @@ Managers and Org Admins see only the roles and levels their own people hold, wit
 
 - GTT-935 created (Task, component Models, Metrics, Agents (MMA)), closed as Done with 6h logged.
 - `clasp pull` into a scratch dir showed no editor-only edits; `clasp push -f` (16 files) then `clasp deploy` published **@289** on the live URL.
+- Follow-up the same day: the duplicated "Advanced settings" editor was removed and the table became the one place to edit; published as **@290**.
 
 ## Open decision
 

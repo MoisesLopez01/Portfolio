@@ -27,7 +27,7 @@ function eq(name, got, want) {
 // Unambiguous anchor — the banner comment's rule length is cosmetic and the CSS
 // block above carries the same title.
 const START = 'var ACL = null;';
-const END   = 'function syncWeightSlider(key) {';
+const END   = '// ── CONFLUENCE COPY';   // the block runs to the next section (the old weights editor is gone since 2026.W42)
 const i0 = html.indexOf(START), i1 = html.indexOf(END);
 if (i0 < 0 || i1 < 0) { console.error('❌ editor block not found in PS Dashboard.html'); process.exit(1); }
 const src = html.slice(i0, i1);
