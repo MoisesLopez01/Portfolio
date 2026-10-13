@@ -50,8 +50,8 @@ role string: a bare `role === "admin"` comparison is a bug, and
 | Role | Sees | Teams | Can change | 📈 Perf Record | Own record |
 |---|---|---|---|---|---|
 | **Super Admin** | everyone | all 3 | everything, incl. the super-admin list | ✅ | ✅ visible |
-| **Admin** | everyone | all 3 | all settings + every access list | ✅ | ❌ hidden |
-| **Org Admin** | **own org tree** | those their reports sit in | access settings + viewers/delegates — **not** the Super/Admin/Org lists, **not** scoring weights (read-only) | ✅ own tree | ❌ hidden |
+| **Admin** | everyone | all 3 | all settings + every access list — **not** scoring weights (read-only since 2026.W42) | ✅ | ❌ hidden |
+| **Org Admin** | **own org tree** | those their reports sit in | access settings + viewers/delegates — **not** the Super/Admin/Org lists; scoring weights for **their own teams only** (never the company default) | ✅ own tree | ❌ hidden |
 | **Viewer** | everyone in **their own team** | **1 (pinned)** | nothing | ✅ own team | ❌ hidden |
 | **Manager** | own org tree (reports & below) | those their reports sit in | nothing | ✅ own tree | ❌ hidden |
 
@@ -135,7 +135,8 @@ These survive a Script Properties reset. Edit this file to add permanent stakeho
 
 - **Super Admin**: everything an Admin can do, plus sight of their own record and
   granting/revoking Super Admin.
-- **Admin**: full dashboard + can manage admins/viewers/delegates and scoring.
+- **Admin**: full dashboard + can manage admins/viewers/delegates. Reads scoring weights
+  (editing is Super Admin / Org Admin, see "Scoring weights").
 - **Viewer**: read-only dashboard.
 - **Delegate**: manager-scoped — sees only their org tree.
   Format: `{ email: "peer@servicerocket.com", scopeName: "Full Name of Roster Supervisor" }`.
