@@ -1,6 +1,6 @@
 # PS Contribution Report — Scoring Weights by team, edited by Super Admins and Org Admins (2026.W42)
 
-**Status:** built and tested locally on 2026-10-12 (2026.W42). Not deployed; needs its GTT ticket first.
+**Status:** built, tested, ticketed and deployed on 2026-10-12 (2026.W42) as live deployment **@289** under **GTT-935** (Done, 6h logged).
 **Branch:** `worktree-scoring-weights-prod` (local worktree `D:\Development\.claude\worktrees\scoring-weights-prod`), based on the deployed @288 baseline.
 **Reference:** the Scoring Weights page of the thesis demo replica, which already carried the 2026.W41 page design.
 
@@ -33,7 +33,11 @@ Managers and Org Admins see only the roles and levels their own people hold, wit
 - Tests: `tests/scoring-weights-view-checks.js` (109 checks).
 - Design: `docs/specs/2026-10-12-scoring-weights-team-scoped-editing-design.md`.
 
-## Not done yet
+## Done in 2026.W42
 
-- GTT ticket with subtasks, then `clasp pull` into a scratch dir and diff, `clasp push -f`, `clasp deploy -i <live id> -d "2026.W42 GTT-xxx Scoring Weights by team"`.
-- Decide whether plain Admins should get edit back. This build follows the ask literally: Super Admins and Org Admins only.
+- GTT-935 created (Task, component Models, Metrics, Agents (MMA)), closed as Done with 6h logged.
+- `clasp pull` into a scratch dir showed no editor-only edits; `clasp push -f` (16 files) then `clasp deploy` published **@289** on the live URL.
+
+## Open decision
+
+- Whether plain Admins should get edit back. This build follows the ask literally: Super Admins and Org Admins only.

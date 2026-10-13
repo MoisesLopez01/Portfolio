@@ -1,6 +1,6 @@
 # Scoring Weights — one team at a time, edited by Super Admins and Org Admins — design
 
-**Date:** 2026-10-12 (2026.W42) · **Status:** implemented locally on branch `worktree-scoring-weights-prod`, not deployed
+**Date:** 2026-10-12 (2026.W42) · **Status:** implemented on branch `worktree-scoring-weights-prod`; deployed 2026-10-12 as @289 under GTT-935
 **Report (plain English):** `ps-dashboard/docs/reports/2026-W42-scoring-weights-team-scoped-editing.md`
 **Reference build:** the thesis demo replica (Vantara) Scoring Weights page, which carries the 2026.W41 design
 **Builds on:** `2026-07-09-team-aligned-scoring-design.md` (team gates, family tunes), the 2026.W41 Scoring Weights
