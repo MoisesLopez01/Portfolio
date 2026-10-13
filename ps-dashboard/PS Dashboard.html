@@ -2319,7 +2319,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <div class="dr-metrics">
             <div class="dr-metric" data-metric="rcr">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#058CDC"></span>RCR — Revenue Contribution Rate</div>
-              <div class="dr-metric-desc">Team revenue divided by total cash compensation for the last closed month. A team-level indicator, not a measure of any individual. We aim to stay above 1× — read it as a directional check, not a hard target.</div>
+              <div class="dr-metric-desc">Team revenue divided by total cash compensation for the last closed month. A team-level indicator, not a measure of any individual. We aim to stay above 1× — read it as a directional check, not a hard target. From FY27 (Jul 26 on) the rate is read directly from the <strong>New RCR</strong> tab and the team value is the average of the tracking-mandated rocketeers' rates; earlier months keep the SUM(RC) ÷ SUM(TCC) ratio from <strong>3. RCR</strong>. Both sit on one monthly axis, so the trend runs across the fiscal-year boundary.</div>
               <div class="dr-metric-src">Updated monthly · reflects the last closed month shown at the top of the card.</div>
             </div>
             <div class="dr-metric">
@@ -2410,7 +2410,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
                 <td><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#00A86B;display:inline-block"></span>RCR</span></td>
                 <td>Revenue Contribution Rate</td>
                 <td>avg RCR ÷ 2.5 × 100 · capped at 100 · 2.5× = optimal</td>
-                <td>3. RCR sheet · last closed month</td>
+                <td>3. RCR sheet (to Jun 26) · New RCR sheet (Jul 26 on) · last closed month</td>
               </tr>
               <tr data-metric="tracked">
                 <td><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#D97706;display:inline-block"></span>Tracked</span></td>
@@ -8390,7 +8390,10 @@ function renderKPIs(m, filtered, filtering) {
                    ? "<span style='color:#1b5e20'>Above 2.5× benchmark · services team</span>"
                    : "<span style='color:var(--slate)'>Below 2.5× benchmark · services team context</span>")
                : "",
-      tipText: "Revenue Contribution Rate = SUM(Revenue Contribution) ÷ SUM(TCC A+B).\nLast closed month: " + (m.rcrLastMonth || "—") + ".\n2.5× = benchmark. Team context — not a per-rocketeer measure.\nComputed over the tracking-mandated families (JF007/JF009); ⏱ Exempt rocketeers are outside this number.",
+      tipText: (m.rcrMethod === 'direct-rate'
+                  ? "Revenue Contribution Rate — direct monthly rate from the New RCR tab (FY27 on); team value = average of individual rates."
+                  : "Revenue Contribution Rate = SUM(Revenue Contribution) ÷ SUM(TCC A+B).") +
+               "\nLast closed month: " + (m.rcrLastMonth || "—") + ".\n2.5× = benchmark. Team context — not a per-rocketeer measure.\nComputed over the tracking-mandated families (JF007/JF009); ⏱ Exempt rocketeers are outside this number.",
       color: "#058CDC", icon: "trending" },
 
   ];

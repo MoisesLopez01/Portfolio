@@ -14,7 +14,10 @@ var CONFIG_PS = {
 
   SHEET_ROSTER:      "Data",   // roster tab name — matches goalCompliance.js / Contribution Report.js (tab was renamed from "Roster")
   SHEET_CONTRACTORS: "Contractors Data",   // crew/contractor tab in the same Roster SS — same headers as Data
-  SHEET_RCR:         "3. RCR",
+  SHEET_RCR:         "3. RCR",      // FY26 and earlier — "Jun 26" columns, SUM(RC)/SUM(TCC) team ratio
+  SHEET_RCR_NEW:     "New RCR",     // FY27 on (2026.07 → 2027.06) — "2026.07 RCR" columns, a direct
+                                    // per-person rate; team value = mean of the tracking-mandated subset.
+                                    // Both tabs feed one month axis — see readRCR_PS_.
   SHEET_SI:          "SI",
   SHEET_KUDOS:       "Kudos_Normalized",
 
@@ -2229,156 +2232,223 @@ function resolveManagerScope_(roster, managerNorm, bridges) {
   return scope;
 }
 
-// Computes team RCR = SUM(Revenue Contribution) / SUM(TCC A+B) for the PS headcount.
-// Uses "3. RCR" as a bridge: name-matches to roster to get per-employee RCR values AND
-// harvests Employee IDs (same format as RC/TCC sheets) to do the team SUM(RC)/SUM(TCC).
+// ── RCR month columns — two tabs, one month axis ─────────────────────────────
+// RCR arrives from two tabs with different header spellings and different maths:
+//   "3. RCR"  (FY26 and earlier) — headers "Jun 26". A derived ratio: the team
+//             value is SUM(Revenue Contribution) / SUM(TCC A+B), bridged by
+//             Employee ID through "1. Revenue Contribution" / "2. TCC A+B".
+//   "New RCR" (2026.07 → 2027.06, FY27) — headers "2026.07 RCR". A direct
+//             per-person rate; there is nothing to sum, so the team value is
+//             the mean of the tracking-mandated subset's rates.
+// Both are normalised to the "Mon YY" label the frontend already parses
+// (periodRcr_, perfRcrMonthKey_, the quarter grouping in the monthly chart),
+// so one axis spans both sources and the trend does not restart at the FY
+// boundary. A month both tabs carry resolves to the New RCR rate.
+const RCR_MONTH_ABBR_  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const RCR_MONTH_ORDER_ = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+
+// "Jun 26" | "2026.07 RCR" → { name: "Jun 26" | "Jul 26", sortKey } ; null otherwise.
+function rcrMonthFromHeader_(h) {
+  const s = String(h || "").trim();
+  let m = s.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{2})$/i);
+  if (m) {
+    const mo = RCR_MONTH_ORDER_[m[1].toLowerCase()];
+    return { name: `${RCR_MONTH_ABBR_[mo]} ${m[2]}`, sortKey: (2000 + parseInt(m[2], 10)) * 12 + mo };
+  }
+  m = s.match(/^(\d{4})[.\-\/](\d{1,2})\s+RCR$/i);
+  if (m) {
+    const yr = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1;
+    if (mo < 0 || mo > 11) return null;
+    return { name: `${RCR_MONTH_ABBR_[mo]} ${String(yr % 100).padStart(2, "0")}`, sortKey: yr * 12 + mo };
+  }
+  return null;
+}
+
+// Every month column of a sheet, oldest → newest: [{ name, sortKey, col }].
+function rcrMonthColumns_(headers) {
+  return headers
+    .map((h, i) => { const m = rcrMonthFromHeader_(h); return m ? { name: m.name, sortKey: m.sortKey, col: i } : null; })
+    .filter(Boolean)
+    .sort((a, b) => a.sortKey - b.sortKey);
+}
+
+// Reads one RCR tab into per-month value maps. `resolveRow(row) → norm | null`
+// is the roster join; months with no roster-matched numeric value are dropped,
+// so a pre-created but still-empty month column never becomes "the latest".
+function rcrMonthsFromSheet_(sheet, resolveRow, source) {
+  const rowNorm = sheet.rows.map(resolveRow);
+  const out = [];
+  rcrMonthColumns_(sheet.headers).forEach(c => {
+    const values = new Map();
+    sheet.rows.forEach((row, ri) => {
+      const norm = rowNorm[ri];
+      if (!norm) return;
+      const v = parseFloat(row[c.col]);
+      if (!isNaN(v)) values.set(norm, v);
+    });
+    if (values.size) out.push({ name: c.name, sortKey: c.sortKey, source, values });
+  });
+  return out;
+}
+
+// SUM(RC) / SUM(TCC) inputs for one legacy month, over the bridged Employee IDs.
+function rcrSumRatio_(ss, monthName, empIds) {
+  const rcData  = loadSheet_PS_(ss, "1. Revenue Contribution");
+  const tccData = loadSheet_PS_(ss, "2. TCC A+B");
+  let sumRC = 0, sumTCC = 0;
+  if (!rcData || !tccData) {
+    Logger.log(`⚠️ RCR: RC or TCC sheet missing — falling back to average of individual values.`);
+    return { sumRC, sumTCC };
+  }
+  const sumCol = (data, label) => {
+    const idCol = findIdCol_(data.headers);
+    const mCol  = data.headers.findIndex(h => h.trim() === monthName);
+    if (idCol === -1 || mCol === -1) return 0;
+    let s = 0;
+    data.rows.forEach(row => {
+      if (!empIds.has(String(row[idCol] || "").trim())) return;
+      const v = parseFloat(row[mCol]);
+      if (!isNaN(v)) s += v;
+    });
+    return s;
+  };
+  sumRC  = sumCol(rcData,  "RC");
+  sumTCC = sumCol(tccData, "TCC");
+  Logger.log(`RCR: sumRC=${Math.round(sumRC)}, sumTCC=${Math.round(sumTCC)}`);
+  return { sumRC, sumTCC };
+}
+
+// Team RCR for the latest closed month, plus the trailing monthly history.
+//   • Latest month from "3. RCR"  → SUM(RC)/SUM(TCC) over the bridged Employee IDs
+//     (mean of individual values only as the documented fallback).
+//   • Latest month from "New RCR" → mean of the tracking-mandated subset's rates.
+// byEmployee covers every roster member (informational on their own row);
+// the team aggregate and history points scope to `teamSubset`.
 function readRCR_PS_(roster, teamSubset) {
   const aggRoster = teamSubset || roster;  // controls team-level aggregation; byEmployee still covers all roster
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const empty = { teamRCR: null, lastMonth: null, tier: "No Data", byEmployee: {} };
+  const empty = emptyRcrResult_();
+  const round2 = v => Math.round(v * 100) / 100;
+  const meanOf = vals => vals.length ? round2(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
 
-  // ── Step 1: Read "3. RCR" — name-match to roster + harvest Employee IDs ──────
-  const rcrSheet = loadSheet_PS_(ss, CONFIG_PS.SHEET_RCR);
-  if (!rcrSheet) { Logger.log(`⚠️ RCR: "${CONFIG_PS.SHEET_RCR}" sheet not found.`); return empty; }
-
-  const rcrHdrs = rcrSheet.headers;
-  let iRcrName = rcrHdrs.findIndex(h => /^employee.?name/i.test(h.trim()));
-  if (iRcrName === -1) iRcrName = rcrHdrs.findIndex(h => /^name/i.test(h.trim()));
-  if (iRcrName === -1) iRcrName = 0;
-  const iRcrId = rcrHdrs.findIndex(h => /^employee.?id/i.test(h.trim()));
-
-  // Detect the true last-populated month across ALL fiscal years present in the sheet
-  // (not just the current FY's 12 columns) — month columns accumulate over time, the
-  // same pattern the SI sheet uses for its per-quarter columns. This is what keeps RCR
-  // showing the true last-closed month across a fiscal-year rollover instead of going
-  // blank until the new FY's first month closes.
-  const MONTH_HDR_RE = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{2})$/i;
-  const MONTH_ORDER  = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
-  const rcrMonthCols = rcrHdrs
-    .map((h, i) => ({ h: h.trim(), i }))
-    .filter(({ h }) => MONTH_HDR_RE.test(h))
-    .map(({ h, i }) => {
-      const m = h.match(MONTH_HDR_RE);
-      return { name: h, col: i, sortKey: (2000 + parseInt(m[2], 10)) * 12 + MONTH_ORDER[m[1].toLowerCase()] };
-    })
-    .sort((a, b) => a.sortKey - b.sortKey);
-
-  let lastMonthIdx = -1;
-  for (let k = rcrMonthCols.length - 1; k >= 0; k--) {
-    if (rcrSheet.rows.some(r => !isNA_PS_(r[rcrMonthCols[k].col]) && !isNaN(parseFloat(r[rcrMonthCols[k].col])))) {
-      lastMonthIdx = k; break;
-    }
-  }
-  if (lastMonthIdx === -1) { Logger.log(`⚠️ RCR: no populated month in "${CONFIG_PS.SHEET_RCR}".`); return empty; }
-
-  const lastMonthName = rcrMonthCols[lastMonthIdx].name;
-  const rcrMonthCol   = rcrMonthCols[lastMonthIdx].col;
-
-  // Build per-employee RCR from 3. RCR and collect name→employeeId bridge
-  const byEmployee   = {};
-  const normToEmpId  = new Map(); // normName → Employee ID (for RC/TCC lookup)
-
-  rcrSheet.rows.forEach(row => {
-    const name = String(row[iRcrName] || "").trim();
-    if (!name) return;
-    const norm = normPS_(name);
-    if (!roster.has(norm)) return;
-    // Only harvest Employee IDs for aggRoster members — these drive the team RC/TCC summation.
-    if (aggRoster.has(norm) && iRcrId !== -1) {
-      const empId = String(row[iRcrId] || "").trim();
+  // ── Source A: "3. RCR" — name join; also harvests the Employee ID bridge ────
+  const normToEmpId = new Map(); // normName → Employee ID (for RC/TCC lookup), aggRoster only
+  let legacyMonths = [];
+  const legacy = loadSheet_PS_(ss, CONFIG_PS.SHEET_RCR);
+  if (legacy) {
+    const hdrs = legacy.headers;
+    let iName = hdrs.findIndex(h => /^employee.?name/i.test(h.trim()));
+    if (iName === -1) iName = hdrs.findIndex(h => /^name/i.test(h.trim()));
+    if (iName === -1) iName = 0;
+    const iId = hdrs.findIndex(h => /^employee.?id/i.test(h.trim()));
+    const resolve = row => { const n = normPS_(String(row[iName] || "").trim()); return roster.has(n) ? n : null; };
+    if (iId !== -1) legacy.rows.forEach(row => {
+      const norm = resolve(row);
+      if (!norm || !aggRoster.has(norm)) return;
+      const empId = String(row[iId] || "").trim();
       if (empId) normToEmpId.set(norm, empId);
-    }
-    const val = parseFloat(row[rcrMonthCol]);
-    if (!isNaN(val)) byEmployee[norm] = { value: val };
-  });
-
-  Logger.log(`3. RCR: "${lastMonthName}", ${Object.keys(byEmployee).length} PS employees matched, ${normToEmpId.size} Employee IDs harvested`);
-
-  // ── Step 2: Team RCR = SUM(RC) / SUM(TCC) using bridged Employee IDs ──────────
-  const empIdToNorm = new Map([...normToEmpId.entries()].map(([norm, id]) => [id, norm]));
-
-  const rcData  = loadSheet_PS_(ss, "1. Revenue Contribution");
-  const tccData = loadSheet_PS_(ss, "2. TCC A+B");
-
-  let sumRC = 0, sumTCC = 0;
-
-  if (rcData && tccData) {
-    const rcIdCol    = findIdCol_(rcData.headers);
-    const tccIdCol   = findIdCol_(tccData.headers);
-    const rcMonthCol  = rcData.headers.findIndex(h => h.trim() === lastMonthName);
-    const tccMonthCol = tccData.headers.findIndex(h => h.trim() === lastMonthName);
-
-    if (rcIdCol !== -1 && rcMonthCol !== -1) {
-      rcData.rows.forEach(row => {
-        const id = String(row[rcIdCol] || "").trim();
-        if (!empIdToNorm.has(id)) return;
-        const v = parseFloat(row[rcMonthCol]);
-        if (!isNaN(v)) sumRC += v;
-      });
-    }
-    if (tccIdCol !== -1 && tccMonthCol !== -1) {
-      tccData.rows.forEach(row => {
-        const id = String(row[tccIdCol] || "").trim();
-        if (!empIdToNorm.has(id)) return;
-        const v = parseFloat(row[tccMonthCol]);
-        if (!isNaN(v)) sumTCC += v;
-      });
-    }
-    Logger.log(`RCR: sumRC=${Math.round(sumRC)}, sumTCC=${Math.round(sumTCC)}`);
-  } else {
-    Logger.log(`⚠️ RCR: RC or TCC sheet missing — falling back to average of individual values.`);
-  }
-
-  // If RC/TCC sheets unavailable or produced no data, fall back to mean of 3. RCR values.
-  // Also fall back when sumTCC > 0 but sumRC = 0 — this almost always means an Employee ID
-  // format mismatch between "3. RCR" and "1. Revenue Contribution" (e.g. trailing ".00",
-  // comma-formatted numbers, or a different ID scheme), not that the team earned zero revenue.
-  let teamRCR = null;
-  if (sumTCC > 0 && sumRC > 0) {
-    teamRCR = Math.round((sumRC / sumTCC) * 100) / 100;
-  } else {
-    if (sumTCC > 0 && sumRC <= 0) {
-      Logger.log(`⚠️ RCR: sumTCC=${Math.round(sumTCC)} but sumRC=${Math.round(sumRC)} — likely Employee ID mismatch between "3. RCR" and "1. Revenue Contribution" or net credit reversal. Falling back to individual 3.RCR averages.`);
-    }
-    const aggVals = Object.entries(byEmployee)
-      .filter(([nm]) => aggRoster.has(nm))
-      .map(([, e]) => e.value);
-    if (aggVals.length > 0) {
-      teamRCR = Math.round((aggVals.reduce((a, b) => a + b, 0) / aggVals.length) * 100) / 100;
-      Logger.log(`⚠️ RCR: RC/TCC sheets unavailable — averaging individual 3.RCR values (${aggVals.length} employees). This differs from SUM(RC)/SUM(TCC). Result: ${teamRCR}`);
-    }
-  }
-
-  // Build a trailing RCR history (oldest → newest) of the last CONFIG_PS.RCR_HISTORY_MONTHS
-  // populated months, using 3.RCR individual averages per month. This is a rolling window
-  // like the rest of the report — it rolls across fiscal-year boundaries instead of
-  // resetting to blank each new FY. The full range also feeds the per-employee
-  // "who needs support" table client-side.
-  const rcrHistory = [];
-  const rcrByEmployee = {};  // norm → { monthName: rcrValue } — all roster members, for client-side filter slicing
-  const histStart = Math.max(0, lastMonthIdx - CONFIG_PS.RCR_HISTORY_MONTHS + 1);
-  for (let mi = histStart; mi <= lastMonthIdx; mi++) {
-    const { name: monthName, col } = rcrMonthCols[mi];
-    const vals = [];
-    rcrSheet.rows.forEach(row => {
-      const nm = normPS_(String(row[iRcrName] || "").trim());
-      if (!roster.has(nm)) return;
-      const v = parseFloat(row[col]);
-      if (isNaN(v)) return;
-      if (!rcrByEmployee[nm]) rcrByEmployee[nm] = {};
-      rcrByEmployee[nm][monthName] = v;
-      if (aggRoster.has(nm)) vals.push(v);
     });
+    legacyMonths = rcrMonthsFromSheet_(legacy, resolve, "ratio");
+    Logger.log(`3. RCR: ${legacyMonths.length} populated month(s), ${normToEmpId.size} Employee IDs harvested`);
+  } else {
+    Logger.log(`⚠️ RCR: "${CONFIG_PS.SHEET_RCR}" sheet not found.`);
+  }
+
+  // ── Source B: "New RCR" — Internal ID join, name fallback ───────────────────
+  let rateMonths = [];
+  const fresh = loadSheet_PS_(ss, CONFIG_PS.SHEET_RCR_NEW);
+  if (fresh) {
+    const hdrs = fresh.headers;
+    let iName = hdrs.findIndex(h => /^employee(\s*name)?$/i.test(h.trim()));
+    if (iName === -1) iName = hdrs.findIndex(h => /^name/i.test(h.trim()));
+    if (iName === -1) iName = 0;
+    const iId = hdrs.findIndex(h => /^internal.?id/i.test(h.trim()));
+    const idToNorm = rosterIdMap_(roster, "internalId");
+    const resolve = row => {
+      const id = iId !== -1 ? String(row[iId] || "").replace(/,/g, "").trim() : "";
+      if (id && idToNorm.has(id)) return idToNorm.get(id);
+      const n = normPS_(String(row[iName] || "").trim());
+      return roster.has(n) ? n : null;
+    };
+    rateMonths = rcrMonthsFromSheet_(fresh, resolve, "rate");
+    Logger.log(`New RCR: ${rateMonths.length} populated month(s) — ${rateMonths.map(m => m.name).join(", ") || "none"}`);
+  } else {
+    Logger.log(`ℹ️ RCR: "${CONFIG_PS.SHEET_RCR_NEW}" sheet not found — legacy "3. RCR" only.`);
+  }
+
+  // ── Merge onto one month axis; the FY27 rate wins where both tabs carry a month
+  const bySort = new Map();
+  legacyMonths.forEach(m => bySort.set(m.sortKey, m));
+  rateMonths.forEach(m => {
+    if (bySort.has(m.sortKey)) Logger.log(`ℹ️ RCR: "${m.name}" is in both tabs — using the New RCR rate.`);
+    bySort.set(m.sortKey, m);
+  });
+  const allMonths = [...bySort.values()].sort((a, b) => a.sortKey - b.sortKey);
+  if (!allMonths.length) {
+    Logger.log(`⚠️ RCR: no populated month in "${CONFIG_PS.SHEET_RCR}" or "${CONFIG_PS.SHEET_RCR_NEW}".`);
+    return empty;
+  }
+  const last          = allMonths[allMonths.length - 1];
+  const lastMonthName = last.name;
+  const method        = last.source === "rate" ? "direct-rate" : "sum-ratio";
+
+  const byEmployee = {};
+  last.values.forEach((v, norm) => { byEmployee[norm] = { value: v }; });
+  const subsetVals = m => [...m.values].filter(([nm]) => aggRoster.has(nm)).map(([, v]) => v);
+
+  // ── Team RCR for the latest month ───────────────────────────────────────────
+  let teamRCR = null, exact = false;
+  if (last.source === "ratio") {
+    const { sumRC, sumTCC } = rcrSumRatio_(ss, lastMonthName, new Set(normToEmpId.values()));
+    if (sumTCC > 0 && sumRC > 0) {
+      teamRCR = round2(sumRC / sumTCC);
+      exact   = true;
+    } else {
+      // sumTCC > 0 with sumRC = 0 almost always means an Employee ID format mismatch
+      // between "3. RCR" and "1. Revenue Contribution" (trailing ".00", comma-formatted
+      // numbers, a different ID scheme), not that the team earned zero revenue.
+      if (sumTCC > 0 && sumRC <= 0) {
+        Logger.log(`⚠️ RCR: sumTCC=${Math.round(sumTCC)} but sumRC=${Math.round(sumRC)} — likely Employee ID mismatch between "3. RCR" and "1. Revenue Contribution" or net credit reversal. Falling back to individual 3.RCR averages.`);
+      }
+      const vals = subsetVals(last);
+      teamRCR = meanOf(vals);
+      if (teamRCR !== null) Logger.log(`⚠️ RCR: RC/TCC unavailable — averaging individual 3.RCR values (${vals.length} employees). This differs from SUM(RC)/SUM(TCC). Result: ${teamRCR}`);
+    }
+  } else {
+    const vals = subsetVals(last);
+    teamRCR = meanOf(vals);
+    exact   = teamRCR !== null;   // the rate IS the metric — there is no ratio to reconcile against
+    Logger.log(`New RCR: "${lastMonthName}" direct rate — team = mean of ${vals.length} tracking-mandated rocketeers = ${teamRCR}`);
+  }
+
+  // ── Trailing history (oldest → newest), last CONFIG_PS.RCR_HISTORY_MONTHS months.
+  // A rolling window that crosses FY boundaries — and now source boundaries: FY26
+  // ratio months and FY27 rate months sit on the same axis. Rate months are exact
+  // by definition; a legacy history month is the mean of individual values (approx)
+  // unless it is the latest month, which carries the SUM/SUM figure above.
+  const rcrHistory    = [];
+  const rcrByEmployee = {};  // norm → { monthName: value } — all roster members, for client-side filter slicing
+  const histStart = Math.max(0, allMonths.length - CONFIG_PS.RCR_HISTORY_MONTHS);
+  for (let mi = histStart; mi < allMonths.length; mi++) {
+    const m = allMonths[mi];
+    m.values.forEach((v, norm) => {
+      if (!rcrByEmployee[norm]) rcrByEmployee[norm] = {};
+      rcrByEmployee[norm][m.name] = v;
+    });
+    const vals = subsetVals(m);
     if (!vals.length) continue;
-    const monthAvg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100;
-    const isLast   = mi === lastMonthIdx;
-    const rcr      = isLast && teamRCR !== null ? teamRCR : monthAvg;
-    rcrHistory.push({ month: monthName, rcr, exact: isLast && sumTCC > 0 && sumRC > 0 });
+    const isLast = m === last;
+    rcrHistory.push({
+      month:  m.name,
+      rcr:    isLast && teamRCR !== null ? teamRCR : meanOf(vals),
+      exact:  m.source === "rate" ? true : (isLast && exact),
+      source: m.source,
+    });
   }
 
   const tier = rcrTier_PS_(teamRCR);
-  Logger.log(`RCR final: teamRCR=${teamRCR}, tier=${tier}, employees with RCR=${Object.keys(byEmployee).length}, history months=${rcrHistory.length}, byEmployee keys=${Object.keys(rcrByEmployee).length}`);
-  return { teamRCR, lastMonth: lastMonthName, tier, byEmployee, rcrHistory, rcrByEmployee };
+  Logger.log(`RCR final [${method}]: "${lastMonthName}" teamRCR=${teamRCR}, tier=${tier}, employees with RCR=${Object.keys(byEmployee).length}, history months=${rcrHistory.length}, byEmployee keys=${Object.keys(rcrByEmployee).length}`);
+  return { teamRCR, lastMonth: lastMonthName, tier, byEmployee, rcrHistory, rcrByEmployee, method };
 }
 
 // Resolves a roster norm-name from a row in the SI sheet.
@@ -3577,7 +3647,9 @@ function buildTeamSummary_(weeks, rcr, si, pto, kudos, tracked, planned, goals) 
       // Scoped to the tracking-mandated families (JF007/JF009) — ⏱ Exempt
       // rocketeers bill sporadically and are outside this ratio (2026-08-05).
       quarterly: true,
-      tooltip: `Revenue Contribution Ratio = SUM(Revenue) / SUM(TCC) for the tracking-mandated families (JF007/JF009) — last closed month (${rcr.lastMonth || "—"}). ⏱ Exempt rocketeers are outside this ratio.`,
+      tooltip: rcr.method === "direct-rate"
+        ? `Revenue Contribution Rate — direct monthly rate from the New RCR tab (FY27 on); team value = mean of the tracking-mandated families (JF007/JF009) — last closed month (${rcr.lastMonth || "—"}). ⏱ Exempt rocketeers are outside this number.`
+        : `Revenue Contribution Ratio = SUM(Revenue) / SUM(TCC) for the tracking-mandated families (JF007/JF009) — last closed month (${rcr.lastMonth || "—"}). ⏱ Exempt rocketeers are outside this ratio.`,
       cells: weeks.map(w => rcr.teamRCR === null
         ? { display: "N/A", value: null }
         : { display: rcr.teamRCR.toFixed(2), value: rcr.teamRCR, tier: rcr.tier })
@@ -4338,7 +4410,7 @@ function getPSReportData(bustCache, teamKey, viewAs) {
 // RCR, Tracked or Planned data). Shapes mirror the fields consumers touch.
 function emptyRcrResult_() {
   return { lastMonth: null, teamRCR: null, tier: "No Data",
-           byEmployee: {}, rcrHistory: [], rcrByEmployee: {} };
+           byEmployee: {}, rcrHistory: [], rcrByEmployee: {}, method: null };
 }
 function emptyTrackedResult_() { return { _lastExport: null }; }
 
@@ -4661,6 +4733,9 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
       rcrLastMonth:     rcrAll.lastMonth,
       rcrTeamRCR:       rcrAll.teamRCR,
       rcrTier:          rcrAll.tier,
+      // "sum-ratio" (3. RCR, SUM(RC)/SUM(TCC)) or "direct-rate" (New RCR, FY27 on) —
+      // the tooltips say which maths produced the headline number.
+      rcrMethod:        rcrAll.method || null,
       siTeamAvg:        siAll.teamAvg,
       siTeamRounded:    siAll.teamAvg !== null ? Math.round(siAll.teamAvg) : null,
       siQuarter:        siAll.quarter || "",

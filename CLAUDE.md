@@ -280,11 +280,29 @@ they are needed at load by another file.
 are sometimes edited in the editor — `clasp pull` into a scratch dir and diff before
 pushing. Publish with `clasp deploy -i <deploymentId> -d "<note>"`; the URL is stable.
 
+## RCR — two tabs, one month axis (2026.W42)
+
+RCR comes from two tabs of the container spreadsheet and `readRCR_PS_` merges
+them onto one `"Mon YY"` month axis (the label the frontend parses), so the trend
+does not restart at the FY boundary:
+
+- **`3. RCR`** (FY26 and earlier, `"Jun 26"` headers) — team value =
+  SUM(`1. Revenue Contribution`) / SUM(`2. TCC A+B`) over the Employee-ID bridge.
+- **`New RCR`** (FY27 on, `"2026.07 RCR"` headers) — a **direct per-person rate**;
+  nothing to sum, team value = mean of the tracking-mandated subset's rates.
+
+A month both tabs carry resolves to the New RCR rate. The latest month is the newest
+column with ≥1 numeric roster value in either tab. `meta.rcrMethod`
+(`"sum-ratio"` | `"direct-rate"`) drives the tooltip wording; rate months are
+`exact: true` by definition. Spec: `docs/specs/2026-10-13-new-rcr-direct-rate-design.md`,
+tests: `tests/rcr-source-checks.js`.
+
 ## Data join keys
 
 | Metric | Joined by |
 |---|---|
-| Roster → RCR | Name (normalised) → Employee ID bridge via `3. RCR` sheet |
+| Roster → RCR (to Jun 26, `3. RCR`) | Name (normalised) → Employee ID bridge via `3. RCR` sheet |
+| Roster → RCR (Jul 26 on, `New RCR`) | `Internal ID` → roster `internalId`, name (normalised) as fallback |
 | SI ratings | Employee Number (`employeeNumber` on roster profile) |
 | Goals (RD sheet) | Name (normalised via `normPS_()`) |
 | Planned Time | Name (with Last, First and "Last First" alias variants) |
