@@ -52,6 +52,7 @@ const secSlice = [
   extract(security, 'function _normName_', '\n}'),
   extract(security, 'function isTeamScoped_', '\n}'),
   extract(security, 'function _autoAccessAllows_', '\n}'),
+  extract(security, 'function _activeSupervisorName_', '\n}'),
   extract(security, 'function _resolveRosterSupervisor_', '\n}'),
   extract(security, 'function _resolveSelfRosterName_', '\n}'),
   extract(security, 'function resolveTeamScope_', '\n}'),
@@ -527,12 +528,33 @@ eq('…but the admin list overrides it', api._resolveAccessFor_('gon@x.com').rol
 eq('…and an admin carries no org-tree scope',
    api._resolveAccessFor_('gon@x.com').delegateScopeName, undefined);
 delete props['PS_DASH_ADMINS'];
+// 2026.W42: the VIEWER list no longer discards a supervisor's org scope. A listed
+// email that leads people resolves exactly like a roster supervisor — own org
+// tree, own row out — never the whole org team (every peer manager's people).
 props['PS_DASH_VIEWERS'] = 'gon@x.com';
-eq('the viewer list overrides it too', api._resolveAccessFor_('gon@x.com').role, 'viewer');
-eq('…and a viewer carries no org-tree scope either',
-   api._resolveAccessFor_('gon@x.com').delegateScopeName, undefined);
-ck('a viewer IS team-pinned, unlike a manager',
-   api.isTeamScoped_(api._resolveAccessFor_('gon@x.com')) === true);
+eq('the viewer list keeps a supervisor scoped as a manager',
+   api._resolveAccessFor_('gon@x.com').role, 'manager');
+eq('…anchored on their own roster name',
+   api._resolveAccessFor_('gon@x.com').delegateScopeName, 'Gon Director');
+eq('…and self-exclusion keys off the same name',
+   api._resolveAccessFor_('gon@x.com').selfRosterName, 'Gon Director');
+ck('…so they are NOT team-pinned',
+   api.isTeamScoped_(api._resolveAccessFor_('gon@x.com')) === false);
+ck('…and the reason says the viewer list put them there',
+   /viewer list/.test(api._resolveAccessFor_('gon@x.com').reason));
+// A listed IC is still a plain, team-pinned viewer.
+props['PS_DASH_VIEWERS'] = 'gon@x.com,m1@x.com';
+eq('a listed IC with no reports stays a viewer', api._resolveAccessFor_('m1@x.com').role, 'viewer');
+ck('…and IS team-pinned', api.isTeamScoped_(api._resolveAccessFor_('m1@x.com')) === true);
+// The list is the grant and the roster only sets the scope: the auto-access
+// policy gate must not widen a listed supervisor back to a whole team.
+const savedMode_ = api.SEC_.MANAGER_AUTO_ACCESS;
+api.SEC_.MANAGER_AUTO_ACCESS = 'off';
+eq('viewer-list supervisor keeps org scope with auto-access off',
+   api._resolveAccessFor_('gon@x.com').role, 'manager');
+eq('…while an unlisted supervisor is denied in that mode',
+   api._resolveAccessFor_('nobody@x.com').role, 'denied');
+api.SEC_.MANAGER_AUTO_ACCESS = savedMode_;
 delete props['PS_DASH_VIEWERS'];
 
 // ── 5f. Org Admin — admin POWERS with a manager's SCOPE ──────────────────────

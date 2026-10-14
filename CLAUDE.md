@@ -52,7 +52,7 @@ role string: a bare `role === "admin"` comparison is a bug, and
 | **Super Admin** | everyone | all 3 | everything, incl. the super-admin list | ✅ | ✅ visible |
 | **Admin** | everyone | all 3 | all settings + every access list — **not** scoring weights (read-only since 2026.W42) | ✅ | ❌ hidden |
 | **Org Admin** | **own org tree** | those their reports sit in | access settings + viewers/delegates — **not** the Super/Admin/Org lists; scoring weights for **their own teams only** (never the company default) | ✅ own tree | ❌ hidden |
-| **Viewer** | everyone in **their own team** | **1 (pinned)** | nothing | ✅ own team | ❌ hidden |
+| **Viewer** | everyone in **their own team** — or, when they lead people on the roster, **their own org tree** (2026.W42) | **1 (pinned)** — or those their reports sit in | nothing | ✅ own team / own tree | ❌ hidden |
 | **Manager** | own org tree (reports & below) | those their reports sit in | nothing | ✅ own tree | ❌ hidden |
 
 📈 Performance Record (opened to every role in 2026.W36) reads **only the report
@@ -75,7 +75,12 @@ Two rules that must not drift:
 ⚠️ **Being on an access list overrides roster auto-resolution.** The order is
 super → admin → org-admin → viewer → delegate → roster supervisor. So adding a
 supervisor to the Admin list silently discards their org scope and hands them the whole
-company; adding one to Viewers pins them to a single team and drops reports outside it.
+company. The **Viewers list is the exception since 2026.W42**: a listed email that leads
+≥1 active person on the roster resolves as a **manager** — own org tree, own row out,
+anchored by `_activeSupervisorName_`, with **no** auto-access policy gate (the list is the
+grant; the roster only sets the scope). A listed IC, or an off-roster stakeholder, stays a
+pinned / company-wide viewer. Before this, listing a manager as a Viewer handed them every
+peer manager's people in their org team — reported as a bug on 2026-10-14.
 `diagnosePSAccess()` prints a **list audit** showing, per listed email, the role it
 resolves to, the people it covers and the teams — with a ⚠️ on any supervisor sitting
 on a company-wide tier. `traceAccess()` is its editor-runnable single-email form (the
@@ -137,7 +142,8 @@ These survive a Script Properties reset. Edit this file to add permanent stakeho
   granting/revoking Super Admin.
 - **Admin**: full dashboard + can manage admins/viewers/delegates. Reads scoring weights
   (editing is Super Admin / Org Admin, see "Scoring weights").
-- **Viewer**: read-only dashboard.
+- **Viewer**: read-only dashboard — their own team, or their own org tree when they lead
+  people on the roster (see the ⚠️ note above).
 - **Delegate**: manager-scoped — sees only their org tree.
   Format: `{ email: "peer@servicerocket.com", scopeName: "Full Name of Roster Supervisor" }`.
 

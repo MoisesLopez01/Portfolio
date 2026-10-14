@@ -491,6 +491,29 @@ function _autoAccessAllows_(row) {
   return { ok: true, why: "" };
 }
 
+/**
+ * The caller's canonical roster Name when they lead at least one active person
+ * on the roster — the bare org fact, with NO policy gate. The auto path
+ * (_resolveRosterSupervisor_) layers MANAGER_AUTO_ACCESS and the leave rule on
+ * top because there it decides whether someone gets IN; the viewer tier uses
+ * this directly because the list already granted access and the roster only
+ * decides how much they SEE.
+ *
+ * @param {string} email - Lowercase email to look up.
+ * @returns {string|null} Canonical roster Name, or null (off roster, inactive, no reports).
+ */
+function _activeSupervisorName_(email) {
+  if (!email) return null;
+  const roster = _readRosterForAccess_();
+  if (!roster.ok) return null;
+  const me = roster.rows.find(r => r.email && r.email === email && r.active);
+  if (!me) return null;
+  const hasReports = roster.rows.some(r =>
+    r.active && r.normSupervisor === me.normName && r.normName !== me.normName
+  );
+  return hasReports ? me.name : null;
+}
+
 function _resolveRosterSupervisor_(email) {
   // An unidentified session (getActiveUser() returns "" outside the domain, or
   // when the deployment does not expose the caller) must never resolve. Without
@@ -743,7 +766,22 @@ function _resolveAccessFor_(email) {
              delegateScopeName: own, reason: "org-admin list" };
   }
 
-  if (viewers.includes(email)) return { allowed: true, role: "viewer", email, selfRosterName: self(), reason: "viewer list" };
+  // Viewer list. A listed email that leads people on the roster gets the SAME
+  // verdict a roster supervisor gets by opening the link: their own org tree,
+  // own row excluded (2026.W42). Until then the list pinned them to a whole org
+  // team — every peer manager's people included — which is wider than what the
+  // roster says they lead. The auto-access policy gate is deliberately not
+  // applied here: being listed is the grant; the roster only sets the scope.
+  // A listed IC, or an off-roster stakeholder, is still a plain viewer.
+  if (viewers.includes(email)) {
+    const leads = _activeSupervisorName_(email);
+    if (leads) {
+      Logger.log('[PS Security] Viewer list + roster supervisor: ' + email + ' → org tree of "' + leads + '"');
+      return { allowed: true, role: "manager", email, selfRosterName: leads,
+               delegateScopeName: leads, reason: "viewer list — leads people on the roster, scoped to own org tree" };
+    }
+    return { allowed: true, role: "viewer", email, selfRosterName: self(), reason: "viewer list" };
+  }
 
   // Manager checks run BEFORE the Open Access fallback so that turning on Open
   // Access never silently promotes a scoped manager into a full-roster viewer.
