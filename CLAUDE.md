@@ -525,3 +525,27 @@ tab: 13-ISO-week rollup + the *eligible audience* (list members ∪ auto-manager
 current `MANAGER_AUTO_ACCESS` policy admits) with who has NOT engaged. The math is
 pure (`computeUsageRollup_`) and covered by `tests/usage-analytics-checks.js`.
 The trace is disclosed in the page footer and the 📖 Documentation tab.
+
+---
+
+## Plain-English help — one bubble, one registry per surface
+
+Managers asked what "the rate for goals" meant and nothing on the tab answered, so
+every metric label now explains itself in words and links to the paragraph in 📖
+Documentation that defines it. Two rules keep this from drifting:
+
+- **One bubble.** `#pulseTip` (`initPulseTips_`, fixed-position, delegated
+  listeners) serves every hover: pulse row labels (`PULSE_ROW_TIPS`) and any
+  `.tipq[data-tip]` element. Do not add a second tooltip mechanism; `title=`
+  attributes stay for buttons only.
+- **Formulas live in Documentation, the tab carries the reading.** The Performance
+  Record registry is `PERF_METRIC_TIPS` (text + Met/Close/Missed note + `doc`
+  anchor); `openDocSection_(id)` opens the view, scrolls under the sticky bar and
+  flashes the section. Every `doc` anchor must exist once in the page —
+  `tests/perf-record-help-checks.js` fails otherwise. Tip copy names no colour:
+  the grid and the card paint the same signal in different palettes.
+
+**Hours at a glance** (`perfHoursHtml_`, 2026.W42) is the plain planned/logged
+total per week · month · quarter on the person card and the grid's evidence panel;
+"of plan" is logged ÷ planned uncapped, the colour is the Logged time signal.
+Spec: `ps-dashboard/docs/specs/2026-10-14-perf-record-hours-and-help-design.md`.

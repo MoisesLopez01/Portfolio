@@ -388,5 +388,29 @@ ck('phone card is a full-screen sheet', /body\.prp-card-open \.prp-card \{ displ
 ck('evidence reuses the drill',         /perfDrillHtml_\(emp, row, perfModel_\(\), \{ embedded: true \}\)/.test(html));
 ck('model memo is per granularity',     /var _perfModelByGran = \{\};/.test(html));
 
+// ── 2026.W42: Hours at a glance helpers (pure) ───────────────────────────────
+ck('fmt: whole hours from 10 h up',      perfFmtHrs_(37.4) === '37 h' && perfFmtHrs_(152.6) === '153 h');
+ck('fmt: one decimal under 10 h',        perfFmtHrs_(2.46) === '2.5 h' && perfFmtHrs_(0) === '0 h');
+ck('fmt: null/NaN → em dash',            perfFmtHrs_(null) === '—' && perfFmtHrs_(undefined) === '—' && perfFmtHrs_(NaN) === '—');
+(function() {
+  const w = perfHoursLine_(36, 37, 1);
+  ck('week line: logged/planned/pct',    w.logged === '36 h' && w.planned === '37 h' && w.pct === 97 && w.pctTxt === '97%');
+  ck('week line: per-week equals the week itself', w.loggedPerWk === '36 h' && w.plannedPerWk === '37 h');
+  const m = perfHoursLine_(146, 152, 4);
+  ck('month line: totals + per-week averages', m.logged === '146 h' && m.planned === '152 h' && m.pct === 96 && m.loggedPerWk === '37 h');
+  ck('month line: planned per week',     m.plannedPerWk === '38 h');
+  const over = perfHoursLine_(44, 40, 1);
+  ck('pct is NOT capped (logged > plan reads above 100%)', over.pct === 110);
+  const noPlan = perfHoursLine_(12, null, 1);
+  ck('no plan → no pct, hours still shown', noPlan.pct === null && noPlan.pctTxt === '—' && noPlan.logged === '12 h' && noPlan.planned === '—');
+  const zeroPlan = perfHoursLine_(0, 0, 1);
+  ck('zero plan (full PTO week) → no pct', zeroPlan.pct === null && zeroPlan.planned === '0 h');
+  const nothing = perfHoursLine_(null, null, 0);
+  ck('nothing recorded → dashes', nothing.logged === '—' && nothing.planned === '—' && nothing.pct === null);
+})();
+ck('phrase: single week',                perfHoursPhrase_(36, 37, 1) === 'logged 36 h of 37 h planned');
+ck('phrase: multi-week names the span',  perfHoursPhrase_(146, 152, 4) === 'logged 146 h of 152 h planned over 4 weeks');
+ck('phrase: nothing recorded',           perfHoursPhrase_(null, null, 1) === 'no hours recorded');
+
 console.log((fail ? '❌ ' : '✅ ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
