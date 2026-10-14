@@ -72,9 +72,20 @@ ck('primary filters stay outside the fold', (function () {
 ck('folded filters still counted on the button',
    html.includes('function toggleMoreFilters_(') && /cnt\.hidden = nMore === 0/.test(html));
 // ── top bar on top of the one-row layout (2026.W41 Performance Record merge) ──
-ck('scroll folds the identity row only', /body\.tb-scrolled \.header \{ display: none; \}/.test(html) &&
-   /y > 80\) \{ scrolled = true; document\.body\.classList\.add\('tb-scrolled'\)/.test(html) &&
-   /scrolled && y < 24\)/.test(html));
+// 2026.W42: the identity row is NOT inside the sticky bar and nothing hides it
+// on scroll — the W41 fold (display:none past 80px) shifted the page by the
+// header's height and jittered against Chrome's scroll anchoring on scroll-up.
+ck('identity row sits in normal flow above the sticky bar', (function () {
+  const hdrOpen  = html.indexOf('<header class="header">');
+  const hdrClose = html.indexOf('</header>');
+  const bar      = html.indexOf('<div class="topbar" id="topbar">');
+  const fb       = html.indexOf('<div class="filter-bar" id="filterBar">');
+  return hdrOpen > 0 && hdrClose > hdrOpen && bar > hdrClose && fb > bar;
+})());
+ck('scroll never changes the pinned bar\'s height',
+   !/body\.tb-scrolled \.header/.test(html) && !/tb-scrolled[^\r\n]*display: none/.test(html) &&
+   /var stuck = y >= \(hdr \? hdr\.offsetHeight : 0\);/.test(html) &&
+   /classList\.toggle\('tb-scrolled', stuck\)/.test(html));
 ck('wide bar aligns with main column',
    /body \.header, body \.filter-bar \{\s*\n\s*padding-left:  max\(calc\(24px \* var\(--scale\)\), calc\(\(100% - 1600px \* var\(--scale\)\) \/ 2/.test(html));
 ck('phone rail becomes a drawer', /body \{ --navw: 0px; \}/.test(html) && /body\.navOpen \.sidenav \{ transform: none;/.test(html) &&

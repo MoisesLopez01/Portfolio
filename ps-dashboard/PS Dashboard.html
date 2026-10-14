@@ -86,11 +86,15 @@ body.navCollapsed { --navw: 56px; }
   font-family: 'Roboto Condensed', 'Franklin Gothic Medium Cond', sans-serif; }
 a { color: var(--orbe); text-decoration: none; }
 
-/* ── TOP BAR — identity row + filter row, pinned as one block ──
-   Everything that describes or narrows the slice (title, team toggle, week,
-   role, filters) stays on screen while the data scrolls under it. One sticky
-   wrapper replaces the old header + filter-bar pair, whose hard-coded
-   top:65px offset broke whenever the header wrapped. */
+/* ── TOP BAR — the filter row (and 👁 banner) pinned; the identity row scrolls ──
+   What narrows the slice (search, filters) stays on screen while the data
+   scrolls under it. The identity row (title, team toggle, Refresh, theme) sits
+   in normal flow ABOVE the sticky bar, so it scrolls away by itself and the bar
+   sticks at top:0 whatever the header's height — no hard-coded offset, and
+   nothing pinned ever changes height. (2026.W42: the W41 fold toggled the
+   header's display on a scroll threshold; that shifted the page by the
+   header's height, Chrome's scroll anchoring moved the offset back across the
+   threshold, and the filter bar jittered while scrolling up.) */
 .topbar {
   position: sticky; top: 0; z-index: 100;
   background: var(--card-bg); border-bottom: 1px solid var(--border);
@@ -1093,9 +1097,9 @@ body.dark-mode .prp-av { background: #2B3A78; }
 .nav-scrim { z-index: 190; }
 .fb-scrim  { z-index: 250; }
 .fbm-phone, .fbm-phone-n, .fb-done { display: none; }
-/* Scrolled: the identity row folds away and the filter row stays pinned — one
-   row of chrome while reading; back at the top it returns. */
-body.tb-scrolled .header { display: none; }
+/* Stuck: once the identity row has scrolled out and the filter row is pinned,
+   a deeper shadow separates it from the data. Only the shadow changes — never
+   the bar's height (see the TOP BAR note at the top of the sheet). */
 body.tb-scrolled .topbar { box-shadow: 0 8px 20px -14px rgba(15,25,65,.45); }
 /* Wide and ultra-wide: the bar's content lines up with main's centred column
    instead of running the full viewport (filters far left, data centred). */
@@ -2016,8 +2020,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 <div class="nav-scrim" id="navScrim" onclick="toggleNavDrawer_(false)"></div>
 <div class="fb-scrim" id="fbScrim" onclick="toggleMoreFilters_(false)"></div>
 
-<!-- ── TOP BAR: identity row + 👁 banner + filter row, pinned together ── -->
-<div class="topbar" id="topbar">
+<!-- ── IDENTITY ROW — normal flow, scrolls away with the page (see .topbar) ── -->
 <header class="header">
   <button class="header-btn header-icon-btn hdr-menu" id="btnMenu" type="button" onclick="toggleNavDrawer_()" title="Menu" aria-label="Open the menu" aria-controls="sidenav" aria-expanded="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
@@ -2043,6 +2046,8 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   </button>
 </header>
 
+<!-- ── TOP BAR: 👁 banner + filter row, pinned at top:0 while the data scrolls ── -->
+<div class="topbar" id="topbar">
 <!-- 👁 VIEW AS — banner (super admins previewing someone else's dashboard) -->
 <div class="viewas-banner" id="viewAsBanner" role="status" aria-live="polite"></div>
 
@@ -2461,7 +2466,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
             </tbody>
           </table>
           <p class="dr-p"><strong>Copy summary</strong> puts the whole card on the clipboard as plain text for a 1:1 note or Confluence. <strong>Team grid</strong> (top of the tab) switches to the signal grid: every person and every measure on one table. On a phone, tap a name to open the card full screen; "All people" goes back.</p>
-          <p class="dr-p"><strong>Finding your way.</strong> The filters sit in one row under the title; the less-used ones (location, job title, family, level) are behind <strong>More filters</strong>, whose number tells you how many of them are on. When you scroll down, the title row folds away and only the filters stay pinned. On a phone, the menu is behind the ☰ button and all filters open from <strong>Filters</strong> as a sheet.</p>
+          <p class="dr-p"><strong>Finding your way.</strong> The filters sit in one row under the title; the less-used ones (location, job title, family, level) are behind <strong>More filters</strong>, whose number tells you how many of them are on. When you scroll down, the title row scrolls away and only the filters stay pinned. On a phone, the menu is behind the ☰ button and all filters open from <strong>Filters</strong> as a sheet.</p>
           <div class="dr-note" style="margin-top:4px">Signals are reading aids, not verdicts: the colours surface the data and the manager judges. Nobody but a super admin ever sees their own record.</div>
         </div>
 
@@ -14173,14 +14178,17 @@ function toggleNavDrawer_(open) {
   if (tb && typeof ResizeObserver === 'function') new ResizeObserver(measure_).observe(tb);
   window.addEventListener('resize', measure_);
   measure_();
-  // Compact on scroll (2026.W41): past ~80px the identity row folds away and the
-  // filter row alone stays pinned; back near the top it returns. Hysteresis
-  // (80 / 24) stops the fold flickering as the shorter bar shifts the page.
+  // Stuck-state shadow (2026.W42): the identity row is in normal flow above the
+  // sticky bar, so it scrolls away by itself; this class only deepens the bar's
+  // shadow once the bar is actually pinned. It changes no layout, so there is
+  // no threshold to flicker across. (The W41 fold hid the header past 80px,
+  // which shifted the page by its height and jittered against scroll anchoring.)
+  var hdr = document.querySelector('header.header');
   var scrolled = false;
   window.addEventListener('scroll', function() {
     var y = window.pageYOffset || document.documentElement.scrollTop || 0;
-    if (!scrolled && y > 80) { scrolled = true; document.body.classList.add('tb-scrolled'); }
-    else if (scrolled && y < 24) { scrolled = false; document.body.classList.remove('tb-scrolled'); }
+    var stuck = y >= (hdr ? hdr.offsetHeight : 0);
+    if (stuck !== scrolled) { scrolled = stuck; document.body.classList.toggle('tb-scrolled', stuck); }
   }, { passive: true });
   document.addEventListener('keydown', function(ev) {
     if (ev.key !== 'Escape') return;
