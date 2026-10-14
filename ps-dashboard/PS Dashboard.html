@@ -289,6 +289,26 @@ main { max-width: 1600px; margin: 0 auto; padding: 0 24px 20px; display: flex; f
 }
 .kpi-label[data-tip]:hover::after { opacity:1; }
 
+/* Pulse table row-label tooltip — a plain-English explanation of each metric.
+   Rendered as ONE fixed-position element (#pulseTip, created on demand) rather
+   than a ::after bubble: .tbl-wrap scrolls horizontally, and an overflow:auto
+   box clips anything positioned outside its rows. */
+.row-label[data-tip] { cursor:help; text-decoration:underline dotted; text-underline-offset:3px; text-decoration-color:rgba(100,116,139,.55); }
+.row-label[data-tip]::after { content:" \24D8"; font-size:10px; opacity:.5; text-decoration:none; }
+#pulseTip {
+  position:fixed; z-index:400;
+  background:#1E293B; color:#F8FAFC;
+  font-size:11.5px; font-weight:400; line-height:1.55;
+  padding:10px 13px; border-radius:8px;
+  max-width:340px; width:max-content;
+  box-shadow:0 4px 16px rgba(0,0,0,.25);
+  pointer-events:none; opacity:0; transition:opacity .12s ease;
+  text-transform:none; letter-spacing:0;
+}
+#pulseTip.show { opacity:1; }
+#pulseTip strong { display:block; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#93C5FD; margin-bottom:4px; }
+#pulseTip em { display:block; margin-top:6px; font-style:normal; font-size:10.5px; color:#CBD5E1; }
+
 /* ── SECTION CARD ── */
 .section-card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden; }
 .section-head  { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
@@ -1893,6 +1913,9 @@ body.dark-mode .team-brief-narrative  { background: #141C3D; border-color: var(-
 
 /* KPI tooltip — invert for dark bg */
 body.dark-mode .kpi-label[data-tip]::after { background: #FFFAF5; color: #0F1941; }
+body.dark-mode #pulseTip        { background: #FFFAF5; color: #0F1941; }
+body.dark-mode #pulseTip strong { color: #1A52B3; }
+body.dark-mode #pulseTip em     { color: #475569; }
 
 /* RCR tier badges */
 body.dark-mode .tier-Critical { background: #4a0d0d; color: #FCA5A5; }
@@ -8977,7 +9000,11 @@ function buildMetricsTableHTML(rows, weeks) {
     var rowLabel = row.id === "rcr" && DATA && DATA.meta && DATA.meta.rcrLastMonth
       ? row.label + " (" + DATA.meta.rcrLastMonth + ")"
       : row.label;
-    html += '<td><div class="row-label">' + esc(rowLabel) + '</div></td>';
+    // Plain-English hover for managers — see PULSE_ROW_TIPS below the builder.
+    var rowTip = PULSE_ROW_TIPS[row.id];
+    html += '<td><div class="row-label"' +
+            (rowTip ? ' data-tip="' + esc(rowTip.text) + '" data-tip-note="' + esc(rowTip.note || '') + '"' : '') +
+            '>' + esc(rowLabel) + '</div></td>';
     row.cells.forEach(function(cell, ci) {
       var w   = weeks[ci];
       var cls = w.isCurrentWeek ? "col-current" : w.isFuture ? "col-future" : "";
@@ -9010,6 +9037,103 @@ function buildMetricsTableHTML(rows, weeks) {
   html += "</tbody></table>";
   return html;
 }
+
+// ── PULSE ROW TOOLTIPS ────────────────────────────────────
+// Plain English for managers: what each Team Contribution Pulse row measures and
+// why it matters — not the formula (that lives in 📖 Documentation). `text` is the
+// explanation; `note` is the one-line scope/source footer. Keyed by the row ids
+// buildTeamSummary_ / buildFilteredSummary emit, so a row without an entry simply
+// renders without a hover.
+var PULSE_ROW_TIPS = {
+  goals: {
+    text: 'How many rocketeers are keeping their quarterly goals alive that week. ' +
+          'The quarter asks for 10 goals (8 is the minimum), most of them In Progress, ' +
+          'and at least 6 goals carrying your own progress comments week after week — ' +
+          'the comments expected per goal grow by one each week from quarter week 6, so ' +
+          'steady updates beat a last-minute push. Closing 8 goals as Completed by quarter ' +
+          'end finishes the quarter in good standing.',
+    note: 'Source: the RD goals sheet · ramp-up rocketeers are not counted · a full week of PTO pauses the comment rule.'
+  },
+  planned: {
+    text: 'Hours the team has scheduled in Tempo for the week, and how many people planned ' +
+          'anything at all. This is the planning habit: a rocketeer with a plan can be ' +
+          'scheduled, protected from overload and backed up when away. Closed weeks show ' +
+          'what was planned; the current and next two weeks are live and still moving.',
+    note: 'Source: Tempo plans · only time-mandated roles count — ⏱ Exempt rocketeers and anyone on leave are outside.'
+  },
+  tracked: {
+    text: 'Hours the team actually logged in Tempo for each completed week, and how many ' +
+          'people logged any. It measures the behaviour of recording work, not productivity: ' +
+          'we read what Tempo collects, we do not judge the hours. Set it against Time planned ' +
+          'to see whether plans turn into logged work.',
+    note: 'Source: Tempo worklogs · only time-mandated roles count — ⏱ Exempt rocketeers and anyone on leave are outside.'
+  },
+  kudos: {
+    text: 'Kudos received by team members in each completed week. Recognising a colleague\'s ' +
+          'contribution is the behaviour we want to grow, so read the trend rather than the ' +
+          'count. A quiet week is a prompt to find someone to thank, not a performance signal.',
+    note: 'Source: Kudos_Normalized sheet · ramp-up rocketeers are not counted.'
+  },
+  pto: {
+    text: 'Share of the team with a healthy leave plan that week. Healthy means a balance under ' +
+          '100 hours, or a larger balance with real rest booked around it: at least 80% of a ' +
+          'year\'s accrual taken or planned across the past and next six months, half of it ' +
+          'already taken. It encourages rest and stops leave piling up; the team target is 80%.',
+    note: 'Source: Accumulation Cost (NetSuite) · covers the whole roster except rocketeers on extended leave.'
+  },
+  rcr: {
+    text: 'Revenue Contribution Rate for the last closed month: the revenue the team generated ' +
+          'relative to its cost. A team-level context metric that moves monthly, not weekly — ' +
+          'it reflects project mix and billing rates, not any one person. 2.5× is the benchmark; ' +
+          'below 1.0× needs attention. From Jul 26 it is the rate reported in the New RCR tab; ' +
+          'earlier months were SUM(Revenue) ÷ SUM(TCC).',
+    note: 'Source: New RCR / 3. RCR tabs · tracking-mandated families only — ⏱ Exempt rocketeers are outside.'
+  },
+  si: {
+    text: 'The team\'s average manager rating from the last closed Small Improvements review, on ' +
+          'a 1–5 scale: 3 = meeting expectations, 4 = great, 5 = outstanding. It is fixed until ' +
+          'the next review closes, so it will not move week to week.',
+    note: 'Source: Small Improvements · ramp-up rocketeers are not rated.'
+  }
+};
+
+// One shared bubble, positioned beside the hovered label and kept inside the
+// viewport. Delegated listeners, so re-rendering the table needs no re-binding.
+(function initPulseTips_() {
+  var tipEl = null;
+  function ensure() {
+    if (!tipEl) { tipEl = document.createElement('div'); tipEl.id = 'pulseTip'; document.body.appendChild(tipEl); }
+    return tipEl;
+  }
+  function hide() { if (tipEl) tipEl.classList.remove('show'); }
+  document.addEventListener('mouseover', function (ev) {
+    var lbl = ev.target && ev.target.closest ? ev.target.closest('.row-label[data-tip]') : null;
+    // Pointer over anything else hides the bubble too — a mouseout can be lost
+    // (synthetic pointers, iframe focus changes) and a fixed bubble must never
+    // outlive the hover that opened it.
+    if (!lbl) { hide(); return; }
+    var el   = ensure();
+    var note = lbl.getAttribute('data-tip-note');
+    el.innerHTML = '<strong>' + esc(lbl.textContent.replace(/\s*ⓘ\s*$/, '')) + '</strong>' +
+                   esc(lbl.getAttribute('data-tip')) +
+                   (note ? '<em>' + esc(note) + '</em>' : '');
+    el.style.left = '0px'; el.style.top = '0px';
+    el.classList.add('show');
+    var r = lbl.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+    var left = r.right + 12, top = r.top - 8;
+    if (left + w > window.innerWidth - 12)  left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12));
+    if (top + h > window.innerHeight - 12)  top  = Math.max(12, window.innerHeight - h - 12);
+    el.style.left = left + 'px'; el.style.top = top + 'px';
+  });
+  document.addEventListener('mouseout', function (ev) {
+    var lbl = ev.target && ev.target.closest ? ev.target.closest('.row-label[data-tip]') : null;
+    if (lbl) hide();
+  });
+  // The bubble is position:fixed, so it would float in place while the table
+  // scrolls out from under it — any scroll (page or .tbl-wrap) closes it.
+  document.addEventListener('scroll', hide, true);
+  window.addEventListener('blur', hide);
+})();
 
 // ── FILTER BAR ────────────────────────────────────────────
 function onMemberTypeChange() {
