@@ -1,6 +1,10 @@
 # Performance Record — hours at a glance and plain-English help
 
-**Date:** 2026-10-14 (2026.W42) · **Surface:** `PS Dashboard.html`, 📈 Performance Record + 📖 Documentation · **Status:** built, pending ticket + deploy
+**Date:** 2026-10-14 (2026.W42) · **Surface:** `PS Dashboard.html`, 📈 Performance Record + 📖 Documentation · **Status:** live as @300 (GTT-943, 2026-10-14)
+
+### PNG exports (added the same day)
+
+One routine, `perfCapturePng_`, serves the person card, the grid's evidence panel and the grid export: scale 2, theme background, action chrome hidden, `pr-print` on the element (`pr-printing` on the people host), every horizontal scroller reset to 0 and opened, the measure column unstuck, the card forced to one column with the list hidden so the History and Hours tables come out whole; the panel's print grid lets `.span2` blocks (Hours) span both columns. Filenames follow the card: `performance-card-<name>-<grain>.png`; the grid keeps `performance-record-<grain>-<week>.png`. The evidence fold and the hover hint leave the capture.
 
 ## Why
 
