@@ -68,7 +68,7 @@ ck('the ⓘ link never sorts (stops propagation)', /event\.preventDefault\(\);ev
 ck('Hours at a glance block is gone',  !/perfHoursHtml_|perfHoursRows_|pr-hours|Hours at a glance/.test(html.replace(/\/\/[^\n]*/g, '')));
 ck('history time cells are plain hour totals (full-week since 2026.W42, via perfHoursCell_)',
    /c\.id === 'tracked' \|\| c\.id === 'planned'\) \{ var hc = perfHoursCell_\(a, c\.id\); t = hc\.t; sub = hc\.sub; note = hc\.note; \}/.test(html) &&
-   /return \{ t: perfFmtHrs_\(v\), sub: parts\.length \? 'incl\. ' \+ parts\.join\(' \+ '\) : '', note: note \};/.test(html));
+   /return \{ t: perfFmtHrs_\(v\), sub: sub, note: note \};/.test(html));
 ck('no "% of target" / "h/wk" sub-line in the history table', !/% of target'/.test(html) && !/\/wk'/.test(html));
 ck('history is ONE real table (header and rows share columns)', /<table class="prp-htable" style="min-width:' \+ Math\.max\(600, 118 \+ buckets\.length \* 64\) \+ 'px">' \+ head \+ rows \+ '<\/table>/.test(html) &&
                                                                  /var head = '<colgroup><col style="width:118px">'/.test(html) && !/grid-template-columns:' \+ colsCss/.test(html));

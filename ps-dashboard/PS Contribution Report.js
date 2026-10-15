@@ -3121,7 +3121,10 @@ function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys, srcLabel) {
     }
     rowsMatched++;
     const rawKey    = iKey !== -1 ? String(row[iKey] || '').trim() : '';
-    const isProject = !!rawKey && !excludeKeys.has(rawKey.toUpperCase());
+    // "NETSUITE" matches the project key and any issue key under it ("NETSUITE-1").
+    const upKey     = rawKey.toUpperCase();
+    const excluded  = !!rawKey && (excludeKeys.has(upKey) || [...excludeKeys].some(e => upKey.startsWith(e + "-")));
+    const isProject = !!rawKey && !excluded;
     wCols.forEach(({ key, idx }) => {
       const hrs = parseFloat(row[idx]) || 0;
       if (hrs <= 0) return;
@@ -3132,7 +3135,7 @@ function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys, srcLabel) {
       if (isProject) {
         if (!b.byEmployeeProjects[norm]) b.byEmployeeProjects[norm] = {};
         b.byEmployeeProjects[norm][rawKey] = (b.byEmployeeProjects[norm][rawKey] || 0) + hrs;
-      } else if (rawKey && excludeKeys.has(rawKey.toUpperCase())) {
+      } else if (excluded) {
         b.byEmployeeTimeOff[norm] = (b.byEmployeeTimeOff[norm] || 0) + hrs;
       }
     });
@@ -4142,24 +4145,40 @@ function buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, weeks) {
 // so raw planned routinely exceeds a working week. Normalized silently — the skew is
 // systemic, not a per-person data-quality issue worth flagging. byEmployeeProjects
 // stays raw: it IS the per-project breakdown where the duplication lives.
+//
+// THE PTO RULE (owner, 2026-10-15): Tempo's own time-off rows — the NETSUITE key —
+// are never counted; they are sometimes inaccurate (a cancelled request stays
+// booked). PTO comes ONLY from the NetSuite usage record (ptoUsageByWeek). So the
+// project plan is the Tempo plan MINUS its NETSUITE rows (byEmployeeTimeOff), not
+// minus the ledger: a plan of 23 h of pure work with 16 h of ledger PTO is 23 h of
+// project time (it used to come out as 7 h), and the Performance Record then shows
+// 23 + 16 = 39 h for the week. ptoByEmployee is the ledger PTO itself, for everyone
+// the ledger names that week — a person on leave with no plan row still gets their
+// PTO-adjusted target.
 function subtractPTOFromPlanned_(plannedAll, ptoUsageByWeek) {
   const out = {};
   Object.keys(plannedAll).forEach(wLabel => {
     const src  = plannedAll[wLabel] || { totalHrs: 0, headcount: 0, byEmployee: {} };
     const ptos = (ptoUsageByWeek[wLabel] || {}).byEmployee || {};
+    const tempoOff = src.byEmployeeTimeOff || {};
     const netByEmp = {}, ptoByEmp = {};
     let totalNet = 0, hcNet = 0;
 
-    Object.entries(src.byEmployee).forEach(([norm, hrs]) => {
-      const ptoHrs  = ptos[norm]  || 0;
+    const norms = new Set([...Object.keys(src.byEmployee || {}), ...Object.keys(ptos)]);
+    norms.forEach(norm => {
+      const planned = src.byEmployee && src.byEmployee[norm] !== undefined;
+      const hrs     = planned ? (src.byEmployee[norm] || 0) : 0;
+      const ptoHrs  = ptos[norm] || 0;                 // NetSuite record — the only PTO that counts
+      const offHrs  = tempoOff[norm] || 0;             // Tempo's NETSUITE rows — dropped, never counted
       const capHrs  = Math.max(CONFIG_PS.PTO_MIN_TARGET_HRS,
                                CONFIG_PS.SCORE_PLANNED_CAP_HRS - ptoHrs);
-      const netHrs  = Math.min(Math.max(0, hrs - ptoHrs), capHrs);
-      const ptoUsed = Math.min(hrs, ptoHrs);
-      netByEmp[norm] = netHrs;
-      if (ptoUsed > 0) ptoByEmp[norm] = ptoUsed;
-      totalNet += netHrs;
-      if (netHrs > 0) hcNet++;
+      if (planned) {
+        const netHrs = Math.min(Math.max(0, hrs - offHrs), capHrs);
+        netByEmp[norm] = netHrs;
+        totalNet += netHrs;
+        if (netHrs > 0) hcNet++;
+      }
+      if (ptoHrs > 0) ptoByEmp[norm] = Math.min(ptoHrs, CONFIG_PS.SCORE_PLANNED_CAP_HRS);
     });
 
     out[wLabel] = {

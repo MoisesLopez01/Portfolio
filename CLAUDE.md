@@ -266,9 +266,11 @@ the week + public holidays for the location**, the delivery-health rule. **Plann
 at the standard week** (40 h; 38 h in Australia & New Zealand — `CONFIG_PS.WEEKLY_CAPACITY_HRS`
 / `ANZ_CAPACITY_HRS`); **logged is never capped** — people can log more than a week and the
 card must show it (owner rule, 2026-10-15). `fullWeekHours_` (pure) builds `plannedFullHrs` / `trackedFullHrs` /
-`timeOffHrs` / `holidayHrs` / `capacityHrs` per employee-week in `buildEmployeeRows_`; Tempo's
-own time-off rows (`byEmployeeTimeOff`, NETSUITE keys) are **swapped** for the PTO record,
-never added. `plannedHrs` / `trackedHrs` keep their meaning and **scoring is untouched** —
+`timeOffHrs` / `holidayHrs` / `capacityHrs` per employee-week in `buildEmployeeRows_`. **The PTO
+rule:** Tempo's own time-off rows (`byEmployeeTimeOff`, the NETSUITE key) are **never counted**
+— `subtractPTOFromPlanned_` drops them from the plan and takes PTO **only** from the NetSuite
+usage record (`ptoUsageByWeek`), then the card adds that PTO back. Never subtract the ledger
+from a Tempo plan: 23 h of pure work + 16 h ledger PTO must read 23 h project / 39 h full week. `plannedHrs` / `trackedHrs` keep their meaning and **scoring is untouched** —
 it still reads project hours against `ptoAdjustedTargetHrs`. A payload without the new
 fields renders the project hours. Spec:
 `ps-dashboard/docs/specs/2026-10-15-perf-record-8w-clarity-design.md`.

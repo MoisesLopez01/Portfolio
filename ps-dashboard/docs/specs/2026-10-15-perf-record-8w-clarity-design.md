@@ -63,10 +63,19 @@ person's location** (one fifth of the standard week per distinct weekday holiday
 **Planned time is capped at the standard week — 40 h, 38 h in Australia & New Zealand**
 (`CONFIG_PS.WEEKLY_CAPACITY_HRS`, `ANZ_LOCATION`, `ANZ_CAPACITY_HRS`); **Logged time is never capped** —
 people can log more than a week and the card must show it (owner correction after @303, 2026-10-15: @303
-had capped both; @304 lifts the cap on logged). A week fully on leave reads as a full week; *incl. 16 h PTO* or
-*incl. 8 h holiday* sits under the number. The NetSuite record is the authority for leave: Tempo's own
+had capped both; @304 lifts the cap on logged). A week fully on leave reads as a full week; the split — *23 h work · 16 h PTO*,
+*32 h work · 8 h holiday* — sits under the number whenever time off is part of it. The NetSuite record is the authority for leave: Tempo's own
 time-off rows (`byEmployeeTimeOff`, the NETSUITE keys) are swapped out, never added, so a cancelled request
 still sitting in Tempo cannot inflate the total.
+
+**The PTO rule (owner correction after @303, same day).** Tempo's own time-off rows — the NETSUITE key —
+are never counted; PTO comes only from the NetSuite usage record. `subtractPTOFromPlanned_` therefore
+removes Tempo's NETSUITE rows (`byEmployeeTimeOff`) from the plan, not the ledger PTO: 23 h of pure work
+with 16 h of ledger PTO is 23 h of project plan (it used to come out as 7 h, which the card then printed as
+"23 h · incl. 16 h PTO"), and the card shows 23 + 16 = 39 h. `ptoByEmployee` is the ledger PTO for everyone
+the ledger names that week, so a person on leave with no plan row still gets a PTO-adjusted target. This
+also corrects the scoring target and the Overview PTO pill for the same people; the duplication clamp
+(plan repeated across projects → 40 h) and the capacity-after-PTO clamp are unchanged.
 
 Server: `fullWeekHours_` (pure) builds `capacityHrs`, `timeOffHrs`, `holidayHrs`, `plannedFullHrs`,
 `trackedFullHrs`, `plannedRawHrs`, `trackedRawHrs` per employee-week in `buildEmployeeRows_`, which takes
@@ -144,5 +153,5 @@ wording).
   table width; `perf-record-tempo-links-checks`: the `buildEmployeeRows_` signature) and green: 17 suites.
 - Render-checked in the Playwright harness (light and dark): score row with bars and breakdown rows, goals
   `6 / 8 · up to date` and `0 / 8 · needs 6 with comments`, kudos `1 given / 2 received`, PTO balances,
-  full-week hours with *incl. 40 h PTO* on a leave week, month/quarter lenses, hover → bubble with rows →
+  full-week hours with *0 h work · 40 h PTO* on a leave week, month/quarter lenses, hover → bubble with rows →
   leave closes → click pins → other hover ignored → Esc closes → bubble hover keeps → Keep open / Close.

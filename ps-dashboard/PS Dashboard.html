@@ -2573,7 +2573,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <p class="dr-p" style="margin-top:10px"><strong>Help where you need it.</strong> Hover any measure name on the tab (in the History table or the Team grid headers) for a plain-English explanation of what it measures and where its bar sits. Click the name — or the ⓘ beside a grid header — to land on the matching section of this page.</p>
           <div id="docRates" style="padding:6px 0">
           <p class="dr-p"><strong>How every rate is built — week, month, quarter.</strong> Every measure is judged <strong>week by week</strong>. A month or a quarter is the <strong>average of its weeks</strong> — for Goals, the share of checked weeks that passed, so <em>3 of 4 weeks up to date</em> is <em>75%</em>. Weeks with no data at all (before joining, nothing recorded) are left out of every average, and a week of PTO lowers the time targets instead of counting as a gap.</p>
-          <p class="dr-p" id="docFullWeek"><strong>Hours on the Performance Record are full-week hours (since 2026.W42).</strong> The Logged time and Planned time cells show the person's week the way the Delivery Health dashboard does: project hours <strong>plus the PTO the NetSuite record (Accumulation Cost) holds for that week, plus public holidays for their location</strong> (one fifth of the standard week per weekday holiday, from the PH tab). <strong>Planned time is capped at the standard week — 40 h, or 38 h in Australia &amp; New Zealand</strong>; <strong>Logged time is never capped</strong>, because a person can log more than a week and the card must show it. A week fully on leave therefore reads as a full week, and "incl. 8 h PTO" under the number says how much of it is time off. The NetSuite record is the authority for leave: Tempo's own time-off bookings are replaced by it, never added. <strong>If a Tempo planned total looks higher than the card</strong>, there are two known causes — PTO that was cancelled in NetSuite but not removed from Tempo, and duplicated plans — which is exactly why the planned cap exists; hover the cell for the make-up and the figure as Tempo exported it. A logged total above the week is usually real overtime; duplicated worklogs and cancelled PTO still logged in Tempo are the things to check in Tempo. The colour signals and the score are unchanged: they still judge the project hours against the PTO-adjusted target.</p>
+          <p class="dr-p" id="docFullWeek"><strong>Hours on the Performance Record are full-week hours (since 2026.W42).</strong> The Logged time and Planned time cells show the person's week the way the Delivery Health dashboard does: project hours <strong>plus the PTO the NetSuite record (Accumulation Cost) holds for that week, plus public holidays for their location</strong> (one fifth of the standard week per weekday holiday, from the PH tab). <strong>Planned time is capped at the standard week — 40 h, or 38 h in Australia &amp; New Zealand</strong>; <strong>Logged time is never capped</strong>, because a person can log more than a week and the card must show it. A week fully on leave therefore reads as a full week, and the line under the number gives the split — <em>23 h work · 16 h PTO</em> — whenever time off is part of it. The NetSuite record is the only source of leave: Tempo's own time-off rows (the NETSUITE key) are never counted, in the plan or in the hours logged, because a cancelled request can stay booked there; the PTO usage file is what keeps the figure accurate. So 23 h of project plan plus 16 h of PTO in the record reads as <em>39 h · 23 h work · 16 h PTO</em>, whatever Tempo's time-off rows say. <strong>If a Tempo planned total looks higher than the card</strong>, there are two known causes — PTO that was cancelled in NetSuite but not removed from Tempo, and duplicated plans — which is exactly why the planned cap exists; hover the cell for the make-up and the figure as Tempo exported it. A logged total above the week is usually real overtime; duplicated worklogs and cancelled PTO still logged in Tempo are the things to check in Tempo. The colour signals and the score are unchanged: they still judge the project hours against the PTO-adjusted target.</p>
           <table class="dr-tbl" style="margin-top:4px">
             <thead><tr><th>Measure</th><th>One week</th><th>Month or quarter</th><th>Bar (Met · Close)</th></tr></thead>
             <tbody>
@@ -6768,7 +6768,7 @@ function perfGoalsWeekCell_(gd, ok) {
 }
 // Hours cell (2026.W42): the full-week total — project hours + the NetSuite PTO
 // for the week + public holidays; planned capped at the standard week (40 h,
-// 38 h in Australia & New Zealand), logged never capped — with "incl. 8 h PTO" underneath and the make-up
+// 38 h in Australia & New Zealand), logged never capped — with "23 h work · 16 h PTO" underneath and the make-up
 // in `note` (the cell's hover title). a = a bucket aggregate (one or more
 // weeks); kind = 'tracked' | 'planned'. A payload without the full-week fields
 // falls back to the project hours alone.
@@ -6779,8 +6779,13 @@ function perfHoursCell_(a, kind) {
   var v = hasFull ? full : base;
   if (v === null || v === undefined) return { t: '—', sub: '', note: '' };
   var off = +a.timeOffHrs || 0, ph = +a.holidayHrs || 0, parts = [];
-  if (off > 0) parts.push(perfFmtHrs_(off) + ' PTO');
-  if (ph > 0) parts.push(perfFmtHrs_(ph) + ' holiday');
+  // The split under the number, whenever time off is part of it: "23 h work · 16 h PTO".
+  if (hasFull && off + ph > 0) {
+    parts.push(perfFmtHrs_(Math.max(0, v - off - ph)) + ' work');
+    if (off > 0) parts.push(perfFmtHrs_(off) + ' PTO');
+    if (ph > 0) parts.push(perfFmtHrs_(ph) + ' holiday');
+  }
+  var sub = parts.join(' · ');
   var note = '';
   if (hasFull) {
     var raw = kind === 'planned' ? a.plannedRawHrs : a.trackedRawHrs;
@@ -6800,7 +6805,7 @@ function perfHoursCell_(a, kind) {
       (off > 0 ? ' + ' + perfFmtHrs_(off) + ' PTO (NetSuite record)' : '') +
       (ph > 0 ? ' + ' + perfFmtHrs_(ph) + ' public holiday' : '') + capTxt + rawTxt;
   }
-  return { t: perfFmtHrs_(v), sub: parts.length ? 'incl. ' + parts.join(' + ') : '', note: note };
+  return { t: perfFmtHrs_(v), sub: sub, note: note };
 }
 // Kudos cell: "1 given" over "1 received" — words, not a pair of numbers.
 function perfKudosCell_(v) {

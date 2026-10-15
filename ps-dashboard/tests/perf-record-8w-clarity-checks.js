@@ -80,11 +80,14 @@ ck('perfPts_ prints whole numbers whole, else one decimal', run('perfPts_(30)') 
 // ── Hours cell: full-week hours with the make-up underneath ──────────────────
 const hc = (a, kind) => run('perfHoursCell_(' + JSON.stringify(a) + ', "' + kind + '")');
 const fullWeek = { weeks: 1, plannedHrs: 24, plannedFullHrs: 40, trackedHrs: 20, trackedFullHrs: 36, timeOffHrs: 16, holidayHrs: 0, capacityHrs: 40, plannedRawHrs: 24, trackedRawHrs: 20 };
-ck('hours: planned prints the full-week total with "incl. 16 h PTO"', JSON.stringify({ t: hc(fullWeek, 'planned').t, sub: hc(fullWeek, 'planned').sub }) === JSON.stringify({ t: '40 h', sub: 'incl. 16 h PTO' }));
+ck('hours: planned prints the full-week total with the split "24 h work · 16 h PTO"', JSON.stringify({ t: hc(fullWeek, 'planned').t, sub: hc(fullWeek, 'planned').sub }) === JSON.stringify({ t: '40 h', sub: '24 h work · 16 h PTO' }));
+const owner = { weeks: 1, plannedHrs: 23, plannedFullHrs: 39, trackedHrs: 23, trackedFullHrs: 39, timeOffHrs: 16, holidayHrs: 0, capacityHrs: 40, plannedRawHrs: 23, trackedRawHrs: 23 };
+ck('hours: the owner\'s case — 23 h work + 16 h PTO reads 39 h · 23 h work · 16 h PTO', hc(owner, 'planned').t === '39 h' && hc(owner, 'planned').sub === '23 h work · 16 h PTO');
+ck('hours: no time off → no split line', hc({ weeks: 1, plannedHrs: 30, plannedFullHrs: 30, trackedHrs: 28, trackedFullHrs: 28, timeOffHrs: 0, holidayHrs: 0, capacityHrs: 40 }, 'planned').sub === '');
 ck('hours: the note names the make-up and the cap', /Planned 40 h = 24 h on projects \+ 16 h PTO \(NetSuite record\) · capped at the 40 h week/.test(hc(fullWeek, 'planned').note));
 ck('hours: logged prints its own total', hc(fullWeek, 'tracked').t === '36 h' && /Logged 36 h = 20 h on projects/.test(hc(fullWeek, 'tracked').note));
 const holiday = { weeks: 1, plannedHrs: 32, plannedFullHrs: 40, trackedHrs: 30, trackedFullHrs: 38, timeOffHrs: 0, holidayHrs: 8, capacityHrs: 40, plannedRawHrs: 32, trackedRawHrs: 30 };
-ck('hours: a public holiday shows as "incl. 8 h holiday"', hc(holiday, 'planned').sub === 'incl. 8 h holiday' && /\+ 8 h public holiday/.test(hc(holiday, 'planned').note));
+ck('hours: a public holiday shows in the split', hc(holiday, 'planned').sub === '32 h work · 8 h holiday' && /\+ 8 h public holiday/.test(hc(holiday, 'planned').note));
 const capped = { weeks: 1, plannedHrs: 40, plannedFullHrs: 40, trackedHrs: 52, trackedFullHrs: 52, timeOffHrs: 0, holidayHrs: 0, capacityHrs: 40, plannedRawHrs: 56, trackedRawHrs: 52 };
 ck('hours: a capped planned total names the Tempo figure and the known causes', /Tempo as exported: 56 h \(cancelled PTO still in Tempo, or duplicated entries/.test(hc(capped, 'planned').note));
 ck('hours: logged is never capped — 52 h prints as 52 h and says so', hc(capped, 'tracked').t === '52 h' && /never capped: hours above the week are real/.test(hc(capped, 'tracked').note) && !/Tempo as exported/.test(hc(capped, 'tracked').note));
@@ -130,6 +133,28 @@ r = fw({ capacityHrs: 40, plannedProjectHrs: 45, plannedRawHrs: 45, trackedRawHr
 ck('full week: planned is capped at the week, logged is NOT (50 h stays 50 h)', r.plannedFullHrs === 40 && r.trackedFullHrs === 50);
 r = fw({ capacityHrs: 38, plannedProjectHrs: 30, plannedRawHrs: 30, trackedRawHrs: 42, trackedTimeOffHrs: 0, ledgerPtoHrs: 8, holidayHrs: 0, isFuture: false });
 ck('full week: ANZ logged above 38 h stays above (42 + 8 = 50)', r.plannedFullHrs === 38 && r.trackedFullHrs === 50);
+// ── Server: the PTO rule — Tempo NETSUITE rows never count, the ledger is the PTO ─
+const pctx = { CONFIG_PS: { PTO_MIN_TARGET_HRS: 0, SCORE_PLANNED_CAP_HRS: 40 } };
+vm.createContext(pctx);
+vm.runInContext(fnSource(server, 'subtractPTOFromPlanned_'), pctx);
+const sub = (plan, off, ledger) => vm.runInContext('subtractPTOFromPlanned_(' +
+  JSON.stringify({ W: { byEmployee: plan, byEmployeeTimeOff: off, byEmployeeProjects: {} } }) + ', ' +
+  JSON.stringify({ W: { byEmployee: ledger } }) + ')["W"]', pctx);
+let o = sub({ a: 23 }, {}, { a: 16 });
+ck('PTO rule: 23 h of pure work + 16 h ledger PTO stays 23 h of project plan (was 7 h)', o.byEmployee.a === 23 && o.ptoByEmployee.a === 16);
+o = sub({ a: 39 }, { a: 16 }, { a: 16 });
+ck('PTO rule: Tempo NETSUITE rows are dropped, not the ledger (39 − 16 Tempo = 23)', o.byEmployee.a === 23 && o.ptoByEmployee.a === 16);
+o = sub({ a: 39 }, { a: 16 }, {});
+ck('PTO rule: cancelled PTO still booked in Tempo never inflates the plan (39 → 23, no PTO)', o.byEmployee.a === 23 && o.ptoByEmployee.a === undefined);
+o = sub({ a: 120 }, {}, {});
+ck('PTO rule: the duplication clamp still holds (120 → 40)', o.byEmployee.a === 40 && o.totalHrs === 40 && o.headcount === 1);
+o = sub({ a: 40 }, {}, { a: 16 });
+ck('PTO rule: the plan is still clamped to the capacity left after PTO (40 → 24)', o.byEmployee.a === 24);
+o = sub({}, {}, { b: 40 });
+ck('PTO rule: a person on leave with no plan row gets their PTO, no plan entry', o.byEmployee.b === undefined && o.ptoByEmployee.b === 40 && o.headcount === 0);
+ck('PTO rule: raw and time-off totals ride along for the card', o.byEmployeeRaw !== undefined && o.byEmployeeTimeOff !== undefined);
+ck('planned sheet: a NETSUITE issue key counts as time off too', /upKey\.startsWith\(e \+ "-"\)/.test(server) && /\} else if \(excluded\) \{/.test(server));
+
 ck('server: employee rows carry the full-week fields', /plannedFullHrs: fw \? fw\.plannedFullHrs : undefined,/.test(server) && /trackedFullHrs: fw \? fw\.trackedFullHrs : undefined,/.test(server) && /holidayHrs:\s+fw \? fw\.holidayHrs\s+: undefined,/.test(server));
 ck('server: the planned sheet keeps the time-off rows apart and the raw totals', /byEmployeeTimeOff\[norm\] = \(b\.byEmployeeTimeOff\[norm\] \|\| 0\) \+ hrs;/.test(server) && /byEmployeeRaw:\s+src\.byEmployee \|\| \{\},/.test(server));
 ck('server: CONFIG_PS carries the standard week and the ANZ week', /WEEKLY_CAPACITY_HRS:\s+40,/.test(server) && /ANZ_CAPACITY_HRS:\s+38,/.test(server) && /ANZ_LOCATION:\s+"Australia & New Zealand",/.test(server));
