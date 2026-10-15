@@ -155,6 +155,36 @@ ck('PTO rule: a person on leave with no plan row gets their PTO, no plan entry',
 ck('PTO rule: raw and time-off totals ride along for the card', o.byEmployeeRaw !== undefined && o.byEmployeeTimeOff !== undefined);
 ck('planned sheet: a NETSUITE issue key counts as time off too', /upKey\.startsWith\(e \+ "-"\)/.test(server) && /\} else if \(excluded\) \{/.test(server));
 
+// ── Server: crew PTO joins by name when the ledger row has no Employee Number ─
+const cctx = { isoWeekYear_PS_: () => 2026, isoWeekNum_PS_: () => 41 };
+vm.createContext(cctx);
+vm.runInContext(fnSource(server, 'buildPTOUsageByWeek_') + fnSource(server, 'ptoProfileFor_'), cctx);
+const crew = vm.runInContext(`(function () {
+  var d = new Date(2026, 9, 7);
+  var profiles = {
+    '1001': { transactions: [{ isUsage: true, amount: 8, date: d }] },
+    'name:ana reyes': { transactions: [{ isUsage: true, amount: 99, date: d }], byName: true },
+    'name:hugo martins': { transactions: [{ isUsage: true, amount: 16, date: d }, { isUsage: false, amount: 40, date: d }], byName: true },
+    'name:nobody here': { transactions: [{ isUsage: true, amount: 8, date: d }], byName: true },
+  };
+  var roster = new Map([
+    ['ana reyes', { name: 'Ana Reyes', employeeNumber: '1001' }],
+    ['hugo martins', { name: 'Hugo Martins', employeeNumber: '', isCrewMember: true }],
+  ]);
+  var byWeek = buildPTOUsageByWeek_(profiles, new Map([['1001', 'ana reyes']]), [{ label: '2026.W41' }], roster)['2026.W41'].byEmployee;
+  var noRoster = buildPTOUsageByWeek_(profiles, new Map([['1001', 'ana reyes']]), [{ label: '2026.W41' }])['2026.W41'].byEmployee;
+  return { byWeek: byWeek, noRoster: noRoster,
+           hugoProfile: ptoProfileFor_(profiles, roster.get('hugo martins'), 'hugo martins') === profiles['name:hugo martins'],
+           anaProfile: ptoProfileFor_(profiles, roster.get('ana reyes'), 'ana reyes') === profiles['1001'] };
+})()`, cctx);
+ck('crew PTO: a crew member with no Employee Number gets their usage by name (16 h)', crew.byWeek['hugo martins'] === 16);
+ck('crew PTO: a numbered person is never double-counted from a name-keyed profile', crew.byWeek['ana reyes'] === 8);
+ck('crew PTO: a name the roster does not carry is ignored', crew.byWeek['nobody here'] === undefined);
+ck('crew PTO: without a roster the name-keyed profiles stay out (number join unchanged)', crew.noRoster['hugo martins'] === undefined && crew.noRoster['ana reyes'] === 8);
+ck('crew PTO: ptoProfileFor_ prefers the number and falls back to the name', crew.hugoProfile && crew.anaProfile);
+ck('crew PTO: the ledger reader keys blank-number rows by name and skips the department gate for them', /const nameCol = findCol_PTO_\(headers, "Name"\);/.test(server) && /key = "name:" \+ nameNorm;/.test(server) && /if \(deptSet && deptSet\.size > 0 && !deptSet\.has\(dept\)\) \{ droppedDept\+\+; continue; \}\s+key = empNum;/.test(server));
+ck('crew PTO: PTO health and the weekly usage both resolve crew by name', /const accumP = ptoProfileFor_\(profiles, rp, norm\);/.test(server) && /buildPTOUsageByWeek_\(ptoProfiles, empNumToNorm, extWeeks, roster\)/.test(server) && /buildPTOUsageByWeek_\(ptoProfiles, empNumToNorm, weeks, psNames\)/.test(server));
+
 ck('server: employee rows carry the full-week fields', /plannedFullHrs: fw \? fw\.plannedFullHrs : undefined,/.test(server) && /trackedFullHrs: fw \? fw\.trackedFullHrs : undefined,/.test(server) && /holidayHrs:\s+fw \? fw\.holidayHrs\s+: undefined,/.test(server));
 ck('server: the planned sheet keeps the time-off rows apart and the raw totals', /byEmployeeTimeOff\[norm\] = \(b\.byEmployeeTimeOff\[norm\] \|\| 0\) \+ hrs;/.test(server) && /byEmployeeRaw:\s+src\.byEmployee \|\| \{\},/.test(server));
 ck('server: CONFIG_PS carries the standard week and the ANZ week', /WEEKLY_CAPACITY_HRS:\s+40,/.test(server) && /ANZ_CAPACITY_HRS:\s+38,/.test(server) && /ANZ_LOCATION:\s+"Australia & New Zealand",/.test(server));

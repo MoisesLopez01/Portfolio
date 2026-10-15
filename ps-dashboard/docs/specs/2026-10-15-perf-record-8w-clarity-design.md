@@ -77,6 +77,14 @@ the ledger names that week, so a person on leave with no plan row still gets a P
 also corrects the scoring target and the Overview PTO pill for the same people; the duplication clamp
 (plan repeated across projects → 40 h) and the capacity-after-PTO clamp are unchanged.
 
+**Crew PTO joins by name (same day).** Crew members sit on the Contractors Data tab with no Employee
+Number, and the ledger carries their rows with a blank number and the roster spelling of the name (the
+Accumulation Cost formula keeps named rows since 2026-10-13). `readPTOAccumulationProfiles_` keys those
+rows `name:<normPS_>` (no department gate — the roster join is the gate), `ptoProfileFor_` resolves a
+roster member by number first, else by name, and `buildPTOUsageByWeek_` takes a roster to resolve the
+name-keyed profiles, never for a person who already has a numbered profile. PTO health and the weekly PTO
+both follow, so crew get their PTO balance, their PTO-adjusted target and the full-week hours like everyone.
+
 Server: `fullWeekHours_` (pure) builds `capacityHrs`, `timeOffHrs`, `holidayHrs`, `plannedFullHrs`,
 `trackedFullHrs`, `plannedRawHrs`, `trackedRawHrs` per employee-week in `buildEmployeeRows_`, which takes
 an optional `fullWeek = { ptoUsageByWeek, phByWeek }`; the planned sheet parser keeps the time-off rows

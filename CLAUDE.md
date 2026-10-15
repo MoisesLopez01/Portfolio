@@ -357,7 +357,7 @@ only. Both endpoints are `requireMaintainer_`-gated. Spec:
 | Planned Time | Name (with Last, First and "Last First" alias variants) |
 | Tracked Time | User name (normalised) |
 | Kudos | Recipient / Giver name (normalised) |
-| PTO (Accumulation Cost) | Employee Number |
+| PTO (Accumulation Cost) | Employee Number, else Name (crew rows carry no number; keyed `name:<normPS_>` by `readPTOAccumulationProfiles_`, resolved by `ptoProfileFor_` / `buildPTOUsageByWeek_`) |
 
 `normPS_(name)` = `toLowerCase().replace(/\s+/g, " ").trim()` — used everywhere for name matching.
 

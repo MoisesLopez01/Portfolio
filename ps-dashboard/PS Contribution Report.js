@@ -2623,6 +2623,13 @@ function readPTOAccumulationProfiles_(deptSet) {
       balance: findCol_PTO_(headers, "Balance"),
       adjType: findCol_PTO_(headers, "Adjustment Type"),
     };
+    // Name is the SECONDARY join key (2026.W42): crew members sit on the
+    // Contractors Data tab with no Employee Number, and since 2026-10-13 the
+    // Accumulation Cost formula keeps their rows (blank number, roster
+    // spelling of the name). Those rows are keyed "name:<normPS_>" and joined
+    // to the roster by name downstream (ptoProfileFor_, buildPTOUsageByWeek_).
+    // Optional column: a ledger without it simply keeps the number-only join.
+    const nameCol = findCol_PTO_(headers, "Name");
     // Optional explicit transaction-amount column (try several common names)
     let amtCol = -1;
     for (const name of ["Amount", "Hours", "AdjustmentAmount", "AdjustmentHours"]) {
@@ -2639,23 +2646,34 @@ function readPTOAccumulationProfiles_(deptSet) {
 
     const horizonMs  = Date.now() + CONFIG_PS.PTO_PLANNING_HORIZON_MONTHS * CONFIG_PS.DAYS_PER_MONTH_AVG * 86400 * 1000;
     const profiles   = {};
-    let kept = 0, droppedDept = 0, droppedNoEmp = 0, droppedNoDate = 0;
+    let kept = 0, keptByName = 0, droppedDept = 0, droppedNoEmp = 0, droppedNoDate = 0;
 
     for (let i = 1; i < rawData.length; i++) {
       const row  = rawData[i];
       const dept = String(row[COL.dept] || "").trim();
-      if (deptSet && deptSet.size > 0 && !deptSet.has(dept)) { droppedDept++; continue; }
 
       const empRaw = row[COL.empNum];
       const empNum = String(typeof empRaw === "number" ? Math.round(empRaw) : (empRaw || ""))
                        .replace(/,/g, "").trim();
-      if (!empNum) { droppedNoEmp++; continue; }
+      // No number → key by name (crew). The department gate does not apply to
+      // these rows: the roster join by name is their gate.
+      const nameNorm = (!empNum && nameCol !== -1) ? normPS_(String(row[nameCol] || "")) : "";
+      let key;
+      if (empNum) {
+        if (deptSet && deptSet.size > 0 && !deptSet.has(dept)) { droppedDept++; continue; }
+        key = empNum;
+      } else if (nameNorm) {
+        key = "name:" + nameNorm;
+      } else {
+        droppedNoEmp++; continue;
+      }
 
       const date = parseDate_PS_(row[COL.date]);
       if (!date) { droppedNoDate++; continue; }
 
-      if (!profiles[empNum]) profiles[empNum] = { balanceHistory: [], plannedUsageDates: [], transactions: [], events: [] };
-      const p = profiles[empNum];
+      if (!profiles[key]) profiles[key] = { balanceHistory: [], plannedUsageDates: [], transactions: [], events: [], byName: !empNum };
+      const p = profiles[key];
+      if (!empNum) keptByName++;
 
       const adjType   = String(row[COL.adjType] || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
       const isUsageTx    = adjType.includes("usage") || adjType.includes("timeoff");
@@ -2725,12 +2743,20 @@ function readPTOAccumulationProfiles_(deptSet) {
       }
     });
 
-    Logger.log(`✅ readPTOAccumulationProfiles_: ${Object.keys(profiles).length} employees · ${kept} kept · dropped: dept=${droppedDept} noEmp=${droppedNoEmp} noDate=${droppedNoDate}`);
+    Logger.log(`✅ readPTOAccumulationProfiles_: ${Object.keys(profiles).length} employees · ${kept} kept (${keptByName} rows joined by name, no Employee Number) · dropped: dept=${droppedDept} noEmpNoName=${droppedNoEmp} noDate=${droppedNoDate}`);
     return profiles;
   } catch (e) {
     Logger.log(`❌ readPTOAccumulationProfiles_: ${e.message}`);
     return {};
   }
+}
+
+// The ledger profile for one roster member: by Employee Number first, else by
+// name (crew). `rp` = roster profile, `norm` = its normPS_ key. Pure.
+function ptoProfileFor_(profiles, rp, norm) {
+  if (!profiles) return null;
+  if (rp && rp.employeeNumber && profiles[rp.employeeNumber]) return profiles[rp.employeeNumber];
+  return profiles["name:" + norm] || null;
 }
 
 // Evaluates PTO Planning Health per week for every roster employee.
@@ -2757,7 +2783,7 @@ function readPTOPlanningHealthByWeek_(roster, weeks, profiles) {
 
       roster.forEach((rp, norm) => {
         bucket.total++;
-        const accumP = rp.employeeNumber ? profiles[rp.employeeNumber] : null;
+        const accumP = ptoProfileFor_(profiles, rp, norm);   // number first, else name (crew)
 
         // Latest balance snapshot on or before weekEnd
         let latestBalance = null, balanceAsOf = null;
@@ -3160,7 +3186,7 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
   const result  = {};
   // Per-week PTO usage hours, keyed by normName — used to exempt a full-week-PTO
   // rocketeer from the self-comment pacing rule (Rule 3) for that specific week only.
-  const ptoUsageByWeek = (ptoProfiles && empNumToNorm) ? buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, weeks) : {};
+  const ptoUsageByWeek = (ptoProfiles && empNumToNorm) ? buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, weeks, psNames) : {};
   weeks.filter(w => !w.isFuture).forEach(w => {
     result[w.label] = { compliant: 0, total: 0, byEmployee: {} };
   });
@@ -4115,14 +4141,25 @@ function buildPHByWeek_(phData, weeks, roster) {
 // ptoProfiles: map of empNum → { transactions: [{date, isUsage, amount}] }
 // empNumToNorm: Map(empNum → normName) from rosterIdMap_(roster, 'employeeNumber')
 // weeks: rolling window weeks array (each with .label)
-function buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, weeks) {
+// roster (optional, Map norm → profile): resolves the "name:<norm>" profiles —
+// crew rows with no Employee Number (2026.W42). A name-keyed profile counts only
+// for a roster member who has no numbered profile of their own, so a person the
+// ledger carries both ways is never counted twice.
+function buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, weeks, roster) {
   const result  = {};
   const weekSet = new Set(weeks.map(w => w.label));
   weeks.forEach(w => { result[w.label] = { byEmployee: {} }; });
 
   if (!ptoProfiles) return result;
-  Object.entries(ptoProfiles).forEach(([empNum, profile]) => {
-    const normName = empNumToNorm.get(String(empNum));
+  Object.entries(ptoProfiles).forEach(([key, profile]) => {
+    let normName = null;
+    if (key.indexOf("name:") === 0) {
+      const norm = key.slice(5);
+      const rp = roster && roster.get ? roster.get(norm) : null;
+      if (rp && !(rp.employeeNumber && ptoProfiles[rp.employeeNumber])) normName = norm;
+    } else {
+      normName = empNumToNorm.get(String(key));
+    }
     if (!normName) return;
     const txs = (profile && profile.transactions) || [];
     txs.forEach(tx => {
@@ -4764,7 +4801,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
 
   // Subtract PTO usage hours from Tempo planned time to get net project-planned hours.
   // empNumToNorm was hoisted above (shared with the Goals PTO exemption).
-  const ptoUsageByWk  = buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, extWeeks);
+  const ptoUsageByWk  = buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, extWeeks, roster);   // roster → crew join by name
   const plannedAdjAll = subtractPTOFromPlanned_(plannedAll, ptoUsageByWk);
 
   const kudosFTE    = filterKudosBySubset_(kudosAll,    fteActive);
