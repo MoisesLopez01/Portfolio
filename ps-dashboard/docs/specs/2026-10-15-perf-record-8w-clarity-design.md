@@ -59,9 +59,11 @@ grid tips say *given · received* in the same order everywhere (`perfKudosCell_`
 The Logged time and Planned time cells show the person's week the way the delivery-health dashboard does
 (its 2026-09-11 "PTO enters planned time" and 2026-10-13 public-holiday rules): **project hours + the PTO
 the NetSuite record (Accumulation Cost, `ptoUsageByWeek`) holds for that week + public holidays for the
-person's location** (one fifth of the standard week per distinct weekday holiday, from `phByWeek`),
-**capped at the standard week — 40 h, 38 h in Australia & New Zealand** (`CONFIG_PS.WEEKLY_CAPACITY_HRS`,
-`ANZ_LOCATION`, `ANZ_CAPACITY_HRS`). A week fully on leave reads as a full week; *incl. 16 h PTO* or
+person's location** (one fifth of the standard week per distinct weekday holiday, from `phByWeek`).
+**Planned time is capped at the standard week — 40 h, 38 h in Australia & New Zealand**
+(`CONFIG_PS.WEEKLY_CAPACITY_HRS`, `ANZ_LOCATION`, `ANZ_CAPACITY_HRS`); **Logged time is never capped** —
+people can log more than a week and the card must show it (owner correction after @303, 2026-10-15: @303
+had capped both; @304 lifts the cap on logged). A week fully on leave reads as a full week; *incl. 16 h PTO* or
 *incl. 8 h holiday* sits under the number. The NetSuite record is the authority for leave: Tempo's own
 time-off rows (`byEmployeeTimeOff`, the NETSUITE keys) are swapped out, never added, so a cancelled request
 still sitting in Tempo cannot inflate the total.

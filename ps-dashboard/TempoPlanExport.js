@@ -303,7 +303,7 @@ const MERGE_MAP = {
 /**
  * ONE-TIME SETUP: Stores API credentials into Script Properties.
  * Edit the values below, run once, then clear them from this function.
- */
+
 function storeCredentials() {
   // Web-reachable via google.script.run by anyone the deployment admits, so it is
   // gated. The typeof test is not defensive noise: if this file lives in its OWN
@@ -318,7 +318,7 @@ function storeCredentials() {
   props.setProperty("JIRA_API_TOKEN", "PASTE_JIRA_API_TOKEN_HERE");
   Logger.log("🔐 Credentials stored in Script Properties.");
 }
-
+ */
 /**
  * DIAGNOSTIC: Checks whether the stored Tempo token is currently accepted.
  * Run from the GAS editor when exports fail with 401. Logs the token's

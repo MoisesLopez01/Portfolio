@@ -2573,12 +2573,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <p class="dr-p" style="margin-top:10px"><strong>Help where you need it.</strong> Hover any measure name on the tab (in the History table or the Team grid headers) for a plain-English explanation of what it measures and where its bar sits. Click the name — or the ⓘ beside a grid header — to land on the matching section of this page.</p>
           <div id="docRates" style="padding:6px 0">
           <p class="dr-p"><strong>How every rate is built — week, month, quarter.</strong> Every measure is judged <strong>week by week</strong>. A month or a quarter is the <strong>average of its weeks</strong> — for Goals, the share of checked weeks that passed, so <em>3 of 4 weeks up to date</em> is <em>75%</em>. Weeks with no data at all (before joining, nothing recorded) are left out of every average, and a week of PTO lowers the time targets instead of counting as a gap.</p>
-          <p class="dr-p" id="docFullWeek"><strong>Hours on the Performance Record are full-week hours (since 2026.W42).</strong> The Logged time and Planned time cells show the person's week the way the Delivery Health dashboard does: project hours <strong>plus the PTO the NetSuite record (Accumulation Cost) holds for that week, plus public holidays for their location</strong> (one fifth of the standard week per weekday holiday, from the PH tab), <strong>capped at the standard week — 40 h, or 38 h in Australia &amp; New Zealand</strong>. A week fully on leave therefore reads as a full week, and "incl. 8 h PTO" under the number says how much of it is time off. The NetSuite record is the authority for leave: Tempo's own time-off bookings are replaced by it, never added. <strong>If a Tempo total looks higher than the card</strong>, there are two known causes — PTO that was cancelled in NetSuite but not removed from Tempo, and duplicated worklogs or plans — which is exactly why the cap exists; hover the cell for the make-up and the figure as Tempo exported it. The colour signals and the score are unchanged: they still judge the project hours against the PTO-adjusted target.</p>
+          <p class="dr-p" id="docFullWeek"><strong>Hours on the Performance Record are full-week hours (since 2026.W42).</strong> The Logged time and Planned time cells show the person's week the way the Delivery Health dashboard does: project hours <strong>plus the PTO the NetSuite record (Accumulation Cost) holds for that week, plus public holidays for their location</strong> (one fifth of the standard week per weekday holiday, from the PH tab). <strong>Planned time is capped at the standard week — 40 h, or 38 h in Australia &amp; New Zealand</strong>; <strong>Logged time is never capped</strong>, because a person can log more than a week and the card must show it. A week fully on leave therefore reads as a full week, and "incl. 8 h PTO" under the number says how much of it is time off. The NetSuite record is the authority for leave: Tempo's own time-off bookings are replaced by it, never added. <strong>If a Tempo planned total looks higher than the card</strong>, there are two known causes — PTO that was cancelled in NetSuite but not removed from Tempo, and duplicated plans — which is exactly why the planned cap exists; hover the cell for the make-up and the figure as Tempo exported it. A logged total above the week is usually real overtime; duplicated worklogs and cancelled PTO still logged in Tempo are the things to check in Tempo. The colour signals and the score are unchanged: they still judge the project hours against the PTO-adjusted target.</p>
           <table class="dr-tbl" style="margin-top:4px">
             <thead><tr><th>Measure</th><th>One week</th><th>Month or quarter</th><th>Bar (Met · Close)</th></tr></thead>
             <tbody>
               <tr><td>Goals</td><td>Goals meeting the rules over all goals (<em>6 / 8</em>), with <em>up to date</em> or the failed rule underneath — the three rules in Goals Evaluation above</td><td>Weeks up to date ÷ weeks checked. 3 of 4 = 75%</td><td>Met ≥ 80% · Close ≥ 40%. The first 3 weeks of a quarter only count when they passed.</td></tr>
-              <tr><td>Logged time</td><td>The cell shows the hours logged <em>plus PTO and public holidays</em> for the week, capped at the standard week; the colour judges the project hours against 90% of the hours planned (or of the 40 h week after PTO when nothing was planned)</td><td>The cell shows the total hours for the month or quarter; the colour averages the weekly judgements</td><td>ICs Met ≥ 85% · Close ≥ 55%. Managers Met ≥ 50%, never Missed.</td></tr>
+              <tr><td>Logged time</td><td>The cell shows the hours logged <em>plus PTO and public holidays</em> for the week, never capped (a person can log more than a week); the colour judges the project hours against 90% of the hours planned (or of the 40 h week after PTO when nothing was planned)</td><td>The cell shows the total hours for the month or quarter; the colour averages the weekly judgements</td><td>ICs Met ≥ 85% · Close ≥ 55%. Managers Met ≥ 50%, never Missed.</td></tr>
               <tr><td>Planned time</td><td>The cell shows the hours planned <em>plus PTO and public holidays</em> for the week, capped at the standard week; the colour judges the project hours against the 40 h week after PTO</td><td>The cell shows the total hours for the month or quarter; the colour averages the weekly judgements</td><td>ICs Met ≥ 85% · Close ≥ 50%. Managers Met ≥ 70% · Close ≥ 40%.</td></tr>
               <tr><td>RCR</td><td colspan="2">The last closed month's rate; a quarter shows the month at its close. <strong>Context only</strong>: not something the rocketeer controls, so it never drives the summary, the lane, the Why or the flags</td><td>Met ≥ 2.0 · Close ≥ 1.25 · benchmark 2.5</td></tr>
               <tr><td>Kudos</td><td>Given and received that week</td><td>Added up over the period</td><td>Both sides = Met · one side = Close · never Missed</td></tr>
@@ -4371,8 +4371,8 @@ var PERF_METRIC_TIPS = {
     text: 'Whether the person kept their quarterly goals up to date. Each week is checked on its own: enough goals (8 or more), most of them In Progress, and at least 6 carrying the person\'s own progress comments. A single week reads as goals meeting the rules over all goals — 6 / 8 — with up to date or the rule that failed underneath. The rate is the share of checked weeks that passed — up to date in 3 of 4 weeks of a month shows as 75%.',
     note: 'Met at 80% or more · Close from 40% · Missed below · the first 3 weeks of a quarter only count when they passed.' },
   tracked: { title: 'Logged time', doc: 'docRates',
-    text: 'Hours actually logged in Tempo, plus the PTO the NetSuite record holds for the week and any public holiday for the person\'s location, capped at the standard week (40 h, 38 h in Australia & New Zealand). The history table shows that plain total for the week, the month or the quarter, with the PTO and holiday share underneath; the colour judges the project hours against 90% of the hours planned for them (or of a 40 h week less PTO when nothing was planned), and a month or a quarter averages its weeks.',
-    note: 'ICs: Met at 85% or more · Close from 55% — managers: Met at 50%, never Missed, because coaching time never reaches Tempo. A Tempo total above the week has two known causes — PTO cancelled in NetSuite but still booked in Tempo, or duplicated worklogs — so the card caps it and the cell note names the Tempo figure. Click an hour total to open the same person and period in Tempo, by space and work item.' },
+    text: 'Hours actually logged in Tempo, plus the PTO the NetSuite record holds for the week and any public holiday for the person\'s location — never capped: a person can log more than a week, and the card shows it. The history table shows that plain total for the week, the month or the quarter, with the PTO and holiday share underneath; the colour judges the project hours against 90% of the hours planned for them (or of a 40 h week less PTO when nothing was planned), and a month or a quarter averages its weeks.',
+    note: 'ICs: Met at 85% or more · Close from 55% — managers: Met at 50%, never Missed, because coaching time never reaches Tempo. A logged total above the week is usually real; the other things to check in Tempo are duplicated worklogs and PTO cancelled in NetSuite but still logged in Tempo. Click an hour total to open the same person and period in Tempo, by space and work item.' },
   planned: { title: 'Planned time', doc: 'docRates',
     text: 'Hours scheduled in Tempo ahead of the week, plus the PTO the NetSuite record holds for it and any public holiday for the person\'s location, capped at the standard week (40 h, 38 h in Australia & New Zealand) — so a week fully on leave reads as a full week. The history table shows that plain total for the week, the month or the quarter, with the PTO and holiday share underneath; the colour judges the project hours against the 40 h working week after PTO is taken out, and a month or a quarter averages its weeks.',
     note: 'ICs: Met at 85% or more · Close from 50% — managers: Met at 70% · Close from 40%. A Tempo total above the week has two known causes — PTO cancelled in NetSuite but still booked in Tempo, or duplicated plans — so the card caps it and the cell note names the Tempo figure. Click an hour total to open the same person and period in Tempo, by space and work item.' },
@@ -6767,8 +6767,8 @@ function perfGoalsWeekCell_(gd, ok) {
   return { t: t, sub: sub };
 }
 // Hours cell (2026.W42): the full-week total — project hours + the NetSuite PTO
-// for the week + public holidays, capped at the standard week (40 h, 38 h in
-// Australia & New Zealand) — with "incl. 8 h PTO" underneath and the make-up
+// for the week + public holidays; planned capped at the standard week (40 h,
+// 38 h in Australia & New Zealand), logged never capped — with "incl. 8 h PTO" underneath and the make-up
 // in `note` (the cell's hover title). a = a bucket aggregate (one or more
 // weeks); kind = 'tracked' | 'planned'. A payload without the full-week fields
 // falls back to the project hours alone.
@@ -6785,12 +6785,20 @@ function perfHoursCell_(a, kind) {
   if (hasFull) {
     var raw = kind === 'planned' ? a.plannedRawHrs : a.trackedRawHrs;
     var many = (a.weeks || 1) > 1;
+    // Planned is capped at the standard week; logged never is — a person can
+    // log more than a week and the card must show it.
+    var capTxt = kind === 'planned'
+      ? (many ? ' · each week capped at the standard week (40 h, 38 h in Australia & New Zealand)'
+              : (a.capacityHrs ? ' · capped at the ' + perfFmtHrs_(a.capacityHrs) + ' week' : ''))
+      : ' · never capped: hours above the week are real';
+    var rawTxt = (raw !== null && raw !== undefined && raw > v + 0.5)
+      ? ' · Tempo as exported: ' + perfFmtHrs_(raw) + (kind === 'planned'
+          ? ' (cancelled PTO still in Tempo, or duplicated entries, are the known causes)'
+          : ' (PTO cancelled in NetSuite but still logged in Tempo is the usual cause)')
+      : '';
     note = (kind === 'planned' ? 'Planned ' : 'Logged ') + perfFmtHrs_(v) + ' = ' + perfFmtHrs_(Math.max(0, v - off - ph)) + ' on projects' +
       (off > 0 ? ' + ' + perfFmtHrs_(off) + ' PTO (NetSuite record)' : '') +
-      (ph > 0 ? ' + ' + perfFmtHrs_(ph) + ' public holiday' : '') +
-      (many ? ' · each week capped at the standard week (40 h, 38 h in Australia & New Zealand)'
-            : (a.capacityHrs ? ' · capped at the ' + perfFmtHrs_(a.capacityHrs) + ' week' : '')) +
-      (raw !== null && raw !== undefined && raw > v + 0.5 ? ' · Tempo as exported: ' + perfFmtHrs_(raw) + ' (cancelled PTO still in Tempo, or duplicated entries, are the known causes)' : '');
+      (ph > 0 ? ' + ' + perfFmtHrs_(ph) + ' public holiday' : '') + capTxt + rawTxt;
   }
   return { t: perfFmtHrs_(v), sub: parts.length ? 'incl. ' + parts.join(' + ') : '', note: note };
 }

@@ -106,12 +106,13 @@ var CONFIG_PS = {
   // ── Full-week hours on the Performance Record (2026.W42) ──
   // The card shows a person's week the way the delivery-health dashboard does:
   // planned (and logged) project time PLUS the PTO the NetSuite record holds for
-  // that week PLUS public holidays for their location, capped at the standard
-  // week — 40 h, 38 h in Australia & New Zealand. The PTO record is the
-  // authority: Tempo's own time-off rows (NETSUITE keys) are replaced, never
-  // added, so a cancelled request still sitting in Tempo cannot inflate the
-  // total. Scoring is untouched — it still reads project hours against the
-  // PTO-adjusted target (ptoAdjustedTargetHrs).
+  // that week PLUS public holidays for their location. Planned is capped at
+  // the standard week — 40 h, 38 h in Australia & New Zealand; logged is never
+  // capped (people can log more than a week). The PTO record is the authority:
+  // Tempo's own time-off rows (NETSUITE keys) are replaced, never added, so a
+  // cancelled request still sitting in Tempo cannot inflate the total. Scoring
+  // is untouched — it still reads project hours against the PTO-adjusted
+  // target (ptoAdjustedTargetHrs).
   WEEKLY_CAPACITY_HRS:   40,
   ANZ_LOCATION:          "Australia & New Zealand",
   ANZ_CAPACITY_HRS:      38,
@@ -4197,8 +4198,10 @@ function phHoursForWeek_(phWeek, name, capacityHrs) {
   return dates.size * (capacityHrs / 5);
 }
 // One person-week as the Performance Record prints it: project hours plus the
-// NetSuite PTO for the week plus public holidays, capped at the standard week.
-// Tempo's own time-off rows are swapped for the PTO record, never added.
+// NetSuite PTO for the week plus public holidays. PLANNED is capped at the
+// standard week; LOGGED is never capped — a person can log more than a week
+// and the card must show it (owner rule, 2026-10-15). Tempo's own time-off
+// rows are swapped for the PTO record, never added.
 //   in:  { capacityHrs, plannedProjectHrs (net, may be null), plannedRawHrs,
 //          trackedRawHrs (may be null), trackedTimeOffHrs, ledgerPtoHrs,
 //          holidayHrs, isFuture }
@@ -4215,7 +4218,7 @@ function fullWeekHours_(x) {
   const r2 = v => Math.round(v * 100) / 100;
   const plannedFull = (pNull && off <= 0) ? null : r2(Math.min(cap, Math.max(0, +x.plannedProjectHrs || 0) + off));
   const trackedProject = tNull ? 0 : Math.max(0, (+x.trackedRawHrs || 0) - Math.max(0, +x.trackedTimeOffHrs || 0));
-  const trackedFull = x.isFuture ? null : ((tNull && off <= 0) ? null : r2(Math.min(cap, trackedProject + off)));
+  const trackedFull = x.isFuture ? null : ((tNull && off <= 0) ? null : r2(trackedProject + off));   // no cap
   return {
     capacityHrs:    cap,
     timeOffHrs:     r2(pto),

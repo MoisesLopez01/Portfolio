@@ -1014,7 +1014,7 @@ function getCategoryFromFamily_(jobFamily) {
 // ── SECTION: JIRA HELPERS ────────────────────────────────────
 // ============================================================
 
-/** Stores Jira API Token in Script Properties. */
+/** Stores Jira API Token in Script Properties. 
 function setAPI__Jira() {
   // Web-reachable via google.script.run by anyone the deployment admits, so it is
   // gated. The typeof test is not defensive noise: if this file lives in its OWN
@@ -1032,7 +1032,7 @@ function setAPI__Jira() {
     props.setProperty("ADMIN_AC", "035X");
     ui.alert("✅ Jira API token saved.");
   }
-}
+}*/
 
 /** Retrieves Jira API Token. */
 function getAPI__Jira() {

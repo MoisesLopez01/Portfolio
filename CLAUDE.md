@@ -262,9 +262,10 @@ still seeds with the anchor for other callers.
 ## Full-week hours on the Performance Record (2026.W42)
 
 The card's Logged time / Planned time cells print **project hours + the NetSuite PTO for
-the week + public holidays for the location, capped at the standard week** (40 h; 38 h in
-Australia & New Zealand — `CONFIG_PS.WEEKLY_CAPACITY_HRS` / `ANZ_CAPACITY_HRS`), the
-delivery-health rule. `fullWeekHours_` (pure) builds `plannedFullHrs` / `trackedFullHrs` /
+the week + public holidays for the location**, the delivery-health rule. **Planned is capped
+at the standard week** (40 h; 38 h in Australia & New Zealand — `CONFIG_PS.WEEKLY_CAPACITY_HRS`
+/ `ANZ_CAPACITY_HRS`); **logged is never capped** — people can log more than a week and the
+card must show it (owner rule, 2026-10-15). `fullWeekHours_` (pure) builds `plannedFullHrs` / `trackedFullHrs` /
 `timeOffHrs` / `holidayHrs` / `capacityHrs` per employee-week in `buildEmployeeRows_`; Tempo's
 own time-off rows (`byEmployeeTimeOff`, NETSUITE keys) are **swapped** for the PTO record,
 never added. `plannedHrs` / `trackedHrs` keep their meaning and **scoring is untouched** —
