@@ -235,7 +235,10 @@ ck('drill grid CSS present',      html.indexOf('.pr-drill-grid { display: grid; 
 ck('drill grid collapses ≤900',   /@media \(max-width: 900px\) \{ \.pr-drill-grid \{ grid-template-columns: 1fr; \} \}/.test(html));
 ck('PTO heat squares present',    html.indexOf('class="pr-heat ') >= 0);
 ck('print mode added',            html.indexOf("classList.add('pr-print')") >= 0);
-ck('print mode removed',          (html.match(/classList\.remove\('pr-print'\)/g) || []).length >= 2);
+ck('print mode removed on success AND failure (one restore for both)',
+   /classList\.remove\('pr-print'\)/.test(html) && /\.then\(function\(canvas\) \{\s*restore\(\);/.test(html) && /\.catch\(restore\);/.test(html));
+ck('one PNG routine for card, panel and grid (2026.W42)',
+   (html.match(/perfCapturePng_\(/g) || []).length >= 4 && /function perfPngName_\(what, norm, grain\)/.test(html));
 ck('print mode CSS clamps width', /\.pr-drill\.pr-print \{ max-width: 820px/.test(html));
 ck('RCR monthly join wired',      html.indexOf('perfRcrMonthKey_(') >= 0 && /agg\.rcr = /.test(html));
 
