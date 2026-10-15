@@ -98,9 +98,9 @@ ck('Documentation: the History row explains the link', /the colour is the only j
 // ── Server: worker ids off Capacity Tempo, on each employee row, base on meta ─
 ck('CONFIG_PS names the Capacity Tempo tab and the reports base', /SHEET_TEMPO_WORKERS:\s+"Capacity Tempo"/.test(server) &&
    /TEMPO_REPORTS_BASE:\s+"https:\/\/servicerocket-coe\.atlassian\.net\/jira\/apps\/[0-9a-f-]+\/[0-9a-f-]+\/reports"/.test(server));
-ck('buildEmployeeRows_ takes the id map and ships tempoId', /function buildEmployeeRows_\([^)]*, tempoIds\)/.test(server) && /tempoId:\s+\(tempoIds && tempoIds\[norm\]\) \|\| null,/.test(server));
+ck('buildEmployeeRows_ takes the id map and ships tempoId', /function buildEmployeeRows_\([^)]*, tempoIds, fullWeek\)/.test(server) && /tempoId:\s+\(tempoIds && tempoIds\[norm\]\) \|\| null,/.test(server));
 ck('ids are read only when a time metric is on, then passed in', /const tempoIds\s+= \(hasM\("tracked"\) \|\| hasM\("planned"\)\) \? readTempoWorkerIds_\(\) : \{\};/.test(server) &&
-   /buildEmployeeRows_\(roster, employeeWeeks, rcrAll, siAll, ptoAll, kudosAll, trackedAll, plannedAdjAll, goalsAll, tempoIds\)/.test(server));
+   /buildEmployeeRows_\(roster, employeeWeeks, rcrAll, siAll, ptoAll, kudosAll, trackedAll, plannedAdjAll, goalsAll, tempoIds,\s+\{ ptoUsageByWeek: ptoUsageByWk, phByWeek: phByWeek \}\)/.test(server));
 ck('meta carries the reports base', /tempoReportsBase: CONFIG_PS\.TEMPO_REPORTS_BASE \|\| null,/.test(server));
 ck('the test fixture call still passes nine arguments (tempoIds optional)', /buildEmployeeRows_\(roster, weeks, \{ byEmployee: \{\} \}, \{ byEmployee: \{\} \},/.test(server));
 

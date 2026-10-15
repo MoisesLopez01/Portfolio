@@ -1114,6 +1114,41 @@ a.prp-hlink::after { content: ' ↗'; font-size: 9px; opacity: .7; }
 .prp-hc.hl { box-shadow: inset 0 0 0 2px var(--void); }
 .prp-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--slate); }
 .prp-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1px solid var(--border); }
+.prp-plegend { margin-top: 6px; gap: 10px; }
+.prp-plegend-h { font-weight: 700; color: var(--void); }
+/* Score row (2026.W42): the number in its signal colour above a bar stacked by
+   measure, so the score is unmistakably not another metric cell and its make-up
+   reads at a glance. Dashed marks sit at the Strong and On-track bars. */
+.prp-htable tr.prp-r-score > td { background: var(--surface); border-bottom: 2px solid var(--border); }
+.prp-htable tr.prp-r-score > td.prp-c0 { background: var(--surface); }
+/* The label cell is a real table cell (the generic .prp-c0 flex rule would stop
+   it stretching to the tall score row); vertical-align:middle centres it. */
+.prp-htable th.prp-c0, .prp-htable td.prp-c0 { display: table-cell; }
+.prp-sc { position: relative; margin: 6px 3px 4px; padding: 2px 2px 0; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: default; }
+.prp-sc.tipq { cursor: pointer; text-decoration: none; }
+.prp-sc.hl { box-shadow: inset 0 0 0 2px var(--void); }
+.prp-sc.prog { opacity: .55; }
+.prp-sc:focus-visible { outline: 2px solid var(--orbe); outline-offset: 2px; }
+.prp-sv { display: inline-block; min-width: 30px; padding: 2px 7px; border-radius: 999px; font-size: 13px; font-weight: 800; line-height: 1.2; text-align: center; }
+.prp-sbar { position: relative; display: flex; flex-direction: column-reverse; width: 22px; height: 72px; border-radius: 4px 4px 0 0; background: var(--surface-2, rgba(100,116,139,.12)); overflow: hidden; }
+.prp-sbar i { display: block; width: 100%; flex: 0 0 auto; }
+.prp-sbar i + i { border-top: 1px solid var(--card-bg); }
+.prp-sref { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed rgba(15,25,65,.45); pointer-events: none; }
+body.dark-mode .prp-sref { border-top-color: rgba(255,250,245,.5); }
+body.dark-mode .prp-htable tr.prp-r-score > td { background: rgba(255,255,255,.04); }
+/* Pinned help bubble (2026.W42): a reader can keep a note open to read, scroll
+   or copy it; the bubble itself is hover-safe. */
+#pulseTip.show { pointer-events: auto; }
+#pulseTip .tip-rows { border-collapse: collapse; margin: 6px 0 2px; font-size: 11px; }
+#pulseTip .tip-rows td { padding: 2px 8px 2px 0; vertical-align: top; white-space: nowrap; }
+#pulseTip .tip-rows td:last-child { padding-right: 0; text-align: right; font-weight: 700; }
+#pulseTip .tip-rows i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+#pulseTip .tip-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+#pulseTip .tip-acts button { background: rgba(255,255,255,.12); color: inherit; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; font: inherit; font-size: 10.5px; font-weight: 700; padding: 2px 8px; cursor: pointer; }
+#pulseTip .tip-acts button:hover, #pulseTip .tip-acts button:focus-visible { background: rgba(255,255,255,.22); }
+#pulseTip.pinned { box-shadow: 0 6px 22px rgba(0,0,0,.35), 0 0 0 2px #93C5FD; }
+body.dark-mode #pulseTip .tip-acts button { background: rgba(15,25,65,.08); border-color: rgba(15,25,65,.3); }
+body.dark-mode #pulseTip.pinned { box-shadow: 0 6px 22px rgba(0,0,0,.35), 0 0 0 2px #1A52B3; }
 .prp-evidence { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 10px 18px; }
 .prp-evidence > summary { cursor: pointer; font-weight: 700; color: var(--void); min-height: 36px; display: flex; align-items: center; }
 .prp-evidence .pr-drill { border: 0; padding: 0; margin: 10px 0 4px; background: transparent; }
@@ -2527,25 +2562,26 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <table class="dr-tbl" style="margin-top:4px">
             <thead><tr><th>Part of the card</th><th>What it tells you</th></tr></thead>
             <tbody>
-              <tr><td>The short version</td><td>Whether the person is steady, improving or slipping over the last 13 closed weeks, what they do most consistently, their biggest recurring gap, and RCR against its bar.</td></tr>
+              <tr><td>The short version</td><td>Feedback material for a 1:1, built from the last 13 closed weeks: whether the person is steady, improving or slipping, what they do most consistently (something to celebrate) and their biggest recurring gap (something to work on). It reads across four measures — goals, logged time, planned time and kudos. PTO is not part of it (a wellbeing signal, read in Context and the history), and neither is RCR (not in the rocketeer's control).</td></tr>
               <tr><td>Week · Month · Quarter</td><td>The score for the evaluated week, the last closed month and the last closed quarter, each with the change against the period before and one sentence of what happened. Click one to switch the whole view to that grain.</td></tr>
               <tr><td>Worth asking about</td><td>Facts from the last 4 weeks that repeat (for example, logged time under target in 3 of 4 weeks). They are observations to bring to a 1:1; the manager draws the conclusions.</td></tr>
               <tr><td>Context</td><td>Anything that changes how to read the numbers: PTO weeks (targets were reduced to match), ramp-up, crew, no time-tracking mandate, weeks with no data.</td></tr>
-              <tr><td>History</td><td>A score chart and one table of every measure for every week, month or quarter, each value directly under its period. Green = met, blue = close, orange = missed, grey = no data or not evaluated. The evaluated period is outlined; a period still in progress is faded. <strong>Logged time</strong> and <strong>Planned time</strong> show the plain hour total for the period (per week, per month, per quarter) and nothing else — the colour is the only judgement. Click an hour total to open the same person and period in Tempo (Logged time or Planned time report, grouped by space and work item): the primary evidence behind the number, in the system that holds it. <strong>PTO plan</strong> shows the PTO balance in hours at the close of the period, coloured Good / At risk. <strong>RCR</strong> is on the list for context only: the rocketeer does not control it, so it never drives the summary, the lane or the flags.</td></tr>
+              <tr><td>History</td><td>One table of every measure for every week, month or quarter, each value directly under its period. The <strong>Score</strong> row at the top is set apart: the score in its band colour above a bar stacked by measure, the points each one earned, so the make-up of a score reads at a glance. Hover a score for the exact points; click it to keep the note open. Green = met, blue = close, orange = missed, grey = no data or not evaluated. The evaluated period is outlined; a period still in progress is faded. <strong>Goals</strong> shows, for a single week, goals meeting the rules over all goals (6 / 8) with <em>up to date</em> or the failed rule underneath; a month or quarter shows weeks up to date over weeks checked. <strong>Kudos</strong> reads as given and received. <strong>Logged time</strong> and <strong>Planned time</strong> show the plain hour total for the period (per week, per month, per quarter) and nothing else — the colour is the only judgement. Click an hour total to open the same person and period in Tempo (Logged time or Planned time report, grouped by space and work item): the primary evidence behind the number, in the system that holds it. <strong>PTO plan</strong> shows the PTO balance in hours at the close of the period, coloured Good / At risk. <strong>RCR</strong> is on the list for context only: the rocketeer does not control it, so it never drives the summary, the lane or the flags.</td></tr>
               <tr><td>Full evidence</td><td>The detailed record: exception report, week-by-week table, hours charts, PTO strip and kudos feed.</td></tr>
             </tbody>
           </table>
           <p class="dr-p" style="margin-top:10px"><strong>Help where you need it.</strong> Hover any measure name on the tab (in the History table or the Team grid headers) for a plain-English explanation of what it measures and where its bar sits. Click the name — or the ⓘ beside a grid header — to land on the matching section of this page.</p>
           <div id="docRates" style="padding:6px 0">
           <p class="dr-p"><strong>How every rate is built — week, month, quarter.</strong> Every measure is judged <strong>week by week</strong>. A month or a quarter is the <strong>average of its weeks</strong> — for Goals, the share of checked weeks that passed, so <em>3 of 4 weeks up to date</em> is <em>75%</em>. Weeks with no data at all (before joining, nothing recorded) are left out of every average, and a week of PTO lowers the time targets instead of counting as a gap.</p>
+          <p class="dr-p" id="docFullWeek"><strong>Hours on the Performance Record are full-week hours (since 2026.W42).</strong> The Logged time and Planned time cells show the person's week the way the Delivery Health dashboard does: project hours <strong>plus the PTO the NetSuite record (Accumulation Cost) holds for that week, plus public holidays for their location</strong> (one fifth of the standard week per weekday holiday, from the PH tab), <strong>capped at the standard week — 40 h, or 38 h in Australia &amp; New Zealand</strong>. A week fully on leave therefore reads as a full week, and "incl. 8 h PTO" under the number says how much of it is time off. The NetSuite record is the authority for leave: Tempo's own time-off bookings are replaced by it, never added. <strong>If a Tempo total looks higher than the card</strong>, there are two known causes — PTO that was cancelled in NetSuite but not removed from Tempo, and duplicated worklogs or plans — which is exactly why the cap exists; hover the cell for the make-up and the figure as Tempo exported it. The colour signals and the score are unchanged: they still judge the project hours against the PTO-adjusted target.</p>
           <table class="dr-tbl" style="margin-top:4px">
             <thead><tr><th>Measure</th><th>One week</th><th>Month or quarter</th><th>Bar (Met · Close)</th></tr></thead>
             <tbody>
-              <tr><td>Goals</td><td><em>Up to date</em> or <em>Behind</em> — the three rules in Goals Evaluation above</td><td>Weeks up to date ÷ weeks checked. 3 of 4 = 75%</td><td>Met ≥ 80% · Close ≥ 40%. The first 3 weeks of a quarter only count when they passed.</td></tr>
-              <tr><td>Logged time</td><td>The cell shows the hours logged; the colour judges them against 90% of the hours planned (or of the 40 h week after PTO when nothing was planned)</td><td>The cell shows the total hours for the month or quarter; the colour averages the weekly judgements</td><td>ICs Met ≥ 85% · Close ≥ 55%. Managers Met ≥ 50%, never Missed.</td></tr>
-              <tr><td>Planned time</td><td>The cell shows the hours planned; the colour judges them against the 40 h week after PTO</td><td>The cell shows the total hours for the month or quarter; the colour averages the weekly judgements</td><td>ICs Met ≥ 85% · Close ≥ 50%. Managers Met ≥ 70% · Close ≥ 40%.</td></tr>
+              <tr><td>Goals</td><td>Goals meeting the rules over all goals (<em>6 / 8</em>), with <em>up to date</em> or the failed rule underneath — the three rules in Goals Evaluation above</td><td>Weeks up to date ÷ weeks checked. 3 of 4 = 75%</td><td>Met ≥ 80% · Close ≥ 40%. The first 3 weeks of a quarter only count when they passed.</td></tr>
+              <tr><td>Logged time</td><td>The cell shows the hours logged <em>plus PTO and public holidays</em> for the week, capped at the standard week; the colour judges the project hours against 90% of the hours planned (or of the 40 h week after PTO when nothing was planned)</td><td>The cell shows the total hours for the month or quarter; the colour averages the weekly judgements</td><td>ICs Met ≥ 85% · Close ≥ 55%. Managers Met ≥ 50%, never Missed.</td></tr>
+              <tr><td>Planned time</td><td>The cell shows the hours planned <em>plus PTO and public holidays</em> for the week, capped at the standard week; the colour judges the project hours against the 40 h week after PTO</td><td>The cell shows the total hours for the month or quarter; the colour averages the weekly judgements</td><td>ICs Met ≥ 85% · Close ≥ 50%. Managers Met ≥ 70% · Close ≥ 40%.</td></tr>
               <tr><td>RCR</td><td colspan="2">The last closed month's rate; a quarter shows the month at its close. <strong>Context only</strong>: not something the rocketeer controls, so it never drives the summary, the lane, the Why or the flags</td><td>Met ≥ 2.0 · Close ≥ 1.25 · benchmark 2.5</td></tr>
-              <tr><td>Kudos</td><td>Received and given that week</td><td>Added up over the period</td><td>Both sides = Met · one side = Close · never Missed</td></tr>
+              <tr><td>Kudos</td><td>Given and received that week</td><td>Added up over the period</td><td>Both sides = Met · one side = Close · never Missed</td></tr>
               <tr><td>PTO plan</td><td>The PTO balance in hours that week, coloured <em>Good</em> or <em>At Risk</em></td><td>The balance and state at the end of the period; the evidence strip keeps every week</td><td>Good = Met · At Risk = Missed</td></tr>
               <tr><td>SI rating</td><td colspan="2">The last closed quarter's manager rating, 1–5; the current quarter stays blank until rated</td><td>Met ≥ 4 · Close = 3</td></tr>
               <tr><td>Score</td><td>Weighted mix of the measures above, 0–100 (⚖️ Scoring Weights)</td><td>Average of the weekly scores</td><td>Strong ≥ 75 · On track 50–74 · Needs a look below</td></tr>
@@ -4329,22 +4365,22 @@ var PERF_COL_HELP = {
 // the grid and the card paint the same signal in different palettes.
 var PERF_METRIC_TIPS = {
   score: { title: 'Score', doc: 'docRates',
-    text: 'One number from 0 to 100 that combines every measure on this row using the scoring weights for the person\'s team and job family. 75 and up reads as Strong, 50 to 74 as On track, under 50 as Needs a look. A month or a quarter is the average of its weekly scores.',
+    text: 'One number from 0 to 100 that combines every measure on this row using the scoring weights for the person\'s team and job family. 75 and up reads as Strong, 50 to 74 as On track, under 50 as Needs a look. A month or a quarter is the average of its weekly scores. The bar under each score is stacked by measure: the points each one earned. Hover a score for the numbers; click it to keep them open.',
     note: 'Weights: ⚖️ Scoring Weights · a difference under 3 points is noise, not a change.' },
   goals: { title: 'Goals', doc: 'docGoals',
-    text: 'Whether the person kept their quarterly goals up to date. Each week is checked on its own: enough goals (8 or more), most of them In Progress, and at least 6 carrying the person\'s own progress comments. The rate is the share of checked weeks that passed — up to date in 3 of 4 weeks of a month shows as 75%. A single week simply reads Up to date or Behind.',
+    text: 'Whether the person kept their quarterly goals up to date. Each week is checked on its own: enough goals (8 or more), most of them In Progress, and at least 6 carrying the person\'s own progress comments. A single week reads as goals meeting the rules over all goals — 6 / 8 — with up to date or the rule that failed underneath. The rate is the share of checked weeks that passed — up to date in 3 of 4 weeks of a month shows as 75%.',
     note: 'Met at 80% or more · Close from 40% · Missed below · the first 3 weeks of a quarter only count when they passed.' },
   tracked: { title: 'Logged time', doc: 'docRates',
-    text: 'Hours actually logged in Tempo. The history table shows the plain total for the week, the month or the quarter; the colour judges the week against 90% of the hours planned for it (or of a 40 h week less PTO when nothing was planned), and a month or a quarter averages its weeks.',
-    note: 'ICs: Met at 85% or more · Close from 55% — managers: Met at 50%, never Missed, because coaching time never reaches Tempo. Click an hour total to open the same person and period in Tempo, by space and work item.' },
+    text: 'Hours actually logged in Tempo, plus the PTO the NetSuite record holds for the week and any public holiday for the person\'s location, capped at the standard week (40 h, 38 h in Australia & New Zealand). The history table shows that plain total for the week, the month or the quarter, with the PTO and holiday share underneath; the colour judges the project hours against 90% of the hours planned for them (or of a 40 h week less PTO when nothing was planned), and a month or a quarter averages its weeks.',
+    note: 'ICs: Met at 85% or more · Close from 55% — managers: Met at 50%, never Missed, because coaching time never reaches Tempo. A Tempo total above the week has two known causes — PTO cancelled in NetSuite but still booked in Tempo, or duplicated worklogs — so the card caps it and the cell note names the Tempo figure. Click an hour total to open the same person and period in Tempo, by space and work item.' },
   planned: { title: 'Planned time', doc: 'docRates',
-    text: 'Hours scheduled in Tempo ahead of the week. The history table shows the plain total for the week, the month or the quarter; the colour judges the week against the 40 h working week after PTO is taken out, and a month or a quarter averages its weeks, so one unplanned week in four reads as Close rather than Met.',
-    note: 'ICs: Met at 85% or more · Close from 50% — managers: Met at 70% · Close from 40%. Click an hour total to open the same person and period in Tempo, by space and work item.' },
+    text: 'Hours scheduled in Tempo ahead of the week, plus the PTO the NetSuite record holds for it and any public holiday for the person\'s location, capped at the standard week (40 h, 38 h in Australia & New Zealand) — so a week fully on leave reads as a full week. The history table shows that plain total for the week, the month or the quarter, with the PTO and holiday share underneath; the colour judges the project hours against the 40 h working week after PTO is taken out, and a month or a quarter averages its weeks.',
+    note: 'ICs: Met at 85% or more · Close from 50% — managers: Met at 70% · Close from 40%. A Tempo total above the week has two known causes — PTO cancelled in NetSuite but still booked in Tempo, or duplicated plans — so the card caps it and the cell note names the Tempo figure. Click an hour total to open the same person and period in Tempo, by space and work item.' },
   rcr: { title: 'RCR', doc: 'docRcr',
     text: 'Revenue Contribution Rate: the revenue the person\'s work generated in the last closed month relative to their cost. 2.5 is the benchmark. It is not something the rocketeer controls — project mix, billing rates and staffing decide it — so it stays on the checklist for context and never drives the summary, the lane, the Why or the flags.',
     note: 'Context only · Met at 2.0 or more · Close from 1.25 · from Jul 26 the rate comes straight from the New RCR tab.' },
   kudos: { title: 'Kudos', doc: 'docKudos',
-    text: 'Recognition in the period: kudos the person received and kudos they gave. Both sides present reads Met, one side Close, none at all stays grey. It is never Missed — a quiet week is a prompt to notice someone, not a performance miss.',
+    text: 'Recognition in the period, shown as kudos given and kudos received. Both sides present reads Met, one side Close, none at all stays grey. It is never Missed — a quiet week is a prompt to notice someone, not a performance miss.',
     note: 'Source: the Kudos sheet · counted per week, added up for a month or a quarter.' },
   pto: { title: 'PTO plan', doc: 'docPto',
     text: 'The person\'s PTO balance in hours at the end of the period, coloured by whether the time off is under control: a balance under 100 hours, or a larger balance with real rest booked around it, reads Met (Good); a large balance with no plan around it reads Missed (At Risk). The week-by-week strip in the evidence keeps every At Risk week visible.',
@@ -4380,6 +4416,11 @@ function perfTipLabel_(id, text, extra) {
 function perfTempoLink_(kind, emp, weekLabels) {
   var base = DATA && DATA.meta && DATA.meta.tempoReportsBase;
   return perfTempoReportUrl_(base, kind, emp && emp.tempoId, weekLabels);
+}
+// Points by measure behind one history cell (2026.W42): the weekly score rows
+// for the period, folded by the pure perfScorePartsFromRows_.
+function perfScoreParts_(emp, weekLabels) {
+  return perfScorePartsFromRows_((weekLabels || []).map(function(l) { return emp.weeks && emp.weeks[l] ? computeRkScore(emp, l) : null; }));
 }
 function perfTempoAnchor_(kind, emp, weekLabels, text, periodLabel) {
   var href = perfTempoLink_(kind, emp, weekLabels);
@@ -4687,11 +4728,13 @@ function perfTiles_(emp, row, exc, emps, story) {
   var bits = [];
   if (!empty) {
     if (hasMetric_('tracked') && !exc.notEval.tracked && (rk.trackedHrs !== null || rk.plannedHrs !== null)) {
-      bits.push('logged ' + perfHrs_(rk.trackedHrs) + ' of ' + perfHrs_(rk.plannedHrs) + ' planned');
+      bits.push('logged ' + perfHrs_(rk.trackedFullHrs !== null ? rk.trackedFullHrs : rk.trackedHrs) + ' of ' +
+                perfHrs_(rk.plannedFullHrs !== null ? rk.plannedFullHrs : rk.plannedHrs) + ' planned' +
+                ((rk.timeOffHrs || 0) + (rk.holidayHrs || 0) > 0 ? ' (incl. ' + perfHrs_((rk.timeOffHrs || 0) + (rk.holidayHrs || 0)) + ' off)' : ''));
     }
     if (hasMetric_('goals') && !exc.notEval.goals && rk.goalsHasData) bits.push(rk.goalsOk ? 'goals up to date' : 'goals behind');
     if (hasMetric_('kudos') && !exc.notEval.kudos) {
-      bits.push(rk.kudosCount ? 'was given kudos' + (rk.kudosCount > 1 ? ' ×' + rk.kudosCount : '') : rk.kudosGivenCount ? 'gave kudos' : 'no kudos');
+      bits.push((rk.kudosCount || rk.kudosGivenCount) ? 'kudos: ' + (rk.kudosGivenCount || 0) + ' given, ' + (rk.kudosCount || 0) + ' received' : 'no kudos');
     }
     if (hasMetric_('pto') && !exc.notEval.pto && rk.ptoStatus) {
       bits.push((rk.ptoBalance !== null && rk.ptoBalance !== undefined ? 'PTO balance ' + perfFmtHrs_(rk.ptoBalance) + ', plan ' : 'PTO plan ') +
@@ -4712,8 +4755,10 @@ function perfTiles_(emp, row, exc, emps, story) {
     var t = [];
     if (a && a.weeks) {
       if (hasMetric_('goals') && !exc.notEval.goals && a.goalsWeeks) t.push('goals up to date ' + a.goalsCompliant + ' of ' + a.goalsWeeks + ' weeks');
-      if (hasMetric_('tracked') && !exc.notEval.tracked && a.plannedHrs) t.push('logged ' + Math.round(a.trackedHrs || 0) + ' h of ' + Math.round(a.plannedHrs) + ' h planned');
-      if (hasMetric_('kudos') && !exc.notEval.kudos) t.push('kudos ' + a.kudos.recv + ' in · ' + a.kudos.gave + ' out');
+      var pFull = a.plannedFullHrs !== null && a.plannedFullHrs !== undefined ? a.plannedFullHrs : a.plannedHrs;
+      var tFull = a.trackedFullHrs !== null && a.trackedFullHrs !== undefined ? a.trackedFullHrs : a.trackedHrs;
+      if (hasMetric_('tracked') && !exc.notEval.tracked && pFull) t.push('logged ' + Math.round(tFull || 0) + ' h of ' + Math.round(pFull) + ' h planned');
+      if (hasMetric_('kudos') && !exc.notEval.kudos) t.push('kudos: ' + a.kudos.gave + ' given, ' + a.kudos.recv + ' received');
     }
     return { m: m, b: b, tile: { lens: gran, eyebrow: eyebrow, title: b ? b.label : '—', sub: b ? (b.weekRangeLabel || '') : '',
       v: val, d: val !== null && pval !== null ? val - pval : null, vs: pb ? 'vs ' + pb.label : '',
@@ -4735,12 +4780,12 @@ function perfTiles_(emp, row, exc, emps, story) {
 
 // History table for the card: measures × periods of the active lens.
 var PERF_HIST_ROWS = {
-  score:   { label: 'Score',        help: '0–100, weighted' },
-  goals:   { label: 'Goals',        help: 'weeks up to date' },
+  score:   { label: 'Score',        help: '0–100 · bar = points by measure' },
+  goals:   { label: 'Goals',        help: 'meeting the rules / all goals', helpPeriod: 'weeks up to date / checked' },
   tracked: { label: 'Logged time',  help: 'total hours logged' },
   planned: { label: 'Planned time', help: 'total hours planned' },
   rcr:     { label: 'RCR',          help: 'context only' },
-  kudos:   { label: 'Kudos',        help: 'received · given' },
+  kudos:   { label: 'Kudos',        help: 'given · received' },
   pto:     { label: 'PTO plan',     help: 'balance at period close' },
   si:      { label: 'SI rating',    help: 'manager rating, 1–5' },
 };
@@ -4765,21 +4810,31 @@ function perfHistory_(emp, row, exc) {
   }
   var single = lens === 'eval' || lens === 'week';
   var siHist = (DATA.meta && DATA.meta.siByEmployee && DATA.meta.siByEmployee[emp.normName]) || {};
-  var cols = perfCols_().filter(function(c) { return c.id !== 'si' || lens === 'quarter'; });
+  // The score has its own row at the top (bars + number); the measures follow.
+  var cols = perfCols_().filter(function(c) { return c.id !== 'score' && (c.id !== 'si' || lens === 'quarter'); });
   function cellFor(c, a, b) {
     var ne = !!exc.notEval[c.id];
     if (!a || !a.weeks) return { t: '—', s: 'm' };
     var v = c.id === 'si' ? (siHist[b.key] !== undefined && siHist[b.key] !== null ? +siHist[b.key] : null) : perfColVal_(a, c.id);
-    var t = '—', sub = '';
-    if (c.id === 'score') t = v === null ? '—' : String(v);
-    else if (c.id === 'goals') t = !a.goalsWeeks ? '—' : single ? (a.goalsCompliant ? 'Up to date' : 'Behind') : a.goalsCompliant + ' / ' + a.goalsWeeks;
+    var t = '—', sub = '', note = '';
+    // Goals (2026.W42): a single week reads "goals meeting the rules / all goals"
+    // with the verdict underneath — 6 / 8 · up to date — so a new manager needs no
+    // key. A month or a quarter keeps "weeks up to date / weeks checked".
+    if (c.id === 'goals') {
+      if (!a.goalsWeeks) t = '—';
+      else if (single) { var gc = perfGoalsWeekCell_(emp.weeks && emp.weeks[b.weekLabels[0]] && emp.weeks[b.weekLabels[0]].goalsDetail, !!a.goalsCompliant); t = gc.t; sub = gc.sub; }
+      else t = a.goalsCompliant + ' / ' + a.goalsWeeks;
+    }
     // Time rows (2026.W42): the plain hour TOTAL for the period — per week, per
     // month, per quarter — and nothing else. No ratio: the colour already says
     // how the hours compare with the bar.
-    else if (c.id === 'tracked') t = a.trackedHrs === null ? '—' : perfFmtHrs_(a.trackedHrs);
-    else if (c.id === 'planned') t = a.plannedHrs === null ? '—' : perfFmtHrs_(a.plannedHrs);
+    // Full-week view (2026.W42): project hours + PTO + public holidays, capped at
+    // the standard week; "incl. 8 h PTO" underneath, the make-up in the cell note.
+    else if (c.id === 'tracked' || c.id === 'planned') { var hc = perfHoursCell_(a, c.id); t = hc.t; sub = hc.sub; note = hc.note; }
     else if (c.id === 'rcr') t = v === null ? '—' : (Math.round(v * 10) / 10).toFixed(1);
-    else if (c.id === 'kudos') t = (v ? v.recv : 0) + ' · ' + (v ? v.gave : 0);   // received · given (row help says so)
+    // Kudos (2026.W42): "1 given" over "1 received" — the words, not a pair of
+    // numbers a reader has to decode.
+    else if (c.id === 'kudos') { var kc = perfKudosCell_(v); t = kc.t; sub = kc.sub; }
     // PTO (2026.W42): the balance in hours at period close is the number a
     // manager can act on; Good / At risk stays as the colour and the small word.
     else if (c.id === 'pto') {
@@ -4788,7 +4843,7 @@ function perfHistory_(emp, row, exc) {
       else t = v >= 1 ? 'Good' : 'At risk';
     }
     else if (c.id === 'si') t = v === null ? '—' : String(Math.round(v));
-    return { t: t, sub: sub, s: ne ? 'n' : perfSignalFor_(c.id, c.id === 'goals' ? a.goals : v, row.coh) };
+    return { t: t, sub: sub, note: note, s: ne ? 'n' : perfSignalFor_(c.id, c.id === 'goals' ? a.goals : v, row.coh) };
   }
   // ONE table (2026.W42): header and rows share their columns, so every value
   // sits directly under its period whatever the cell holds.
@@ -4799,38 +4854,60 @@ function perfHistory_(emp, row, exc) {
       return '<th scope="col" class="prp-hh' + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + esc(b.label) +
         (b.sub ? '<small>' + esc(b.sub) + '</small>' : '') + '</th>';
     }).join('') + '</tr></thead>';
-  var rows = '<tbody>' + cols.map(function(c) {
+  // Score row (2026.W42): the number in its signal colour above a bar stacked
+  // by measure — the points each measure earned, so the breakdown is visible at
+  // a glance and lines up with the measure rows under it. Hover or click the
+  // cell for the exact points; a click keeps the note open.
+  var gB = PERF_BARS.score.ic.g, yB = PERF_BARS.score.ic.y;
+  var scoreMeta = PERF_HIST_ROWS.score;
+  var scoreRow = '<tr class="prp-r-score"><td class="prp-c0"><b>' + perfTipLabel_('score', scoreMeta.label) + '</b><small>' +
+    esc(scoreMeta.help) + '</small></td>' +
+    buckets.map(function(b, i) {
+      var a = per[i], v = a && a.weeks ? a.score : null;
+      var s = v === null ? 'm' : perfSignalFor_('score', v, row.coh);
+      var parts = perfScoreParts_(emp, b.weekLabels);
+      var segs = parts.parts.map(function(p) {
+        return '<i style="height:' + Math.max(0, Math.round(p.got * 0.72)) + 'px;background:' + PERF_PART_COLORS[p.id] + '" title="' +
+          esc(PERF_PART_LABELS[p.id] + ' ' + perfPts_(p.got) + ' of ' + perfPts_(p.max) + ' pts') + '"></i>';
+      }).join('');
+      var tipRows = parts.parts.map(function(p) { return [PERF_PART_LABELS[p.id], perfPts_(p.got) + ' / ' + perfPts_(p.max) + ' pts', PERF_PART_COLORS[p.id]]; });
+      var tipAttrs = v === null ? '' : ' data-tip="' + esc('Score ' + v + ' for ' + (single ? b.key : b.label) + ' — points earned by each measure, out of the points its weight allows' +
+          (b.weekLabels.length > 1 ? ' (averaged over the ' + parts.weeks + ' scored weeks of the period)' : '') + '.') +
+        '" data-tip-title="' + esc('Score · ' + (single ? b.key : b.label)) + '" data-tip-rows="' + esc(JSON.stringify(tipRows)) +
+        '" data-tip-note="' + esc(PERF_TIER_NAME[perfTier_(v)] + ' · ' + gB + '+ Strong · ' + yB + '–' + (gB - 1) + ' On track · weights: ⚖️ Scoring Weights') + '" data-tip-pin="1"';
+      return '<td><div class="prp-sc' + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + (v === null ? '' : ' tipq') + '"' + tipAttrs +
+        (v === null ? '' : ' tabindex="0" role="button" aria-label="' + esc('Score ' + v + ', ' + (single ? b.key : b.label) + ': show the points by measure') + '"') + '>' +
+        '<span class="prp-sv prp-s-' + s + '">' + (v === null ? '—' : v) + '</span>' +
+        '<span class="prp-sbar" aria-hidden="true"><b class="prp-sref" style="bottom:' + Math.round(gB * 0.72) + 'px"></b><b class="prp-sref" style="bottom:' + Math.round(yB * 0.72) + 'px"></b>' + segs + '</span>' +
+        '</div></td>';
+    }).join('') + '</tr>';
+  var rows = '<tbody>' + scoreRow + cols.map(function(c) {
     var meta = PERF_HIST_ROWS[c.id] || { label: c.label, help: '' };
+    var help = (!single && meta.helpPeriod) ? meta.helpPeriod : meta.help;
     // The measure name is the hover help and the way into Documentation (2026.W42).
     return '<tr><td class="prp-c0"><b>' + perfTipLabel_(c.id, meta.label) + '</b><small>' +
-      esc(exc.notEval[c.id] ? 'shown, not evaluated' : meta.help) + '</small></td>' +
+      esc(exc.notEval[c.id] ? 'shown, not evaluated' : help) + '</small></td>' +
       buckets.map(function(b, i) {
         var x = cellFor(c, per[i], b);
         // Time cells open the same person and period in Tempo (2026.W42); a dash stays a dash.
         var cellTxt = (c.id === 'tracked' || c.id === 'planned') && x.t !== '—'
           ? perfTempoAnchor_(c.id, emp, b.weekLabels, x.t, single ? b.key : b.label) : esc(x.t);
-        return '<td><div class="prp-hc prp-s-' + x.s + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + cellTxt +
+        return '<td><div class="prp-hc prp-s-' + x.s + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '"' + (x.note ? ' title="' + esc(x.note) + '"' : '') + '>' + cellTxt +
           (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') + '</div></td>';
       }).join('') + '</tr>';
   }).join('') + '</tbody>';
-  var bars = buckets.map(function(b, i) {
-    var a = per[i], v = a && a.weeks ? a.score : null;
-    var s = v === null ? 'm' : perfSignalFor_('score', v, row.coh);
-    return '<div class="prp-bc"><span class="prp-bv">' + (v === null ? '' : v) + '</span>' +
-      '<div class="prp-bar ' + s + (b.containsCurrent ? ' prog' : '') + (b.hl ? ' hl' : '') + '" style="height:' +
-      (v === null ? 0 : Math.max(4, Math.round(v * 1.2))) + 'px"></div><span class="prp-bl">' + esc(b.label) + '</span></div>';
+  var partLegend = PERF_PART_ORDER.filter(function(id) { return hasMetric_(id); }).map(function(id) {
+    return '<span><i style="background:' + PERF_PART_COLORS[id] + ';border-color:' + PERF_PART_COLORS[id] + '"></i>' + esc(PERF_PART_LABELS[id]) + '</span>';
   }).join('');
-  var gB = PERF_BARS.score.ic.g, yB = PERF_BARS.score.ic.y;
   return {
     title: PERF_HIST_TITLE[lens] || 'History',
     sub: lens === 'eval' ? 'Outlined column = the week being evaluated' : 'Outlined = last closed period · faded = still in progress',
-    html: '<div class="prp-chart" aria-label="Score per period">' +
-        '<div class="prp-ref" style="bottom:' + (22 + Math.round(gB * 1.2)) + 'px">' + gB + '</div>' +
-        '<div class="prp-ref" style="bottom:' + (22 + Math.round(yB * 1.2)) + 'px">' + yB + '</div>' + bars + '</div>' +
-      '<div class="prp-tscroll"><table class="prp-htable" style="min-width:' + Math.max(560, 118 + buckets.length * 56) + 'px">' + head + rows + '</table></div>' +
+    html: '<div class="prp-tscroll"><table class="prp-htable" style="min-width:' + Math.max(600, 118 + buckets.length * 64) + 'px">' + head + rows + '</table></div>' +
       '<div class="prp-legend"><span><i class="prp-s-g"></i>Met</span><span><i class="prp-s-y"></i>Close</span>' +
       '<span><i class="prp-s-r"></i>Missed</span><span><i class="prp-s-m"></i>No data / not evaluated</span>' +
-      '<span>Faded = in progress · outlined = the period being evaluated</span></div>',
+      '<span>Faded = in progress · outlined = the period being evaluated</span></div>' +
+      '<div class="prp-legend prp-plegend"><span class="prp-plegend-h">Score bar, points by measure:</span>' + partLegend +
+      '<span>Hover a score for the numbers · click it to keep the note open</span></div>',
   };
 }
 
@@ -5386,7 +5463,12 @@ document.addEventListener('keydown', function(ev) {
 // line chart with hover titles and every-kth x labels. Fluid width fills the
 // drill grid column (viewBox scales, capped at 2× natural size).
 function perfHrsChartSvg_(buckets, per) {
-  var vals = per.map(function(a) { return { t: a ? a.trackedHrs : null, p: a ? a.plannedHrs : null }; });
+  // Full-week hours when the payload carries them (2026.W42), else project hours.
+  var vals = per.map(function(a) {
+    if (!a) return { t: null, p: null };
+    return { t: a.trackedFullHrs !== null && a.trackedFullHrs !== undefined ? a.trackedFullHrs : a.trackedHrs,
+             p: a.plannedFullHrs !== null && a.plannedFullHrs !== undefined ? a.plannedFullHrs : a.plannedHrs };
+  });
   var max = 1;
   vals.forEach(function(v) { max = Math.max(max, v.t || 0, v.p || 0); });
   var n = vals.length, step = perfTickStep_(n, 10);
@@ -5592,7 +5674,7 @@ function perfDrillHtml_(emp, row, model, opts) {
       si:      function() { return 'target ' + chipBars('si').g + '/5'; },
     };
     function chipHtml(c) {
-      var val = c.col.id === 'kudos' ? (c.val ? (c.val.recv + '/' + c.val.gave) : '—')
+      var val = c.col.id === 'kudos' ? (c.val ? (c.val.gave + ' given / ' + c.val.recv + ' received') : '—')
               : c.col.id === 'pto' ? (c.val === null ? '—' : c.val >= 1 ? 'Good' : 'At Risk')
               : c.val === null || c.val === undefined ? '—'
               : (c.col.id === 'goals' || c.col.id === 'tracked' || c.col.id === 'planned') ? Math.round(c.val * 100) + '%'
@@ -5632,8 +5714,10 @@ function perfDrillHtml_(emp, row, model, opts) {
       }
       if (cellByCol.tracked && !cellByCol.tracked.notEval) {
         // Each hour figure opens that week in Tempo (2026.W42) when the link can be built.
-        var tH = a.trackedHrs === null || a.trackedHrs === undefined ? '—' : Math.round(a.trackedHrs) + 'h';
-        var pH = a.plannedHrs !== null && a.plannedHrs !== undefined ? Math.round(a.plannedHrs) + 'h' : '';
+        var tV = a.trackedFullHrs !== null && a.trackedFullHrs !== undefined ? a.trackedFullHrs : a.trackedHrs;
+        var pV = a.plannedFullHrs !== null && a.plannedFullHrs !== undefined ? a.plannedFullHrs : a.plannedHrs;
+        var tH = tV === null || tV === undefined ? '—' : Math.round(tV) + 'h';
+        var pH = pV !== null && pV !== undefined ? Math.round(pV) + 'h' : '';
         var wl = b.weekLabels || [b.label];
         bits.push('tracked ' + (tH === '—' ? tH : perfTempoAnchor_('tracked', emp, wl, tH, b.label)) +
           (pH ? ' of ' + perfTempoAnchor_('planned', emp, wl, pH, b.label) + ' plan' : ''));
@@ -5641,7 +5725,7 @@ function perfDrillHtml_(emp, row, model, opts) {
       if (cellByCol.pto && !cellByCol.pto.notEval && a.pto !== null && a.pto !== undefined) {
         bits.push(a.pto >= 1 ? 'PTO ok' : '<b style="color:#DE350B">PTO At Risk</b>');
       }
-      if (a.kudos && (a.kudos.recv || a.kudos.gave)) bits.push('<span class="pr-star">★</span> recv ' + a.kudos.recv + ' · gave ' + a.kudos.gave);
+      if (a.kudos && (a.kudos.recv || a.kudos.gave)) bits.push('<span class="pr-star">★</span> ' + a.kudos.gave + ' given · ' + a.kudos.recv + ' received');
       return '<tr' + (b.containsCurrent ? ' style="opacity:.55"' : '') + '><td class="pr-sub">' + esc(b.label) +
         (b.containsCurrent ? ' ⏳' : '') + '</td><td>' + (bits.join(' · ') || '<span class="pr-sub">no data</span>') + '</td></tr>';
     }).join('');
@@ -5726,8 +5810,8 @@ function perfDrillHtml_(emp, row, model, opts) {
     feed.reverse();
     var kAgg = per[model.lastIdx] || {};
     block('kudos', 'Kudos — informational (never red)',
-      '<p class="pr-sub">Last closed period: received ' + ((kAgg.kudos && kAgg.kudos.recv) || 0) +
-      ' · gave ' + ((kAgg.kudos && kAgg.kudos.gave) || 0) + ' · ' + feed.length + ' in the record</p>' +
+      '<p class="pr-sub">Last closed period: ' + ((kAgg.kudos && kAgg.kudos.gave) || 0) + ' given · ' +
+      ((kAgg.kudos && kAgg.kudos.recv) || 0) + ' received · ' + feed.length + ' in the record</p>' +
       (feed.length ? '<div class="pr-feed">' + feed.join('') + '</div>'
                    : '<p class="pr-sub">No kudos received in the record.</p>'));
   }
@@ -5779,7 +5863,7 @@ function copyPerfSummary_(norm, btn) {
     'Reading: ' + row.reading,
   ];
   row.cells.forEach(function(c) {
-    var v = c.col.id === 'kudos' ? (c.val ? 'recv ' + c.val.recv + ' / gave ' + c.val.gave : '—')
+    var v = c.col.id === 'kudos' ? (c.val ? c.val.gave + ' given / ' + c.val.recv + ' received' : '—')
           : c.col.id === 'pto' ? (c.val === null ? '—' : c.val >= 1 ? 'Good' : 'At Risk')
           : c.val === null || c.val === undefined ? '—'
           : (c.col.id === 'goals' || c.col.id === 'tracked' || c.col.id === 'planned') ? Math.round(c.val * 100) + '%'
@@ -5818,7 +5902,7 @@ function exportPerfCsv_() {
     if (v === null || v === undefined) return '';
     if (cell.col.id === 'score') return String(Math.round(v));
     if (cell.col.id === 'rcr')   return String(Math.round(v * 10) / 10);
-    if (cell.col.id === 'kudos') return 'recv ' + v.recv + ' / gave ' + v.gave;
+    if (cell.col.id === 'kudos') return v.gave + ' given / ' + v.recv + ' received';
     if (cell.col.id === 'pto')   return v >= 1 ? 'Good' : 'At Risk';
     return Math.round(v * 100) + '%';
   }
@@ -6433,6 +6517,14 @@ function perfBucketAgg_(weekRows, graceLabels) {
     planned:        avg('plannedNorm'),
     plannedHrs:     sumOrNull('plannedHrs'),
     plannedWeeks:   rows.filter(function(r) { return (r.rk.plannedHrs || 0) > 0; }).length,
+    // Full-week hours (2026.W42): summed over the scored weeks like the project hours.
+    trackedFullHrs: sumOrNull('trackedFullHrs'),
+    plannedFullHrs: sumOrNull('plannedFullHrs'),
+    timeOffHrs:     sumOrNull('timeOffHrs') || 0,
+    holidayHrs:     sumOrNull('holidayHrs') || 0,
+    capacityHrs:    sumOrNull('capacityHrs'),
+    trackedRawHrs:  sumOrNull('trackedRawHrs'),
+    plannedRawHrs:  sumOrNull('plannedRawHrs'),
     kudos:          { recv: rows.reduce(function(a, r) { return a + (r.rk.kudosCount || 0); }, 0),
                       gave: rows.reduce(function(a, r) { return a + (r.rk.kudosGivenCount || 0); }, 0) },
     pto:            lastNonNull('ptoNorm'),   // signal = state at bucket close, not the share
@@ -6570,7 +6662,7 @@ function perfThresholdTip_(metricId, cohort, val) {
   var name = LABELS[metricId] || metricId;
   if (metricId === 'kudos') {
     var k = val || { recv: 0, gave: 0 };
-    return 'Kudos received ' + (k.recv || 0) + ' · gave ' + (k.gave || 0) +
+    return 'Kudos ' + (k.gave || 0) + ' given · ' + (k.recv || 0) + ' received' +
       ' — both sides = green · one side = yellow · never red';
   }
   if (val === null || val === undefined || (typeof val === 'number' && isNaN(val))) return name + ' — no data';
@@ -6630,6 +6722,82 @@ function perfCsvEncode_(rows) {
       return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     }).join(',');
   }).join('\r\n');
+}
+// ── 8-week table clarity (2026.W42) ──────────────────────────────────────────
+// Colour, order and name per measure for the score bar segments — the Team Radar
+// palette, so a measure keeps one colour everywhere on the dashboard.
+var PERF_PART_COLORS = { goals: '#058CDC', tracked: '#D97706', planned: '#EA580C', kudos: '#FF9B87', pto: '#0D9488', rcr: '#00A86B', si: '#7C3AED' };
+var PERF_PART_ORDER  = ['goals', 'tracked', 'planned', 'kudos', 'rcr', 'pto', 'si'];
+var PERF_PART_LABELS = { goals: 'Goals', tracked: 'Logged time', planned: 'Planned time', kudos: 'Kudos', rcr: 'RCR', pto: 'PTO plan', si: 'SI rating' };
+// Points, printed: whole numbers stay whole, otherwise one decimal.
+function perfPts_(x) { var r = Math.round((+x || 0) * 10) / 10; return String(r); }
+// The points each measure contributed to a score, over one or more weekly
+// computeRkScore rows (each carries `pts`: { id: { got, max } }, a measure
+// outside that week's denominator absent). Averaged over the scored weeks —
+// dividing every measure by the same count — so the parts add up to the
+// period's average score exactly as the table prints it.
+function perfScorePartsFromRows_(rks) {
+  var rows = (rks || []).filter(function(rk) { return rk && rk.pts && !perfWeekIsEmpty_(rk); });
+  var n = rows.length, acc = {};
+  rows.forEach(function(rk) {
+    Object.keys(rk.pts).forEach(function(id) {
+      if (!acc[id]) acc[id] = { got: 0, max: 0 };
+      acc[id].got += rk.pts[id].got || 0; acc[id].max += rk.pts[id].max || 0;
+    });
+  });
+  var parts = PERF_PART_ORDER.filter(function(id) { return acc[id]; })
+    .map(function(id) { return { id: id, got: acc[id].got / n, max: acc[id].max / n }; });
+  return { weeks: n, parts: parts };
+}
+// Goals cell for one week: "goals meeting the rules / all goals" with the verdict
+// or the failed rule underneath, so a new manager reads 6 / 8 · up to date with
+// no key. gd = the week's goalsDetail from the payload; ok = the compliance the
+// engine already decided for the week (grace handled upstream). A payload built
+// before the counts shipped falls back to the words alone.
+function perfGoalsWeekCell_(gd, ok) {
+  if (!gd || typeof gd.totalGoals !== 'number' || typeof gd.qualifying !== 'number') return { t: ok ? 'Up to date' : 'Behind', sub: '' };
+  var total = gd.totalGoals, q = Math.min(gd.qualifying, total);
+  if (ok && gd.overrideCompliant) return { t: total + ' / ' + total, sub: gd.allGoalsCompleted ? 'all completed' : 'quarter done' };
+  if (!total) return { t: '0 goals', sub: ok ? 'writing weeks' : 'needs ' + (gd.required || 8) + ' goals' };
+  var t = q + ' / ' + total, sub;
+  if (ok) sub = gd.ptoExempt ? 'PTO week' : 'up to date';
+  else if (gd.rule === 1) sub = 'needs ' + (gd.required || 8) + ' goals';
+  else if (gd.rule === 2) sub = 'most not in progress';
+  else sub = 'needs ' + (gd.threshold || 6) + ' with comments';
+  return { t: t, sub: sub };
+}
+// Hours cell (2026.W42): the full-week total — project hours + the NetSuite PTO
+// for the week + public holidays, capped at the standard week (40 h, 38 h in
+// Australia & New Zealand) — with "incl. 8 h PTO" underneath and the make-up
+// in `note` (the cell's hover title). a = a bucket aggregate (one or more
+// weeks); kind = 'tracked' | 'planned'. A payload without the full-week fields
+// falls back to the project hours alone.
+function perfHoursCell_(a, kind) {
+  var full = kind === 'planned' ? a.plannedFullHrs : a.trackedFullHrs;
+  var base = kind === 'planned' ? a.plannedHrs : a.trackedHrs;
+  var hasFull = full !== null && full !== undefined;
+  var v = hasFull ? full : base;
+  if (v === null || v === undefined) return { t: '—', sub: '', note: '' };
+  var off = +a.timeOffHrs || 0, ph = +a.holidayHrs || 0, parts = [];
+  if (off > 0) parts.push(perfFmtHrs_(off) + ' PTO');
+  if (ph > 0) parts.push(perfFmtHrs_(ph) + ' holiday');
+  var note = '';
+  if (hasFull) {
+    var raw = kind === 'planned' ? a.plannedRawHrs : a.trackedRawHrs;
+    var many = (a.weeks || 1) > 1;
+    note = (kind === 'planned' ? 'Planned ' : 'Logged ') + perfFmtHrs_(v) + ' = ' + perfFmtHrs_(Math.max(0, v - off - ph)) + ' on projects' +
+      (off > 0 ? ' + ' + perfFmtHrs_(off) + ' PTO (NetSuite record)' : '') +
+      (ph > 0 ? ' + ' + perfFmtHrs_(ph) + ' public holiday' : '') +
+      (many ? ' · each week capped at the standard week (40 h, 38 h in Australia & New Zealand)'
+            : (a.capacityHrs ? ' · capped at the ' + perfFmtHrs_(a.capacityHrs) + ' week' : '')) +
+      (raw !== null && raw !== undefined && raw > v + 0.5 ? ' · Tempo as exported: ' + perfFmtHrs_(raw) + ' (cancelled PTO still in Tempo, or duplicated entries, are the known causes)' : '');
+  }
+  return { t: perfFmtHrs_(v), sub: parts.length ? 'incl. ' + parts.join(' + ') : '', note: note };
+}
+// Kudos cell: "1 given" over "1 received" — words, not a pair of numbers.
+function perfKudosCell_(v) {
+  var gave = v ? (+v.gave || 0) : 0, recv = v ? (+v.recv || 0) : 0;
+  return { t: gave + ' given', sub: recv + ' received' };
 }
 // ISO week label → its Monday and Sunday as YYYY-MM-DD (2026.W42). UTC arithmetic,
 // so no timezone can shift the day. Pure: the Tempo links are built from it.
@@ -6867,8 +7035,20 @@ function computeRkScore(emp, weekLabel) {
 
   var score = availW > 0 ? Math.round((earned / availW) * 100) : 0;
 
+  // Points per measure (2026.W42): how many of the 100 each measure contributed,
+  // and how many it could have — the breakdown behind a score, on the same rules
+  // as the score itself. A measure outside the week's denominator is absent.
+  var pts = {};
+  function part(id, norm, w) { if (w > 0 && availW > 0) pts[id] = { got: (norm || 0) * w / availW * 100, max: w / availW * 100 }; }
+  part('tracked', tracked, W.tracked); part('planned', planned, W.planned); part('kudos', kudos, W.kudos);
+  if (includeGoals) part('goals', goals, W.goals);
+  if (rcr !== null) part('rcr', rcr, W.rcr || 0);
+  if (!crew && (W.si  || 0) > 0) part('si',  si  !== null ? si  : 0, W.si);
+  if (!crew && (W.pto || 0) > 0) part('pto', pto !== null ? pto : 0, W.pto);
+
   return {
     score:      score,
+    pts:        pts,
     goalsNorm:  goals,   goalsOk:    goals === 1,   goalsHasData: hasGoalsData,
     trackedNorm:tracked, trackedHrs: trackedHrs,
     plannedNorm:planned, plannedHrs: plannedHrs,
@@ -6879,6 +7059,17 @@ function computeRkScore(emp, weekLabel) {
     siNorm:     si,      siVal:      siVal,
     ptoNorm:    pto,     ptoStatus:  wd.ptoHealth ? wd.ptoHealth.status : null,
     ptoBalance: (wd.ptoHealth && wd.ptoHealth.balance != null && !isNaN(+wd.ptoHealth.balance)) ? +wd.ptoHealth.balance : null,
+    // Full-week hours (2026.W42): project time + NetSuite PTO + public holidays,
+    // capped at the standard week — what the Performance Record prints. A
+    // payload built before they shipped carries none; the card then falls
+    // back to the project hours (perfHoursCell_).
+    trackedFullHrs: (wd.trackedFullHrs != null && !isNaN(+wd.trackedFullHrs)) ? +wd.trackedFullHrs : null,
+    plannedFullHrs: (wd.plannedFullHrs != null && !isNaN(+wd.plannedFullHrs)) ? +wd.plannedFullHrs : null,
+    timeOffHrs:     (wd.timeOffHrs     != null && !isNaN(+wd.timeOffHrs))     ? +wd.timeOffHrs     : 0,
+    holidayHrs:     (wd.holidayHrs     != null && !isNaN(+wd.holidayHrs))     ? +wd.holidayHrs     : 0,
+    capacityHrs:    (wd.capacityHrs    != null && !isNaN(+wd.capacityHrs))    ? +wd.capacityHrs    : null,
+    trackedRawHrs:  (wd.trackedRawHrs  != null && !isNaN(+wd.trackedRawHrs))  ? +wd.trackedRawHrs  : null,
+    plannedRawHrs:  (wd.plannedRawHrs  != null && !isNaN(+wd.plannedRawHrs))  ? +wd.plannedRawHrs  : null,
   };
 }
 
@@ -9342,54 +9533,144 @@ var PULSE_ROW_TIPS = {
 
 // One shared bubble, positioned beside the hovered label and kept inside the
 // viewport. Delegated listeners, so re-rendering the table needs no re-binding.
+// Keep-open (2026.W42): managers could not hold a note open to read it to the
+// end, scroll it or copy it. The bubble is now hover-safe (moving the pointer
+// onto it keeps it), closes with a short grace instead of on the first stray
+// pixel, and can be PINNED — "Keep open" in the bubble, or a click / Enter on a
+// cell that carries data-tip-pin (the score cells). A pinned bubble ignores
+// other hovers and closes on ✕, Esc, a click elsewhere, or its anchor leaving
+// the page. data-tip-rows (JSON [[label, value, colour?], …]) renders a small
+// table inside the bubble — the score breakdown by measure.
 (function initPulseTips_() {
-  var tipEl = null;
+  var tipEl = null, anchor = null, pinned = false, hideTimer = null;
   function ensure() {
     if (!tipEl) { tipEl = document.createElement('div'); tipEl.id = 'pulseTip'; document.body.appendChild(tipEl); }
     return tipEl;
   }
-  function hide() { if (tipEl) tipEl.classList.remove('show'); }
+  function clearTimer() { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } }
+  function hide(force) {
+    if (pinned && !force) return;
+    clearTimer();
+    pinned = false; anchor = null;
+    if (tipEl) { tipEl.classList.remove('show'); tipEl.classList.remove('pinned'); }
+  }
+  // A lost mouseout (synthetic pointers, iframe focus changes) must never leave a
+  // fixed bubble behind, so an unpinned bubble still closes — after a grace
+  // long enough to cross the gap between the label and the bubble.
+  function hideSoon() { if (pinned) return; clearTimer(); hideTimer = setTimeout(function () { hide(); }, 180); }
   // Pulse row labels and, since 2026.W42, any .tipq element (Performance Record
-  // measure labels, grid headers, the Hours block) share the one bubble.
+  // measure labels, grid headers, score cells) share the one bubble.
   var SEL = '.row-label[data-tip], .tipq[data-tip]';
   function find(ev) { return ev.target && ev.target.closest ? ev.target.closest(SEL) : null; }
-  function show(lbl) {
+  function inTip(node) { return !!(tipEl && node && node.nodeType === 1 && tipEl.contains(node)); }
+  function rowsHtml(lbl) {
+    var raw = lbl.getAttribute('data-tip-rows');
+    if (!raw) return '';
+    try {
+      var rows = JSON.parse(raw);
+      if (!rows || !rows.length) return '';
+      return '<table class="tip-rows">' + rows.map(function (r) {
+        return '<tr><td>' + (r[2] ? '<i style="background:' + esc(r[2]) + '"></i>' : '') + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td></tr>';
+      }).join('') + '</table>';
+    } catch (e) { return ''; }
+  }
+  function render(lbl) {
     var el   = ensure();
     var note = lbl.getAttribute('data-tip-note');
     var ttl  = lbl.getAttribute('data-tip-title') || lbl.textContent.replace(/\s*ⓘ\s*$/, '');
     var doc  = lbl.getAttribute('data-doc') ? 'Click to open this section in 📖 Documentation'
              : lbl.getAttribute('data-doc-via') ? 'ⓘ opens this section in 📖 Documentation · click the header to sort' : '';
+    var acts = pinned ? '<button type="button" data-tip-act="close" aria-label="Close this note">✕ Close</button>'
+                      : '<button type="button" data-tip-act="pin" aria-label="Keep this note open">📌 Keep open</button>';
     el.innerHTML = '<strong>' + esc(ttl) + '</strong>' +
                    esc(lbl.getAttribute('data-tip')) +
+                   rowsHtml(lbl) +
                    (note ? '<em>' + esc(note) + '</em>' : '') +
-                   (doc ? '<span class="tip-doc">' + esc(doc) + '</span>' : '');
+                   (doc ? '<span class="tip-doc">' + esc(doc) + '</span>' : '') +
+                   '<span class="tip-acts">' + acts + '</span>';
+    el.classList.toggle('pinned', pinned);
+  }
+  function place(lbl) {
+    var el = ensure();
     el.style.left = '0px'; el.style.top = '0px';
     el.classList.add('show');
     var r = lbl.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+    // Beside the anchor, never over it (the bubble takes the pointer now): to
+    // the right, else to the left, else below, else above — then inside the
+    // viewport.
     var left = r.right + 12, top = r.top - 8;
-    if (left + w > window.innerWidth - 12)  left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12));
+    if (left + w > window.innerWidth - 12) {
+      if (r.left - w - 12 >= 12) left = r.left - w - 12;
+      else {
+        left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12));
+        top = r.bottom + 8;
+        if (top + h > window.innerHeight - 12) top = r.top - h - 8;
+      }
+    }
     if (top + h > window.innerHeight - 12)  top  = Math.max(12, window.innerHeight - h - 12);
+    if (top < 12) top = 12;
     el.style.left = left + 'px'; el.style.top = top + 'px';
+  }
+  function show(lbl) {
+    if (pinned && lbl !== anchor) return;   // a pinned note holds until closed
+    clearTimer();
+    anchor = lbl;
+    render(lbl);
+    place(lbl);
+  }
+  function pin(lbl) {
+    pinned = false;
+    show(lbl);
+    pinned = true;
+    render(lbl);
+    place(lbl);
   }
   document.addEventListener('mouseover', function (ev) {
     var lbl = find(ev);
-    // Pointer over anything else hides the bubble too — a mouseout can be lost
-    // (synthetic pointers, iframe focus changes) and a fixed bubble must never
-    // outlive the hover that opened it.
-    if (!lbl) { hide(); return; }
-    show(lbl);
+    if (lbl) { show(lbl); return; }
+    if (inTip(ev.target)) { clearTimer(); return; }   // reading the bubble keeps it
+    hideSoon();
   });
   document.addEventListener('mouseout', function (ev) {
     var lbl = find(ev);
-    if (lbl) hide();
+    if (!lbl && !inTip(ev.target)) return;
+    if (inTip(ev.relatedTarget) || (anchor && ev.relatedTarget && anchor.contains && anchor.contains(ev.relatedTarget))) return;
+    hideSoon();
   });
   // Keyboard: a focused label (the measure buttons are real <button>s) shows the
-  // same bubble; Tab away closes it.
+  // same bubble; Tab away closes it unless it is pinned.
   document.addEventListener('focusin',  function (ev) { var lbl = find(ev); if (lbl) show(lbl); });
-  document.addEventListener('focusout', function (ev) { var lbl = find(ev); if (lbl) hide(); });
+  document.addEventListener('focusout', function (ev) { var lbl = find(ev); if (lbl && !inTip(ev.relatedTarget)) hideSoon(); });
+  document.addEventListener('click', function (ev) {
+    var act = ev.target && ev.target.closest ? ev.target.closest('[data-tip-act]') : null;
+    if (act && inTip(act)) {
+      ev.preventDefault(); ev.stopPropagation();
+      if (act.getAttribute('data-tip-act') === 'pin') { if (anchor) pin(anchor); } else hide(true);
+      return;
+    }
+    if (inTip(ev.target)) return;
+    var lbl = find(ev);
+    if (lbl && lbl.getAttribute('data-tip-pin')) {
+      ev.preventDefault();
+      if (pinned && lbl === anchor) hide(true); else pin(lbl);
+      return;
+    }
+    if (pinned) hide(true);   // a click anywhere else lets a pinned note go
+  });
+  // Capture phase: an open note takes the first Escape (the card or panel takes
+  // the next one), the way layered dialogs close.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') { if (tipEl && tipEl.classList.contains('show')) { hide(true); ev.stopPropagation(); ev.stopImmediatePropagation(); } return; }
+    if ((ev.key === 'Enter' || ev.key === ' ') && ev.target && ev.target.matches && ev.target.matches(SEL) && ev.target.getAttribute('data-tip-pin')) {
+      ev.preventDefault();
+      if (pinned && ev.target === anchor) hide(true); else pin(ev.target);
+    }
+  }, true);
   // Focusing a label scrolls it into view, and that scroll would close the bubble
-  // the focus just opened — while the anchor keeps focus, follow it instead.
+  // the focus just opened — while the anchor keeps focus, follow it instead. A
+  // pinned bubble follows its anchor too, and goes when the anchor is gone.
   function onScroll() {
+    if (pinned) { if (anchor && anchor.isConnected) place(anchor); else hide(true); return; }
     var a = document.activeElement;
     if (a && a.matches && a.matches(SEL) && tipEl && tipEl.classList.contains('show')) { show(a); return; }
     hide();
@@ -9397,7 +9678,7 @@ var PULSE_ROW_TIPS = {
   // The bubble is position:fixed, so it would float in place while the table
   // scrolls out from under it — any scroll (page or .tbl-wrap) closes it.
   document.addEventListener('scroll', onScroll, true);
-  window.addEventListener('blur', hide);
+  window.addEventListener('blur', function () { hide(); });
 })();
 
 // ── FILTER BAR ────────────────────────────────────────────
@@ -9428,6 +9709,13 @@ function resolveOrgTree_(supervisorName) {
       }
     });
   }
+  return scope;
+}
+// The set the Supervisor filter shows: everyone under the supervisor, never the
+// supervisor. Pure over DATA.employees (see getFilteredEmployees).
+function orgScopeForSupervisor_(supervisorName) {
+  var scope = resolveOrgTree_(supervisorName);
+  scope.delete((supervisorName || "").toLowerCase().replace(/\s+/g, " ").trim());
   return scope;
 }
 
@@ -9703,7 +9991,11 @@ function getFilteredEmployees() {
   var ql    = q.toLowerCase().trim();
 
   var norm_    = function(s) { return (s || "").toLowerCase().replace(/\s+/g, " ").trim(); };
-  var orgScope = sup ? resolveOrgTree_(sup) : null;
+  // Supervisor filter = that person's org tree WITHOUT the person (2026.W42): a
+  // manager's own evaluation belongs on THEIR manager's dashboard, the same rule
+  // the server applies to a signed-in manager. resolveOrgTree_ seeds the walk with
+  // the anchor, so the anchor is dropped here, on the way to the filter.
+  var orgScope = sup ? orgScopeForSupervisor_(sup) : null;
 
   return DATA.employees.filter(function(e) {
     var isCrew = e.isCrewMember || /contractor/i.test(e.jobTitle || "");

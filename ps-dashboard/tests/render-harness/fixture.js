@@ -49,9 +49,14 @@
         trackedHrs: o.leave ? null : Math.round(pl * tr * 10) / 10,
         plannedHrs: o.leave ? null : Math.round(pl * 10) / 10,
         ptoAdjustedTargetHrs: target, ptoPlannedHrs: pto,
-        goalsDetail: o.crew ? undefined : { compliant: R() < gq, selfCommentCount: 6 },
+        // Full-week hours (2026.W42): project + PTO + public holiday, capped at 40.
+        capacityHrs: 40, timeOffHrs: pto, holidayHrs: (n === 36 && idx % 2 === 0) ? 8 : 0,
+        plannedFullHrs: o.leave ? null : Math.min(40, Math.round(pl * 10) / 10 + pto + ((n === 36 && idx % 2 === 0) ? 8 : 0)),
+        trackedFullHrs: o.leave ? null : Math.min(40, Math.round(pl * tr * 10) / 10 + pto + ((n === 36 && idx % 2 === 0) ? 8 : 0)),
+        plannedRawHrs: o.leave ? null : Math.round(pl * 10) / 10 + (idx % 4 === 1 ? 12 : 0), trackedRawHrs: o.leave ? null : Math.round(pl * tr * 10) / 10,
+        goalsDetail: o.crew ? undefined : (function () { var ok = R() < gq, q = ok ? 6 + Math.floor(R() * 3) : Math.floor(R() * 6); return { compliant: ok, selfCommentCount: 6, totalGoals: 8, qualifying: q, threshold: 6, required: 8, rule: ok ? null : (q >= 6 ? 2 : 3) }; })(),
         kudos: { count: kr, givenCount: kg, entries: kr ? [{ giver: 'Peer ' + (idx % 5), orgValues: ['Customer obsessed'] }] : [] },
-        ptoHealth: o.crew ? undefined : { status: R() < .85 ? 'Good' : 'At Risk', reason: '' },
+        ptoHealth: o.crew ? undefined : (function () { var good = R() < .85; return { status: good ? 'Good' : 'At Risk', reason: '', balance: Math.round(good ? 40 + R() * 70 : 110 + R() * 60) }; })(),
       };
       if (o.crew) delete weeks['2026.W' + n].goalsDetail;
     }

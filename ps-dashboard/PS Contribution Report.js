@@ -103,6 +103,18 @@ var CONFIG_PS = {
 
   DAYS_PER_MONTH_AVG:    30.44,  // average days/month (365.25/12) used in horizon and ramp-up calculations
   SCORE_PLANNED_CAP_HRS: 40,     // hours cap for planned-time normalisation in scoring
+  // ── Full-week hours on the Performance Record (2026.W42) ──
+  // The card shows a person's week the way the delivery-health dashboard does:
+  // planned (and logged) project time PLUS the PTO the NetSuite record holds for
+  // that week PLUS public holidays for their location, capped at the standard
+  // week — 40 h, 38 h in Australia & New Zealand. The PTO record is the
+  // authority: Tempo's own time-off rows (NETSUITE keys) are replaced, never
+  // added, so a cancelled request still sitting in Tempo cannot inflate the
+  // total. Scoring is untouched — it still reads project hours against the
+  // PTO-adjusted target (ptoAdjustedTargetHrs).
+  WEEKLY_CAPACITY_HRS:   40,
+  ANZ_LOCATION:          "Australia & New Zealand",
+  ANZ_CAPACITY_HRS:      38,
   SCORE_TRACKED_RATIO:   0.9,    // tracked/planned ratio threshold for full execution credit
   SI_MAX_SCORE:          5,      // SI rating scale maximum (1–5) — used to normalise to 0–1
   TOP_PERFORMERS_MAX:    10,     // number of entries in the LEADING BEHAVIOURS leaderboard
@@ -3027,7 +3039,10 @@ function parseTempoWorkerIds_(values) {
 function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys, srcLabel) {
   const SRC = srcLabel ? `[${srcLabel}] ` : "";
   const result = {};
-  weeks.forEach(w => { result[w.label] = { totalHrs: 0, headcount: 0, byEmployee: {}, byEmployeeProjects: {} }; });
+  // byEmployeeTimeOff (2026.W42): the hours on the non-project keys (Tempo's own
+  // time-off rows), kept apart so the full-week view can swap them for the
+  // NetSuite PTO record instead of counting leave twice.
+  weeks.forEach(w => { result[w.label] = { totalHrs: 0, headcount: 0, byEmployee: {}, byEmployeeProjects: {}, byEmployeeTimeOff: {} }; });
   if (!vals || vals.length < 2) { Logger.log(`⚠️ ${SRC}buildPlannedResult_: empty/too-short sheet (${vals ? vals.length : 0} rows).`); return result; }
 
   // The Tempo export writes a TWO-ROW stacked header (ISO labels over week columns in
@@ -3116,6 +3131,8 @@ function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys, srcLabel) {
       if (isProject) {
         if (!b.byEmployeeProjects[norm]) b.byEmployeeProjects[norm] = {};
         b.byEmployeeProjects[norm][rawKey] = (b.byEmployeeProjects[norm][rawKey] || 0) + hrs;
+      } else if (rawKey && excludeKeys.has(rawKey.toUpperCase())) {
+        b.byEmployeeTimeOff[norm] = (b.byEmployeeTimeOff[norm] || 0) + hrs;
       }
     });
   });
@@ -3288,36 +3305,24 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
     psNames.forEach((_, norm) => {
       total++;
       const empGoals = goalMap.get(norm);
+      // Every verdict carries the goal counts (2026.W42): `qualifying` = goals meeting
+      // the comment rule, `totalGoals`, `threshold` (how many must qualify) and
+      // `required` (how many goals the week asks for). The Performance Record shows
+      // the week as "qualifying / totalGoals" with the failed rule underneath, so
+      // the counts must be there whichever rule decided the week — not only rule 3.
+      const threshold = CONFIG_PS.GOALS_ACTIVE_COMMENT_COUNT;
       if (!empGoals || empGoals.size === 0) {
         if (goalsRequired === 0) {
-          result[week.label].byEmployee[norm] = { compliant: true, rule: null, totalGoals: 0, inWritingRamp: true };
+          result[week.label].byEmployee[norm] = { compliant: true, rule: null, totalGoals: 0, qualifying: 0, threshold, required: 0, inWritingRamp: true };
           compliant++;
           return;
         }
-        result[week.label].byEmployee[norm] = { compliant: false, rule: 1, totalGoals: 0 };
+        result[week.label].byEmployee[norm] = { compliant: false, rule: 1, totalGoals: 0, qualifying: 0, threshold, required: goalsRequired };
         return;
       }
 
       const goalIds    = Array.from(empGoals.keys());
       const totalGoals = goalIds.length;
-
-      // Rule 1: must have at least goalsRequired goals (relaxed to 0 during writing ramp)
-      if (totalGoals < goalsRequired) {
-        result[week.label].byEmployee[norm] = { compliant: false, rule: 1, totalGoals };
-        return;
-      }
-
-      // Rule 2: majority (>50%) of goals must be "In Progress"
-      const inProgressCount  = goalIds.filter(id => empGoals.get(id).status === "In Progress").length;
-      const inProgressNeeded = Math.ceil(totalGoals * CONFIG_PS.GOALS_MIN_IN_PROGRESS_PCT);
-      if (inProgressCount < inProgressNeeded) {
-        result[week.label].byEmployee[norm] = { compliant: false, rule: 2, totalGoals, inProgressCount, inProgressNeeded };
-        return;
-      }
-
-      // Rule 3: at least GOALS_ACTIVE_COMMENT_COUNT goals must have >= reqCmt cumulative self-comments by week end
-      const threshold  = CONFIG_PS.GOALS_ACTIVE_COMMENT_COUNT;
-      const fullWeekPTO = (weekPTO[norm] || 0) >= CONFIG_PS.PTO_FULL_WEEK_HRS;
       const qualifying = goalIds.filter(id => {
         const goal = empGoals.get(id);
         const cnt  = goal.selfComments.filter(d => d <= weekEnd).length;
@@ -3326,6 +3331,23 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
         return cnt >= reqCmt;
       }).length;
 
+      // Rule 1: must have at least goalsRequired goals (relaxed to 0 during writing ramp)
+      if (totalGoals < goalsRequired) {
+        result[week.label].byEmployee[norm] = { compliant: false, rule: 1, totalGoals, qualifying, threshold, required: goalsRequired };
+        return;
+      }
+
+      // Rule 2: majority (>50%) of goals must be "In Progress"
+      const inProgressCount  = goalIds.filter(id => empGoals.get(id).status === "In Progress").length;
+      const inProgressNeeded = Math.ceil(totalGoals * CONFIG_PS.GOALS_MIN_IN_PROGRESS_PCT);
+      if (inProgressCount < inProgressNeeded) {
+        result[week.label].byEmployee[norm] = { compliant: false, rule: 2, totalGoals, qualifying, threshold, required: goalsRequired, inProgressCount, inProgressNeeded };
+        return;
+      }
+
+      // Rule 3: at least GOALS_ACTIVE_COMMENT_COUNT goals must have >= reqCmt cumulative self-comments by week end
+      const fullWeekPTO = (weekPTO[norm] || 0) >= CONFIG_PS.PTO_FULL_WEEK_HRS;
+
       // A full-week-PTO rocketeer physically couldn't comment that week — exempt Rule 3
       // only (per-week snapshot; does not shift reqCmt/qWeek for other weeks). Rules 1
       // and 2 above are unaffected.
@@ -3333,7 +3355,7 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
       if (ok) compliant++;
       result[week.label].byEmployee[norm] = {
         compliant: ok, rule: ok ? null : 3,
-        totalGoals, inProgressCount, inProgressNeeded, qualifying, threshold, reqCmt, qWeek,
+        totalGoals, inProgressCount, inProgressNeeded, qualifying, threshold, reqCmt, qWeek, required: goalsRequired,
         ptoExempt: fullWeekPTO,
       };
     });
@@ -3706,18 +3728,44 @@ function buildTeamSummary_(weeks, rcr, si, pto, kudos, tracked, planned, goals) 
   ];
 }
 
-function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned, goals, tempoIds) {
+// fullWeek (optional, 2026.W42): { ptoUsageByWeek, phByWeek } — the NetSuite PTO
+// usage per week and the public holidays per week, for the full-week hours the
+// Performance Record prints (fullWeekHours_). Absent → no full-week fields.
+function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned, goals, tempoIds, fullWeek) {
   const employees = [];
+  const fwPto = (fullWeek && fullWeek.ptoUsageByWeek) || null;
+  const fwPh  = (fullWeek && fullWeek.phByWeek) || null;
   roster.forEach((profile, norm) => {
     const empWeeks = {};
+    const capacityHrs = weeklyCapacityHrs_(profile.keyLocation);
     weeks.forEach(w => {
       const l = w.label;
       const ptoHrsForWeek = (planned[l] && planned[l].ptoByEmployee && planned[l].ptoByEmployee[norm] != null)
         ? planned[l].ptoByEmployee[norm] : 0;
+      const trackedHrs = w.isFuture ? null : (tracked[l] && tracked[l].byEmployee[norm] != null ? tracked[l].byEmployee[norm] : null);
+      const plannedHrs = planned[l] && planned[l].byEmployee[norm] != null ? planned[l].byEmployee[norm] : null;
+      const fw = fullWeek ? fullWeekHours_({
+        capacityHrs,
+        plannedProjectHrs: plannedHrs,
+        plannedRawHrs:     planned[l] && planned[l].byEmployeeRaw && planned[l].byEmployeeRaw[norm] != null ? planned[l].byEmployeeRaw[norm] : null,
+        trackedRawHrs:     trackedHrs,
+        trackedTimeOffHrs: tracked[l] && tracked[l].byEmployeeTimeOff ? (tracked[l].byEmployeeTimeOff[norm] || 0) : 0,
+        ledgerPtoHrs:      fwPto && fwPto[l] && fwPto[l].byEmployee ? (fwPto[l].byEmployee[norm] || 0) : 0,
+        holidayHrs:        phHoursForWeek_(fwPh ? fwPh[l] : null, profile.name, capacityHrs),
+        isFuture:          !!w.isFuture,
+      }) : null;
       empWeeks[l] = {
-        trackedHrs:  w.isFuture  ? null : (tracked[l]  && tracked[l].byEmployee[norm]  != null ? tracked[l].byEmployee[norm]  : null),
-        plannedHrs:     planned[l] && planned[l].byEmployee[norm] != null ? planned[l].byEmployee[norm] : null,
+        trackedHrs:  trackedHrs,
+        plannedHrs:  plannedHrs,
         ptoPlannedHrs:  planned[l] && planned[l].ptoByEmployee  && planned[l].ptoByEmployee[norm]  != null ? planned[l].ptoByEmployee[norm]  : null,
+        // Full-week hours (2026.W42) — what the Performance Record prints.
+        capacityHrs:    fw ? fw.capacityHrs    : undefined,
+        timeOffHrs:     fw ? fw.timeOffHrs     : undefined,
+        holidayHrs:     fw ? fw.holidayHrs     : undefined,
+        plannedFullHrs: fw ? fw.plannedFullHrs : undefined,
+        trackedFullHrs: fw ? fw.trackedFullHrs : undefined,
+        plannedRawHrs:  fw ? fw.plannedRawHrs  : undefined,
+        trackedRawHrs:  fw ? fw.trackedRawHrs  : undefined,
         // PTO-adjusted weekly capacity for scoring — shrinks the 40h planning target by
         // however many PTO hours this employee logged that week, floored at PTO_MIN_TARGET_HRS.
         // Consumed by buildTopPerformers_ (server) and computeRkScore (client mirror) instead
@@ -4119,9 +4167,64 @@ function subtractPTOFromPlanned_(plannedAll, ptoUsageByWeek) {
       byEmployee:    netByEmp,
       ptoByEmployee: ptoByEmp,
       byEmployeeProjects: src.byEmployeeProjects || {},
+      // As Tempo exported it, before the PTO swap and the cap (2026.W42): the
+      // Performance Record names this figure when a total was capped.
+      byEmployeeRaw:     src.byEmployee || {},
+      byEmployeeTimeOff: src.byEmployeeTimeOff || {},
     };
   });
   return out;
+}
+
+// ── FULL-WEEK HOURS (2026.W42) ───────────────────────────────────────────────
+// The standard week for a location: 38 h in Australia & New Zealand, 40 h
+// elsewhere (CONFIG_PS). Pure.
+function weeklyCapacityHrs_(keyLocation) {
+  const loc = String(keyLocation || "").toLowerCase();
+  const anz = String(CONFIG_PS.ANZ_LOCATION || "").toLowerCase();
+  const isAnz = !!loc && (loc === anz || /australia|new zealand/.test(loc));
+  return isAnz ? CONFIG_PS.ANZ_CAPACITY_HRS : CONFIG_PS.WEEKLY_CAPACITY_HRS;
+}
+// Public-holiday hours for one person in one week: each distinct weekday
+// holiday for their location takes one fifth of their standard week (the
+// delivery-health rule). phWeek = buildPHByWeek_ entry for the week. Pure.
+function phHoursForWeek_(phWeek, name, capacityHrs) {
+  if (!phWeek || !phWeek.entries || !phWeek.entries.length || !name) return 0;
+  const dates = new Set();
+  phWeek.entries.forEach(e => {
+    if (e && e.affectedNames && e.affectedNames.indexOf(name) !== -1 && e.date) dates.add(e.date);
+  });
+  return dates.size * (capacityHrs / 5);
+}
+// One person-week as the Performance Record prints it: project hours plus the
+// NetSuite PTO for the week plus public holidays, capped at the standard week.
+// Tempo's own time-off rows are swapped for the PTO record, never added.
+//   in:  { capacityHrs, plannedProjectHrs (net, may be null), plannedRawHrs,
+//          trackedRawHrs (may be null), trackedTimeOffHrs, ledgerPtoHrs,
+//          holidayHrs, isFuture }
+//   out: { capacityHrs, timeOffHrs, holidayHrs, plannedFullHrs, trackedFullHrs,
+//          plannedRawHrs, trackedRawHrs }
+// A null total stays null when there is nothing at all to show for the week.
+function fullWeekHours_(x) {
+  const cap   = +x.capacityHrs || CONFIG_PS.WEEKLY_CAPACITY_HRS;
+  const pto   = Math.max(0, +x.ledgerPtoHrs || 0);
+  const ph    = Math.max(0, +x.holidayHrs || 0);
+  const off   = pto + ph;
+  const pNull = x.plannedProjectHrs === null || x.plannedProjectHrs === undefined;
+  const tNull = x.trackedRawHrs === null || x.trackedRawHrs === undefined;
+  const r2 = v => Math.round(v * 100) / 100;
+  const plannedFull = (pNull && off <= 0) ? null : r2(Math.min(cap, Math.max(0, +x.plannedProjectHrs || 0) + off));
+  const trackedProject = tNull ? 0 : Math.max(0, (+x.trackedRawHrs || 0) - Math.max(0, +x.trackedTimeOffHrs || 0));
+  const trackedFull = x.isFuture ? null : ((tNull && off <= 0) ? null : r2(Math.min(cap, trackedProject + off)));
+  return {
+    capacityHrs:    cap,
+    timeOffHrs:     r2(pto),
+    holidayHrs:     r2(ph),
+    plannedFullHrs: plannedFull,
+    trackedFullHrs: trackedFull,
+    plannedRawHrs:  (x.plannedRawHrs === null || x.plannedRawHrs === undefined) ? null : r2(+x.plannedRawHrs || 0),
+    trackedRawHrs:  tNull ? null : r2(+x.trackedRawHrs || 0),
+  };
 }
 
 // True for the roles that see the WHOLE roster — superadmin, admin, viewer.
@@ -4663,7 +4766,8 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
   // Tempo worker ids ride on each employee row so the Performance Record can open the
   // hours behind a total in Tempo itself (2026.W42). Only read when a time metric is on.
   const tempoIds      = (hasM("tracked") || hasM("planned")) ? readTempoWorkerIds_() : {};
-  const employees     = buildEmployeeRows_(roster, employeeWeeks, rcrAll, siAll, ptoAll, kudosAll, trackedAll, plannedAdjAll, goalsAll, tempoIds);
+  const employees     = buildEmployeeRows_(roster, employeeWeeks, rcrAll, siAll, ptoAll, kudosAll, trackedAll, plannedAdjAll, goalsAll, tempoIds,
+                                           { ptoUsageByWeek: ptoUsageByWk, phByWeek: phByWeek });
   const fteEmployees  = employees.filter(e => !e.isCrewMember);
 
   // Family×Level scoring config: matrix + catalog resolve per-person weights;

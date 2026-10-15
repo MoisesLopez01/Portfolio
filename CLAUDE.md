@@ -252,6 +252,26 @@ impersonal; personalise here, never in `computePSReport_`.
 `meta.selfExcluded` / `meta.selfName` ship to the frontend so the role badge can say
 why a row is missing.
 
+The **Supervisor filter** (client, `getFilteredEmployees`) follows the same rule since
+2026.W42: a pick scopes to that person's org tree **without the person**
+(`orgScopeForSupervisor_` = `resolveOrgTree_` minus the anchor). `resolveOrgTree_` itself
+still seeds with the anchor for other callers.
+
+---
+
+## Full-week hours on the Performance Record (2026.W42)
+
+The card's Logged time / Planned time cells print **project hours + the NetSuite PTO for
+the week + public holidays for the location, capped at the standard week** (40 h; 38 h in
+Australia & New Zealand — `CONFIG_PS.WEEKLY_CAPACITY_HRS` / `ANZ_CAPACITY_HRS`), the
+delivery-health rule. `fullWeekHours_` (pure) builds `plannedFullHrs` / `trackedFullHrs` /
+`timeOffHrs` / `holidayHrs` / `capacityHrs` per employee-week in `buildEmployeeRows_`; Tempo's
+own time-off rows (`byEmployeeTimeOff`, NETSUITE keys) are **swapped** for the PTO record,
+never added. `plannedHrs` / `trackedHrs` keep their meaning and **scoring is untouched** —
+it still reads project hours against `ptoAdjustedTargetHrs`. A payload without the new
+fields renders the project hours. Spec:
+`ps-dashboard/docs/specs/2026-10-15-perf-record-8w-clarity-design.md`.
+
 ---
 
 ## 👁 View as — a super admin previews someone else's dashboard
