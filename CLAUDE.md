@@ -563,3 +563,19 @@ Three Performance Record rules the user set on 2026-10-14 (2026.W42):
   risk as colour and small print.
 
 Spec: `ps-dashboard/docs/specs/2026-10-14-perf-record-hours-and-help-design.md`.
+
+A fourth rule, same week (field review ask #1 — reach the evidence from the metric):
+
+- **Every hour total is a link into Tempo.** `perfTempoAnchor_` wraps the Logged /
+  Planned cells of the history table (every grain) and the week-by-week evidence
+  in an `<a class="prp-hlink">` that opens Tempo's own Logged Time / Planned Time
+  report for the same person and period: fixed window from the earliest Monday
+  to the latest Sunday, week columns, grouped by space then work item, filtered
+  by `workerId`. The id is the Jira account id read off the `Capacity Tempo` tab
+  (`readTempoWorkerIds_` → `employees[].tempoId`); the base is
+  `CONFIG_PS.TEMPO_REPORTS_BASE` → `meta.tempoReportsBase`. No id or no base →
+  plain text, never a dead link. The URL builders (`perfIsoWeekRange_`,
+  `perfTempoReportUrl_`) are pure and sit in the engine region. After a deploy,
+  bust the report cache or older payloads render without links until the TTL.
+  Spec: `ps-dashboard/docs/specs/2026-10-14-perf-record-tempo-links-design.md`;
+  checks: `tests/perf-record-tempo-links-checks.js`.

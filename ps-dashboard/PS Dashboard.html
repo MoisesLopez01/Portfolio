@@ -1101,6 +1101,12 @@ body.dark-mode .pr-panel { background: #101c44; border-color: #2B3A78; }
 .prp-hh small { display: block; font-weight: 400; font-size: 10.5px; color: var(--slate); }
 .prp-hc { margin: 4px 3px; min-height: 32px; padding: 2px 4px; border-radius: 6px; display: grid; place-items: center; font-size: 12px; font-weight: 700; white-space: nowrap; text-align: center; line-height: 1.25; }
 .prp-hc small { display: block; font-size: 10px; font-weight: 500; opacity: .85; }
+/* Hour totals that open the same person and period in Tempo (2026.W42): the cell
+   keeps its colour, the dotted underline and the arrow say "this leaves the page". */
+a.prp-hlink { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
+a.prp-hlink:hover, a.prp-hlink:focus-visible { text-decoration-style: solid; }
+a.prp-hlink::after { content: ' ↗'; font-size: 9px; opacity: .7; }
+.pr-print a.prp-hlink::after, .pr-printing a.prp-hlink::after { content: ''; }
 .prp-s-g { background: #E3F4EC; color: #00663F; } .prp-s-y { background: #E3F0FB; color: #0A4F85; }
 .prp-s-r { background: #FDEBE1; color: #9A3412; } .prp-s-m, .prp-s-n { background: var(--surface); color: var(--slate); font-weight: 500; }
 .prp-hc.prog, .prp-hh.prog { opacity: .55; }
@@ -2404,12 +2410,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
             <div class="dr-metric" id="docPlanned" data-metric="planned">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#058CDC"></span>Time planned</div>
               <div class="dr-metric-desc">Hours planned in Tempo for each week, shown across all 5 weeks including upcoming ones. Planning is a decision, not a default. Same population as Time tracked: ⏱ Exempt families and anyone on leave are excluded. Per-person planned hours are capped at the weekly capacity remaining after PTO — Tempo repeats a plan across every project a rocketeer is staffed on, which would otherwise inflate the total.</div>
-              <div class="dr-metric-src">Available across all 5 weeks (past, current, and W+1, W+2).</div>
+              <div class="dr-metric-src">Available across all 5 weeks (past, current, and W+1, W+2). On the Performance Record, click a planned-hours total to open the same person and period in Tempo's Planned time report, by space and work item (Tempo applies its own permissions).</div>
             </div>
             <div class="dr-metric" id="docTracked" data-metric="tracked">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#7C3AED"></span>Time tracked</div>
               <div class="dr-metric-desc">Hours logged in Tempo, summed per ISO week (Mon–Sun) and matched to the roster. Covers the rocketeers held to the tracking mandate — ramp-up and active alike; ⏱ Exempt families and anyone on leave are excluded from both the hours and the headcount.</div>
-              <div class="dr-metric-src">Available for weeks W-2 → W0 (current).</div>
+              <div class="dr-metric-src">Available for weeks W-2 → W0 (current). On the Performance Record, click a logged-hours total to open the same person and period in Tempo's Logged time report, by space and work item — the issues behind the number (Tempo applies its own permissions).</div>
             </div>
             <div class="dr-metric" id="docKudos">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#FF9B87"></span>Kudos given</div>
@@ -2525,7 +2531,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
               <tr><td>Week · Month · Quarter</td><td>The score for the evaluated week, the last closed month and the last closed quarter, each with the change against the period before and one sentence of what happened. Click one to switch the whole view to that grain.</td></tr>
               <tr><td>Worth asking about</td><td>Facts from the last 4 weeks that repeat (for example, logged time under target in 3 of 4 weeks). They are observations to bring to a 1:1; the manager draws the conclusions.</td></tr>
               <tr><td>Context</td><td>Anything that changes how to read the numbers: PTO weeks (targets were reduced to match), ramp-up, crew, no time-tracking mandate, weeks with no data.</td></tr>
-              <tr><td>History</td><td>A score chart and one table of every measure for every week, month or quarter, each value directly under its period. Green = met, blue = close, orange = missed, grey = no data or not evaluated. The evaluated period is outlined; a period still in progress is faded. <strong>Logged time</strong> and <strong>Planned time</strong> show the plain hour total for the period (per week, per month, per quarter) and nothing else — the colour is the only judgement. <strong>PTO plan</strong> shows the PTO balance in hours at the close of the period, coloured Good / At risk. <strong>RCR</strong> is on the list for context only: the rocketeer does not control it, so it never drives the summary, the lane or the flags.</td></tr>
+              <tr><td>History</td><td>A score chart and one table of every measure for every week, month or quarter, each value directly under its period. Green = met, blue = close, orange = missed, grey = no data or not evaluated. The evaluated period is outlined; a period still in progress is faded. <strong>Logged time</strong> and <strong>Planned time</strong> show the plain hour total for the period (per week, per month, per quarter) and nothing else — the colour is the only judgement. Click an hour total to open the same person and period in Tempo (Logged time or Planned time report, grouped by space and work item): the primary evidence behind the number, in the system that holds it. <strong>PTO plan</strong> shows the PTO balance in hours at the close of the period, coloured Good / At risk. <strong>RCR</strong> is on the list for context only: the rocketeer does not control it, so it never drives the summary, the lane or the flags.</td></tr>
               <tr><td>Full evidence</td><td>The detailed record: exception report, week-by-week table, hours charts, PTO strip and kudos feed.</td></tr>
             </tbody>
           </table>
@@ -4330,10 +4336,10 @@ var PERF_METRIC_TIPS = {
     note: 'Met at 80% or more · Close from 40% · Missed below · the first 3 weeks of a quarter only count when they passed.' },
   tracked: { title: 'Logged time', doc: 'docRates',
     text: 'Hours actually logged in Tempo. The history table shows the plain total for the week, the month or the quarter; the colour judges the week against 90% of the hours planned for it (or of a 40 h week less PTO when nothing was planned), and a month or a quarter averages its weeks.',
-    note: 'ICs: Met at 85% or more · Close from 55% — managers: Met at 50%, never Missed, because coaching time never reaches Tempo.' },
+    note: 'ICs: Met at 85% or more · Close from 55% — managers: Met at 50%, never Missed, because coaching time never reaches Tempo. Click an hour total to open the same person and period in Tempo, by space and work item.' },
   planned: { title: 'Planned time', doc: 'docRates',
     text: 'Hours scheduled in Tempo ahead of the week. The history table shows the plain total for the week, the month or the quarter; the colour judges the week against the 40 h working week after PTO is taken out, and a month or a quarter averages its weeks, so one unplanned week in four reads as Close rather than Met.',
-    note: 'ICs: Met at 85% or more · Close from 50% — managers: Met at 70% · Close from 40%.' },
+    note: 'ICs: Met at 85% or more · Close from 50% — managers: Met at 70% · Close from 40%. Click an hour total to open the same person and period in Tempo, by space and work item.' },
   rcr: { title: 'RCR', doc: 'docRcr',
     text: 'Revenue Contribution Rate: the revenue the person\'s work generated in the last closed month relative to their cost. 2.5 is the benchmark. It is not something the rocketeer controls — project mix, billing rates and staffing decide it — so it stays on the checklist for context and never drives the summary, the lane, the Why or the flags.',
     note: 'Context only · Met at 2.0 or more · Close from 1.25 · from Jul 26 the rate comes straight from the New RCR tab.' },
@@ -4365,6 +4371,22 @@ function perfTipAttrs_(id, extra, opts) {
 function perfTipLabel_(id, text, extra) {
   if (!PERF_METRIC_TIPS[id]) return esc(text);
   return '<button type="button"' + perfTipAttrs_(id, extra, { cls: 'pr-tipbtn' }) + '>' + esc(text) + '</button>';
+}
+// "Open in Tempo" (2026.W42): an hour total becomes a link to the same person and
+// period in Tempo's own report — the primary evidence behind the number. Needs the
+// person's Tempo worker id (payload, from Capacity Tempo) and the reports base
+// (payload meta); without either the text stays plain. Tempo applies its own
+// permissions once the link opens.
+function perfTempoLink_(kind, emp, weekLabels) {
+  var base = DATA && DATA.meta && DATA.meta.tempoReportsBase;
+  return perfTempoReportUrl_(base, kind, emp && emp.tempoId, weekLabels);
+}
+function perfTempoAnchor_(kind, emp, weekLabels, text, periodLabel) {
+  var href = perfTempoLink_(kind, emp, weekLabels);
+  if (!href) return esc(text);
+  var what = kind === 'planned' ? 'Planned time' : 'Logged time';
+  return '<a class="prp-hlink" href="' + esc(href) + '" target="_blank" rel="noopener" title="' +
+    esc('Open ' + what + ' in Tempo for ' + (periodLabel || 'this period') + ' — by space and work item') + '">' + esc(text) + '</a>';
 }
 // ⓘ beside a label whose own click is taken (the sortable grid headers).
 function perfDocLink_(id) {
@@ -4736,7 +4758,7 @@ function perfHistory_(emp, row, exc) {
   } else {
     var m = perfModelFor_(lens);
     buckets = m.buckets.map(function(b, i) {
-      return { key: b.key, label: lens === 'week' ? perfShortWeek_(b.label) : b.label,
+      return { key: b.key, label: lens === 'week' ? perfShortWeek_(b.label) : b.label, weekLabels: b.weekLabels,
                sub: lens === 'week' ? '' : (b.weekRangeLabel || ''), containsCurrent: b.containsCurrent, hl: i === m.lastIdx };
     });
     per = m.byEmp[emp.normName] || [];
@@ -4784,7 +4806,10 @@ function perfHistory_(emp, row, exc) {
       esc(exc.notEval[c.id] ? 'shown, not evaluated' : meta.help) + '</small></td>' +
       buckets.map(function(b, i) {
         var x = cellFor(c, per[i], b);
-        return '<td><div class="prp-hc prp-s-' + x.s + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + esc(x.t) +
+        // Time cells open the same person and period in Tempo (2026.W42); a dash stays a dash.
+        var cellTxt = (c.id === 'tracked' || c.id === 'planned') && x.t !== '—'
+          ? perfTempoAnchor_(c.id, emp, b.weekLabels, x.t, single ? b.key : b.label) : esc(x.t);
+        return '<td><div class="prp-hc prp-s-' + x.s + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + cellTxt +
           (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') + '</div></td>';
       }).join('') + '</tr>';
   }).join('') + '</tbody>';
@@ -4868,6 +4893,7 @@ function perfCardHtml_(emp, emps) {
         ' as Needs a look. Ramp-up and long leave are listed apart and never ranked; crew are scored without goals, SI and PTO. ' +
         'Signals are reading aids, not verdicts — the manager judges.</p>' +
         '<p class="prp-ui-hint">Hover any measure name for what it means; click it to open the matching section of 📖 Documentation. ' +
+        'Click an hour total to open the same person and period in Tempo, by space and work item. ' +
         '<a class="pr-link" href="#" onclick="event.preventDefault();event.stopPropagation();openDocSection_(\'docRates\')">How every rate is built →</a></p></div>' +
     '</div></div>';
 }
@@ -5605,8 +5631,12 @@ function perfDrillHtml_(emp, row, model, opts) {
         bits.push(a.goalsCompliant ? 'goals ✓' : '<b style="color:#DE350B">missed goals</b>');
       }
       if (cellByCol.tracked && !cellByCol.tracked.notEval) {
-        bits.push('tracked ' + (a.trackedHrs === null || a.trackedHrs === undefined ? '—' : Math.round(a.trackedHrs) + 'h') +
-          (a.plannedHrs !== null && a.plannedHrs !== undefined ? ' of ' + Math.round(a.plannedHrs) + 'h plan' : ''));
+        // Each hour figure opens that week in Tempo (2026.W42) when the link can be built.
+        var tH = a.trackedHrs === null || a.trackedHrs === undefined ? '—' : Math.round(a.trackedHrs) + 'h';
+        var pH = a.plannedHrs !== null && a.plannedHrs !== undefined ? Math.round(a.plannedHrs) + 'h' : '';
+        var wl = b.weekLabels || [b.label];
+        bits.push('tracked ' + (tH === '—' ? tH : perfTempoAnchor_('tracked', emp, wl, tH, b.label)) +
+          (pH ? ' of ' + perfTempoAnchor_('planned', emp, wl, pH, b.label) + ' plan' : ''));
       }
       if (cellByCol.pto && !cellByCol.pto.notEval && a.pto !== null && a.pto !== undefined) {
         bits.push(a.pto >= 1 ? 'PTO ok' : '<b style="color:#DE350B">PTO At Risk</b>');
@@ -6600,6 +6630,42 @@ function perfCsvEncode_(rows) {
       return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     }).join(',');
   }).join('\r\n');
+}
+// ISO week label → its Monday and Sunday as YYYY-MM-DD (2026.W42). UTC arithmetic,
+// so no timezone can shift the day. Pure: the Tempo links are built from it.
+function perfIsoWeekRange_(label) {
+  var m = /^(\d{4})\.W(\d{1,2})$/.exec(String(label || '').trim());
+  if (!m) return null;
+  var y = +m[1], w = +m[2];
+  if (w < 1 || w > 53) return null;
+  var jan4 = new Date(Date.UTC(y, 0, 4));
+  var dow = jan4.getUTCDay() || 7;                              // Mon = 1 … Sun = 7
+  var mon = new Date(Date.UTC(y, 0, 4 - (dow - 1) + (w - 1) * 7));
+  var sun = new Date(mon.getTime() + 6 * 86400000);
+  return { from: mon.toISOString().slice(0, 10), to: sun.toISOString().slice(0, 10) };
+}
+// Tempo report URL for one worker over a run of ISO weeks (2026.W42): the Logged
+// time ('tracked') or Planned time ('planned') report, fixed period from the
+// earliest Monday to the latest Sunday, one column per week, grouped by space
+// then work item, filtered to the worker. '' when anything needed is missing —
+// the caller then renders plain text, never a dead link.
+function perfTempoReportUrl_(base, kind, workerId, weekLabels) {
+  if (!base || !workerId || !weekLabels || !weekLabels.length) return '';
+  var from = null, to = null;
+  for (var i = 0; i < weekLabels.length; i++) {
+    var r = perfIsoWeekRange_(weekLabels[i]);
+    if (!r) continue;
+    if (from === null || r.from < from) from = r.from;
+    if (to === null || r.to > to) to = r.to;
+  }
+  if (from === null) return '';
+  var days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+  var q = ['columns=TOTAL_TIME_COLUMN', 'dateDisplayType=weeks', 'days=' + days, 'from=' + from, 'to=' + to,
+           'periodType=FIXED', 'viewType=TIMESHEET', 'groupBy=project', 'groupBy=issue',
+           'sortByColumn=TITLE_COLUMN', 'sortingOrder=ASCENDING', 'includeSubtasks=false', 'excludeInternalIssues=false'];
+  if (kind === 'planned') q.push('includeProjectPlans=false', 'includeRejectedRecords=false');
+  q.push('workerId=' + encodeURIComponent(String(workerId)));
+  return String(base).replace(/\/+$/, '') + '/' + (kind === 'planned' ? 'planned-time' : 'logged-time') + '?' + q.join('&');
 }
 // ⟦PERF-ENGINE-END⟧ ───────────────────────────────────────────────────────────
 

@@ -32,3 +32,7 @@ Also in this release: the hover bubbles on the Team Contribution Pulse rows of t
 - Branch `worktree-perf-record-hours-help` (local repo, D:\Development), on top of the @299 baseline.
 - Design spec: `ps-dashboard/docs/specs/2026-10-14-perf-record-hours-and-help-design.md`.
 - Tests: `tests/perf-record-help-checks.js` (new) and `tests/perf-record-checks.js`.
+
+## Follow-up the same week: from the hour total to Tempo (2026.W42)
+
+Every hour total on the person card — Logged time and Planned time, in the history table at every grain and in the week-by-week evidence — now opens the same person and the same period in Tempo's own report (Logged Time or Planned Time), grouped by space and work item, in a new tab. This is the field review's first ask: reach the primary evidence from the metric without rebuilding the filter by hand. The worker id comes from the `Capacity Tempo` tab; a person without one keeps the plain number. Tempo applies its own permissions once the link opens. Spec: `ps-dashboard/docs/specs/2026-10-14-perf-record-tempo-links-design.md`; tests: `tests/perf-record-tempo-links-checks.js`. Branch `worktree-tempo-links`, not yet deployed — bust the report cache after deploying.

@@ -35,6 +35,13 @@ var CONFIG_PS = {
   PTO_MIN_TARGET_HRS:         0,     // floor for ptoAdjustedTargetHrs — never negative
   SHEET_TEMPO_TRACKED:   "Tempo Tracked Time",
   SHEET_PLANNED:         "Planned Time Tempo",
+  // Tempo deep links (2026.W42). "Capacity Tempo" (TempoCapacityTime.js) carries the
+  // Jira account id behind every Tempo row — A = Account ID, B = User — which is the
+  // workerId Tempo's own reports filter on. The base is the Tempo app inside this Jira
+  // site (app id / environment id, stable per site). Nothing else about the person
+  // leaves the server: the id is opaque, and Tempo applies its own permissions.
+  SHEET_TEMPO_WORKERS:   "Capacity Tempo",
+  TEMPO_REPORTS_BASE:    "https://servicerocket-coe.atlassian.net/jira/apps/fa75e928-007a-4af4-9530-76503bcd4cba/ea7fda46-2015-4367-bd93-992fbf0c58ca/reports",
   // Project keys in the Planned/Tracked Time "Key" column that are NOT real projects
   // and must be excluded from project-context counts. "NETSUITE" = time-off synced
   // from NetSuite (already represented elsewhere in the report). Matched case-insensitively.
@@ -2977,6 +2984,40 @@ function readPlannedTimeByWeek_(psNames, weeks) {
   return buildPlannedResult_(vals, psNames, weeks, CONFIG_PS.PLANNED_NONPROJECT_KEYS, "Planned");
 }
 
+// Tempo worker ids (2026.W42): normPS_(User) → Jira account id, read off the
+// "Capacity Tempo" tab (two stacked header rows; A = Account ID, B = User). The
+// names there are already normalised by Change Names.js, so they join on normPS_
+// exactly like the hours do. Powers the Performance Record's "open in Tempo"
+// links; a person with no row simply gets no link.
+function readTempoWorkerIds_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const data = loadSheet_PS_(ss, CONFIG_PS.SHEET_TEMPO_WORKERS);
+  if (!data) { Logger.log(`ℹ️ ${CONFIG_PS.SHEET_TEMPO_WORKERS} sheet not found — no Tempo links.`); return {}; }
+  return parseTempoWorkerIds_([data.headers, ...data.rows]);
+}
+
+// Pure parser for readTempoWorkerIds_ (unit-tested in tests/perf-record-tempo-links-checks.js).
+// Finds the "Account ID" / "User" header row wherever it sits in the first rows,
+// then maps every data row. Footer rows ("Last Export:", TOTAL) never look like
+// an account id, so the id shape is the guard. First row per name wins.
+function parseTempoWorkerIds_(values) {
+  const out = {};
+  const ID_RE = /^([0-9a-z]+:)?[0-9a-f-]{20,}$/i;   // "712020:<uuid>", "557058:<uuid>" or a bare 24-hex id
+  let hdr = -1;
+  for (let r = 0; r < Math.min(values.length, 5); r++) {
+    const row = values[r] || [];
+    if (String(row[0] || "").trim() === "Account ID" && String(row[1] || "").trim() === "User") { hdr = r; break; }
+  }
+  if (hdr === -1) return out;
+  for (let r = hdr + 1; r < values.length; r++) {
+    const row = values[r] || [];
+    const id = String(row[0] || "").trim(), name = normPS_(row[1]);
+    if (!id || !name || !ID_RE.test(id)) continue;
+    if (!out[name]) out[name] = id;
+  }
+  return out;
+}
+
 // Pure parser for the Planned Time Tempo matrix. Separated from the sheet fetch so it
 // can be unit-tested (see _test_projectContext_). Returns, per week label:
 //   { totalHrs, headcount, byEmployee:{norm:hrs}, byEmployeeProjects:{norm:{KEY:hrs}} }
@@ -3665,7 +3706,7 @@ function buildTeamSummary_(weeks, rcr, si, pto, kudos, tracked, planned, goals) 
   ];
 }
 
-function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned, goals) {
+function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned, goals, tempoIds) {
   const employees = [];
   roster.forEach((profile, norm) => {
     const empWeeks = {};
@@ -3703,6 +3744,9 @@ function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned
     employees.push({
       name:        profile.name,
       normName:    norm,
+      // Jira account id behind the person's Tempo rows (2026.W42) — the client builds
+      // the "open in Tempo" links from it; null = no row in Capacity Tempo, no link.
+      tempoId:     (tempoIds && tempoIds[norm]) || null,
       keyLocation: profile.keyLocation,
       supervisor:  profile.supervisor,
       jobTitle:    profile.jobTitle,
@@ -4616,7 +4660,10 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
   // are included in the employee table.
   const futureWeeks   = weeks.filter(w => w.isFuture);
   const employeeWeeks = futureWeeks.length ? continuityQWeeks.concat(futureWeeks) : continuityQWeeks;
-  const employees     = buildEmployeeRows_(roster, employeeWeeks, rcrAll, siAll, ptoAll, kudosAll, trackedAll, plannedAdjAll, goalsAll);
+  // Tempo worker ids ride on each employee row so the Performance Record can open the
+  // hours behind a total in Tempo itself (2026.W42). Only read when a time metric is on.
+  const tempoIds      = (hasM("tracked") || hasM("planned")) ? readTempoWorkerIds_() : {};
+  const employees     = buildEmployeeRows_(roster, employeeWeeks, rcrAll, siAll, ptoAll, kudosAll, trackedAll, plannedAdjAll, goalsAll, tempoIds);
   const fteEmployees  = employees.filter(e => !e.isCrewMember);
 
   // Family×Level scoring config: matrix + catalog resolve per-person weights;
@@ -4729,6 +4776,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
       availableTeams: availableTeams || [],
       lastSheetEdit,
       trackedTimeLastExport: trackedAll._lastExport || null,
+      tempoReportsBase: CONFIG_PS.TEMPO_REPORTS_BASE || null,   // 2026.W42: base of the Tempo deep links
       currentWeekLabel: curWeek.label,
       rcrLastMonth:     rcrAll.lastMonth,
       rcrTeamRCR:       rcrAll.teamRCR,

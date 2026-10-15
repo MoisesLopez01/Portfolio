@@ -62,7 +62,7 @@
     var hire = Date.UTC(2023, idx % 12, 1 + idx % 20);
     if (o.hire) hire = Date.UTC(2026, 7, 3);
     return { name: s[0], normName: norm, jobTitle: s[1], keyLocation: s[2], supervisor: s[3], hireDate: hire,
-             employeeNumber: 'E' + (1000 + idx), isManager: !!o.mgr, isRampUp: !!o.ramp, isCrewMember: !!o.crew,
+             employeeNumber: 'E' + (1000 + idx), tempoId: idx % 3 === 2 ? null : '712020:00000000-0000-4000-8000-' + String(100000000000 + idx), isManager: !!o.mgr, isRampUp: !!o.ramp, isCrewMember: !!o.crew,
              onLeave: !!o.leave, tracksTime: o.noTime ? false : undefined, weeks: weeks,
              rcr: { value: o.noTime ? null : s[6][1] }, si: { value: s[7] || null } };
   });
@@ -71,6 +71,7 @@
   window.__PS_FIXTURE__ = {
     ok: true, employees: employees, q4Weeks: q4Weeks, weeks: q4Weeks.slice(-8), trackedHistory: hist, teamSummary: [],
     meta: { currentWeekLabel: '2026.W41', generatedAt: '2026-10-10T10:00:00Z', goalsQuarter: 'FY27Q2', siQuarter: 'FY27Q1',
+            tempoReportsBase: 'https://example.atlassian.net/jira/apps/app-id/env-id/reports',
             team: { key: 'services', label: 'Services', metrics: ['goals', 'tracked', 'planned', 'rcr', 'kudos', 'pto', 'si'] },
             rcrByEmployee: rcrByEmployee, siByEmployee: siByEmployee, availableTeams: ['services'] },
     userRole: 'admin', userEmail: 'admin@example.com',
