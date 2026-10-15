@@ -320,22 +320,22 @@ main { max-width: 1600px; margin: 0 auto; padding: 0 24px 20px; display: flex; f
 .pr-doclink:hover, .pr-doclink:focus { opacity:1; text-decoration:underline; }
 .doc-flash { animation: docFlash 2.4s ease-out; border-radius:10px; }
 @keyframes docFlash { 0% { box-shadow:0 0 0 4px rgba(5,140,220,.45); background:rgba(5,140,220,.10); } 100% { box-shadow:0 0 0 0 rgba(5,140,220,0); background:transparent; } }
-/* Hours at a glance (2026.W42): planned vs logged totals per week / month / quarter. */
-.pr-hours { width:100%; border-collapse:collapse; font-size:calc(12.5px * var(--scale)); }
-.pr-hours th { text-align:left; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--slate); padding:4px 8px; border-bottom:1px solid var(--border); white-space:nowrap; }
-.pr-hours th.num, .pr-hours td.num { text-align:right; font-variant-numeric:tabular-nums; }
-.pr-hours td { padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap; }
-.pr-hours tr:last-child td { border-bottom:none; }
-.pr-hours td b { font-weight:700; color:var(--void); }
-.pr-hours td small { display:block; font-size:10.5px; color:var(--slate); font-weight:400; }
-.pr-hours tr.prog td { opacity:.6; }
-.pr-hours tr.pr-hgrain td { border-top:2px solid var(--border); }
-.pr-hours tr.pr-hgrain:first-child td { border-top:none; }
-.pr-hpct { display:inline-block; min-width:52px; padding:1px 7px; border-radius:6px; font-weight:700; text-align:center; }
-.pr-hpct.g { background:#E3F4EC; color:#00663F; } .pr-hpct.y { background:#E3F0FB; color:#0A4F85; }
-.pr-hpct.r { background:#FDEBE1; color:#9A3412; } .pr-hpct.m, .pr-hpct.n { background:var(--surface); color:var(--slate); font-weight:500; }
-.pr-hours-sub { margin:0 0 8px; font-size:12px; color:var(--slate); }
-.pr-hours-wrap { overflow-x:auto; }
+/* Person-card history (2026.W42): ONE real table, so every value sits under its
+   period header whatever the cell holds — the previous one-grid-per-row layout
+   let a wide cell push its own row's columns out of line with the header. */
+.prp-htable { width:100%; min-width:560px; border-collapse:separate; border-spacing:0; table-layout:fixed; }
+.prp-htable th, .prp-htable td { padding:0; vertical-align:middle; }
+/* Fixed layout + a colgroup: the period columns share the width equally and the
+   table fits the card, so nothing scrolls out from under the header on a laptop
+   (below 560px the wrapper scrolls as a whole, header and rows together). */
+.prp-htable td .prp-hc { margin:4px 2px; padding:5px 3px; white-space:normal; overflow-wrap:anywhere; line-height:1.2; }
+.prp-htable thead th { background:var(--th-bg); }
+.prp-htable th.prp-c0, .prp-htable td.prp-c0 { position:sticky; left:0; z-index:1; text-align:left; padding:8px 12px; background:var(--card-bg); border-right:1px solid var(--border); min-width:118px; }
+.prp-htable thead th.prp-c0 { background:var(--th-bg); }
+.prp-htable thead th.prp-c0 b, .prp-htable td.prp-c0 b { display:block; font-size:13px; color:var(--void); }
+.prp-htable thead th.prp-c0 small, .prp-htable td.prp-c0 small { display:block; font-size:11px; color:var(--slate); font-weight:400; }
+.prp-htable tbody tr > * { border-top:1px solid var(--border); }
+.prp-htable td .prp-hc { margin:4px 3px; }
 
 /* ── SECTION CARD ── */
 .section-card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden; }
@@ -1258,14 +1258,14 @@ body.dark-mode .pr-band td { background: #16214A; }
 .pr-drill.pr-print { max-width: 820px; }
 .pr-drill.pr-print .pr-drill-grid { grid-template-columns: repeat(2, 1fr); }
 .pr-drill.pr-print .pr-block.span2 { grid-column: 1 / -1; }
-.pr-drill.pr-print .pr-hours-wrap, .pr-drill.pr-print .pr-block { overflow: visible; }
-/* Person-card PNG (2026.W42): one column, the list out of the way, every
-   horizontal scroller opened and the measure column unstuck, so the History
-   and Hours tables come out whole instead of scrolled-and-clipped. */
+.pr-drill.pr-print .pr-block { overflow: visible; }
+/* Person-card PNG (2026.W42): one column, the list out of the way, the history
+   scroller opened and the measure column unstuck, so the History table comes
+   out whole instead of scrolled-and-clipped. */
 .prp.pr-printing .prp-body { grid-template-columns: minmax(0, 1fr); }
 .prp.pr-printing .prp-list { display: none; }
 .prp-card.pr-print .prp-pgrid { grid-template-columns: minmax(0, 1fr); }
-.prp-card.pr-print .prp-tscroll, .prp-card.pr-print .pr-hours-wrap { overflow: visible; }
+.prp-card.pr-print .prp-tscroll { overflow: visible; }
 .prp-card.pr-print .prp-c0 { position: static; }
 .prp-card.pr-print .prp-ui-hint { display: none; }
 .pr-block.info h4 { color: var(--muted); }
@@ -1957,9 +1957,6 @@ body.dark-mode #pulseTip        { background: #FFFAF5; color: #0F1941; }
 body.dark-mode #pulseTip strong { color: #1A52B3; }
 body.dark-mode #pulseTip em     { color: #475569; }
 body.dark-mode #pulseTip .tip-doc { color: #1A52B3; }
-body.dark-mode .pr-hpct.g { background: rgba(0,135,90,.22); color: #7BE0B5; }
-body.dark-mode .pr-hpct.y { background: rgba(5,140,220,.22); color: #9CD3F7; }
-body.dark-mode .pr-hpct.r { background: rgba(194,65,12,.25); color: #FDBA8C; }
 
 /* RCR tier badges */
 body.dark-mode .tier-Critical { background: #4a0d0d; color: #FCA5A5; }
@@ -2528,23 +2525,22 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
               <tr><td>Week · Month · Quarter</td><td>The score for the evaluated week, the last closed month and the last closed quarter, each with the change against the period before and one sentence of what happened. Click one to switch the whole view to that grain.</td></tr>
               <tr><td>Worth asking about</td><td>Facts from the last 4 weeks that repeat (for example, logged time under target in 3 of 4 weeks). They are observations to bring to a 1:1; the manager draws the conclusions.</td></tr>
               <tr><td>Context</td><td>Anything that changes how to read the numbers: PTO weeks (targets were reduced to match), ramp-up, crew, no time-tracking mandate, weeks with no data.</td></tr>
-              <tr><td>Hours at a glance</td><td>The plain totals behind the two time measures: hours <strong>planned</strong> in Tempo and hours <strong>logged</strong>, for the evaluated week, the last closed month and the last closed quarter, each followed by the period still running ("so far", faded). <em>Of plan</em> is logged ÷ planned, not capped. Month and quarter rows also give the per-week average. The same table opens at the top of the evidence panel in the Team grid.</td></tr>
-              <tr><td>History</td><td>A score chart and a table of every measure for every week, month or quarter. Green = met, blue = close, orange = missed, grey = no data or not evaluated. The evaluated period is outlined; a period still in progress is faded. The two time rows show total hours in the cell and the rate underneath.</td></tr>
+              <tr><td>History</td><td>A score chart and one table of every measure for every week, month or quarter, each value directly under its period. Green = met, blue = close, orange = missed, grey = no data or not evaluated. The evaluated period is outlined; a period still in progress is faded. <strong>Logged time</strong> and <strong>Planned time</strong> show the plain hour total for the period (per week, per month, per quarter) and nothing else — the colour is the only judgement. <strong>PTO plan</strong> shows the PTO balance in hours at the close of the period, coloured Good / At risk. <strong>RCR</strong> is on the list for context only: the rocketeer does not control it, so it never drives the summary, the lane or the flags.</td></tr>
               <tr><td>Full evidence</td><td>The detailed record: exception report, week-by-week table, hours charts, PTO strip and kudos feed.</td></tr>
             </tbody>
           </table>
-          <p class="dr-p" style="margin-top:10px"><strong>Help where you need it.</strong> Hover any measure name on the tab (in the History table, the Hours block or the Team grid headers) for a plain-English explanation of what it measures and where its bar sits. Click the name — or the ⓘ beside a grid header — to land on the matching section of this page.</p>
+          <p class="dr-p" style="margin-top:10px"><strong>Help where you need it.</strong> Hover any measure name on the tab (in the History table or the Team grid headers) for a plain-English explanation of what it measures and where its bar sits. Click the name — or the ⓘ beside a grid header — to land on the matching section of this page.</p>
           <div id="docRates" style="padding:6px 0">
           <p class="dr-p"><strong>How every rate is built — week, month, quarter.</strong> Every measure is judged <strong>week by week</strong>. A month or a quarter is the <strong>average of its weeks</strong> — for Goals, the share of checked weeks that passed, so <em>3 of 4 weeks up to date</em> is <em>75%</em>. Weeks with no data at all (before joining, nothing recorded) are left out of every average, and a week of PTO lowers the time targets instead of counting as a gap.</p>
           <table class="dr-tbl" style="margin-top:4px">
             <thead><tr><th>Measure</th><th>One week</th><th>Month or quarter</th><th>Bar (Met · Close)</th></tr></thead>
             <tbody>
               <tr><td>Goals</td><td><em>Up to date</em> or <em>Behind</em> — the three rules in Goals Evaluation above</td><td>Weeks up to date ÷ weeks checked. 3 of 4 = 75%</td><td>Met ≥ 80% · Close ≥ 40%. The first 3 weeks of a quarter only count when they passed.</td></tr>
-              <tr><td>Logged time</td><td>Hours logged ÷ 90% of the hours planned (or of the 40 h week after PTO when nothing was planned), capped at 100%</td><td>Average of the weekly rates; the cell also shows the total hours</td><td>ICs Met ≥ 85% · Close ≥ 55%. Managers Met ≥ 50%, never Missed.</td></tr>
-              <tr><td>Planned time</td><td>Hours planned ÷ the 40 h week after PTO, capped at 100%</td><td>Average of the weekly rates; the cell also shows the total hours</td><td>ICs Met ≥ 85% · Close ≥ 50%. Managers Met ≥ 70% · Close ≥ 40%.</td></tr>
-              <tr><td>RCR</td><td colspan="2">The last closed month's rate; a quarter shows the month at its close</td><td>Met ≥ 2.0 · Close ≥ 1.25 · benchmark 2.5</td></tr>
+              <tr><td>Logged time</td><td>The cell shows the hours logged; the colour judges them against 90% of the hours planned (or of the 40 h week after PTO when nothing was planned)</td><td>The cell shows the total hours for the month or quarter; the colour averages the weekly judgements</td><td>ICs Met ≥ 85% · Close ≥ 55%. Managers Met ≥ 50%, never Missed.</td></tr>
+              <tr><td>Planned time</td><td>The cell shows the hours planned; the colour judges them against the 40 h week after PTO</td><td>The cell shows the total hours for the month or quarter; the colour averages the weekly judgements</td><td>ICs Met ≥ 85% · Close ≥ 50%. Managers Met ≥ 70% · Close ≥ 40%.</td></tr>
+              <tr><td>RCR</td><td colspan="2">The last closed month's rate; a quarter shows the month at its close. <strong>Context only</strong>: not something the rocketeer controls, so it never drives the summary, the lane, the Why or the flags</td><td>Met ≥ 2.0 · Close ≥ 1.25 · benchmark 2.5</td></tr>
               <tr><td>Kudos</td><td>Received and given that week</td><td>Added up over the period</td><td>Both sides = Met · one side = Close · never Missed</td></tr>
-              <tr><td>PTO plan</td><td><em>Good</em> or <em>At Risk</em> that week</td><td>The state at the end of the period; the evidence strip keeps every week</td><td>Good = Met · At Risk = Missed</td></tr>
+              <tr><td>PTO plan</td><td>The PTO balance in hours that week, coloured <em>Good</em> or <em>At Risk</em></td><td>The balance and state at the end of the period; the evidence strip keeps every week</td><td>Good = Met · At Risk = Missed</td></tr>
               <tr><td>SI rating</td><td colspan="2">The last closed quarter's manager rating, 1–5; the current quarter stays blank until rated</td><td>Met ≥ 4 · Close = 3</td></tr>
               <tr><td>Score</td><td>Weighted mix of the measures above, 0–100 (⚖️ Scoring Weights)</td><td>Average of the weekly scores</td><td>Strong ≥ 75 · On track 50–74 · Needs a look below</td></tr>
             </tbody>
@@ -4144,6 +4140,11 @@ function perfRowModels_(emps) {
         var hb = per[model.lastIdx], hl = model.buckets[model.lastIdx];
         if (hb && hb.weeks) tip += ' · ' + perfHoursPhrase_(hb.trackedHrs, hb.plannedHrs, hb.weeks) + (hl ? ' in ' + hl.label : '');
       }
+      // PTO: the balance behind the Good / At Risk state (2026.W42).
+      if (c.id === 'pto') {
+        var pb = per[model.lastIdx];
+        if (pb && pb.ptoBalance !== null && pb.ptoBalance !== undefined) tip += ' · balance ' + perfFmtHrs_(pb.ptoBalance);
+      }
       if (c.id === 'si' && !ne && siRecords.length && siRecords[siRecords.length - 1].v === null) {
         tip += ' · current quarter not yet rated — idle, no penalty';
       }
@@ -4162,8 +4163,11 @@ function perfRowModels_(emps) {
         }),
       };
     });
-    var reds    = cells.filter(function(x) { return x.sig === 'r'; }).length;
-    var yellows = cells.filter(function(x) { return x.sig === 'y'; }).length;
+    // RCR is context, not something the rocketeer controls (2026.W42): it keeps
+    // its cell and colour on the checklist but never counts as a flag, never
+    // drives the lane or the Why, and never enters the row reading.
+    var reds    = cells.filter(function(x) { return x.sig === 'r' && x.col.id !== 'rcr'; }).length;
+    var yellows = cells.filter(function(x) { return x.sig === 'y' && x.col.id !== 'rcr'; }).length;
     var burnout = !exc.notEval.pto && !exc.notEval.tracked &&
                   hasMetric_('pto') && hasMetric_('tracked') &&
                   perfBurnout_(perfColVal_(per[model.lastIdx], 'pto'),
@@ -4179,7 +4183,7 @@ function perfRowModels_(emps) {
       tenure: perfTenureLabel_(emp.hireDate || null, nowMs),
       chips: exc.chips,
       hasException: exc.chips.length > 0,
-      reading: perfReadingNote_(cells.filter(function(x) { return !x.notEval; }).map(function(x) {
+      reading: perfReadingNote_(cells.filter(function(x) { return !x.notEval && x.col.id !== 'rcr'; }).map(function(x) {
         return { id: x.col.id, label: x.col.label, sig: x.sig, trend: x.trend };
       })),
     };
@@ -4303,7 +4307,7 @@ var PERF_COL_HELP = {
   goals:   'Quarterly goals compliance — 8+ goals with active self-comments, checked weekly. The value is the share of weeks compliant in the period. Green ≥80%.',
   tracked: 'Tempo logged hours vs 90% of their plan (PTO-adjusted). ICs: green ≥85%, yellow ≥55%. Managers have their own bar (green ≥50%) and are never red — coaching time never reaches Tempo.',
   planned: 'Forward capacity planned in Tempo vs the PTO-adjusted 40h week. ICs: green ≥85%. Managers: green ≥70%, yellow ≥40%.',
-  rcr:     'Revenue Contribution Ratio — monthly revenue-weighted contribution vs cost. Target 2.5; green ≥2.0, yellow ≥1.25.',
+  rcr:     'Revenue Contribution Ratio — monthly revenue-weighted contribution vs cost. Target 2.5; green ≥2.0, yellow ≥1.25. Context only: not something the rocketeer controls, so it never drives the lane, the Why or the flag counts.',
   kudos:   'Peer recognition in the period — giving AND receiving = green, one side = yellow, none = gray. Never red: absence of kudos is not a performance miss.',
   pto:     'PTO planning health — Good (recovery plan in place) = green, At Risk = red. The dot follows the latest weekly snapshot.',
   si:      'Small Improvements manager rating (1–5), quarterly. Shows the last 2 records plus the current quarter when rated; an unrated current quarter sits idle and is never penalized or back-filled.',
@@ -4325,26 +4329,23 @@ var PERF_METRIC_TIPS = {
     text: 'Whether the person kept their quarterly goals up to date. Each week is checked on its own: enough goals (8 or more), most of them In Progress, and at least 6 carrying the person\'s own progress comments. The rate is the share of checked weeks that passed — up to date in 3 of 4 weeks of a month shows as 75%. A single week simply reads Up to date or Behind.',
     note: 'Met at 80% or more · Close from 40% · Missed below · the first 3 weeks of a quarter only count when they passed.' },
   tracked: { title: 'Logged time', doc: 'docRates',
-    text: 'Hours actually logged in Tempo, measured against 90% of the hours planned for the same week (or of a 40 h week less PTO when nothing was planned). 100% means the logged hours reached that mark; it is capped, so logging more than planned never scores above 100%. A month or a quarter averages its weeks. The plain hour totals are in Hours at a glance.',
+    text: 'Hours actually logged in Tempo. The history table shows the plain total for the week, the month or the quarter; the colour judges the week against 90% of the hours planned for it (or of a 40 h week less PTO when nothing was planned), and a month or a quarter averages its weeks.',
     note: 'ICs: Met at 85% or more · Close from 55% — managers: Met at 50%, never Missed, because coaching time never reaches Tempo.' },
   planned: { title: 'Planned time', doc: 'docRates',
-    text: 'Hours scheduled in Tempo ahead of the week, measured against the 40 h working week after PTO is taken out. 100% means the whole available week was planned. A month or a quarter averages its weeks, so one unplanned week in four reads as about 75%. The plain hour totals are in Hours at a glance.',
+    text: 'Hours scheduled in Tempo ahead of the week. The history table shows the plain total for the week, the month or the quarter; the colour judges the week against the 40 h working week after PTO is taken out, and a month or a quarter averages its weeks, so one unplanned week in four reads as Close rather than Met.',
     note: 'ICs: Met at 85% or more · Close from 50% — managers: Met at 70% · Close from 40%.' },
   rcr: { title: 'RCR', doc: 'docRcr',
-    text: 'Revenue Contribution Rate: the revenue the person\'s work generated in the last closed month relative to their cost. 2.5 is the benchmark. It moves monthly, not weekly, and reflects project mix and billing rates as much as effort — read it as context, not as a verdict on one person.',
-    note: 'Met at 2.0 or more · Close from 1.25 · Missed below · from Jul 26 the rate comes straight from the New RCR tab.' },
+    text: 'Revenue Contribution Rate: the revenue the person\'s work generated in the last closed month relative to their cost. 2.5 is the benchmark. It is not something the rocketeer controls — project mix, billing rates and staffing decide it — so it stays on the checklist for context and never drives the summary, the lane, the Why or the flags.',
+    note: 'Context only · Met at 2.0 or more · Close from 1.25 · from Jul 26 the rate comes straight from the New RCR tab.' },
   kudos: { title: 'Kudos', doc: 'docKudos',
     text: 'Recognition in the period: kudos the person received and kudos they gave. Both sides present reads Met, one side Close, none at all stays grey. It is never Missed — a quiet week is a prompt to notice someone, not a performance miss.',
     note: 'Source: the Kudos sheet · counted per week, added up for a month or a quarter.' },
   pto: { title: 'PTO plan', doc: 'docPto',
-    text: 'Whether the person\'s time off is under control: a balance under 100 hours, or a larger balance with real rest booked around it. Good reads Met, At Risk reads Missed. For a month or a quarter the signal is the state at the end of the period; the week-by-week strip in the evidence keeps every At Risk week visible.',
+    text: 'The person\'s PTO balance in hours at the end of the period, coloured by whether the time off is under control: a balance under 100 hours, or a larger balance with real rest booked around it, reads Met (Good); a large balance with no plan around it reads Missed (At Risk). The week-by-week strip in the evidence keeps every At Risk week visible.',
     note: 'Source: Accumulation Cost (NetSuite) · a wellbeing signal: on its own it never puts someone in Support.' },
   si: { title: 'SI rating', doc: 'docSi',
     text: 'The manager rating from the last closed Small Improvements review, on a 1 to 5 scale: 3 meets expectations, 4 is great, 5 is outstanding. It changes once a quarter. The current quarter stays blank until it is rated and is never penalised for being blank.',
     note: 'Met at 4 or more · Close at 3 · Missed below · the last two closed quarters are shown beside the current one.' },
-  hours: { title: 'Hours at a glance', doc: 'docRates',
-    text: 'The plain totals behind Logged time and Planned time: hours planned in Tempo and hours actually logged, added up for the week, the month and the quarter. "Of plan" is logged ÷ planned, not capped, so a week with more logged than planned shows above 100%. The colour follows the same bar as the Logged time measure.',
-    note: 'Periods still running are faded and marked "so far" · PTO lowers the plan for those weeks, it is not a gap.' },
 };
 // Attributes for a hover-help element. opts.doc === false suppresses the
 // click-to-Documentation (for an element that already has a click job);
@@ -4448,7 +4449,7 @@ function perfCapturePng_(el, opts) {
   var hide = opts.hide ? el.querySelectorAll(opts.hide) : [];
   var gone = opts.gone ? el.querySelectorAll(opts.gone) : [];   // removed from flow, not just invisible
   var host = opts.host || null;
-  var scrollers = el.querySelectorAll('.prp-tscroll, .pr-hours-wrap, .pr-scroll');
+  var scrollers = el.querySelectorAll('.prp-tscroll, .pr-scroll');
   var saved = [];
   function restore() {
     el.classList.remove('pr-print');
@@ -4509,7 +4510,7 @@ function perfMonthName_(label) {
 }
 function perfShortWeek_(label) { return String(label || '').replace(/^\d{4}\./, ''); }
 function perfLensGran_(lens) { lens = lens || STATE.prLens; return lens === 'eval' ? 'week' : lens; }
-// Same rounding as Hours at a glance (perfFmtHrs_), so the tile and the table agree.
+// Same rounding as the history table (perfFmtHrs_), so the tile and the table agree.
 function perfHrs_(h) { return (h === null || h === undefined || isNaN(h)) ? '0 h' : perfFmtHrs_(h); }
 function perfInitials_(name) {
   return String(name || '').split(/\s+/).filter(Boolean).slice(0, 2)
@@ -4641,25 +4642,11 @@ function perfStoryInput_(emp, row, exc) {
     return { label: w.label, short: perfShortWeek_(w.label), month: perfMonthName_(w.label),
              score: empty ? null : rk.score, met: met };
   });
-  var rcr = null;
-  if (!exc.notEval.rcr && hasMetric_('rcr')) {
-    var hist = (DATA.meta && DATA.meta.rcrByEmployee && DATA.meta.rcrByEmployee[emp.normName]) || null;
-    var months = [];
-    if (hist) Object.keys(hist).forEach(function(nm) {
-      var k = perfRcrMonthKey_(nm), raw = hist[nm];
-      if (!k || raw === null || raw === undefined || raw === '' || isNaN(+raw)) return;
-      months.push({ k: k, name: P_MONTH_FULL[+k.slice(5, 7) - 1], val: +raw });
-    });
-    months.sort(function(a, b) { return a.k < b.k ? -1 : a.k > b.k ? 1 : 0; });
-    months = months.slice(-3);
-    if (!months.length && emp.rcr && emp.rcr.value != null && !isNaN(+emp.rcr.value)) {
-      months = [{ name: 'the latest month', val: +emp.rcr.value }];
-    }
-    if (months.length) rcr = { months: months, bar: PERF_BARS.rcr[row.coh === 'mgr' ? 'mgr' : 'ic'].g, target: 2.5 };
-  }
+  // RCR is deliberately NOT part of the story (2026.W42): the rocketeer does not
+  // control it, so it stays on the metric checklist and out of the summary.
   return {
     first: String(emp.name || '').split(/\s+/)[0],
-    weeks: weeks, rcr: rcr,
+    weeks: weeks,
     onLeave: onLeave_(emp), ramp: !!emp.isRampUp, crew: isCrewEmp(emp), noMandate: !tracksTime_(emp),
     ptoWeeks: ptoWeeks,
     span: closed.length ? closed[0].label + ' – ' + perfShortWeek_(closed[closed.length - 1].label) : '',
@@ -4684,7 +4671,10 @@ function perfTiles_(emp, row, exc, emps, story) {
     if (hasMetric_('kudos') && !exc.notEval.kudos) {
       bits.push(rk.kudosCount ? 'was given kudos' + (rk.kudosCount > 1 ? ' ×' + rk.kudosCount : '') : rk.kudosGivenCount ? 'gave kudos' : 'no kudos');
     }
-    if (hasMetric_('pto') && !exc.notEval.pto && rk.ptoStatus) bits.push('PTO plan ' + (rk.ptoStatus === 'Good' ? 'healthy' : 'at risk'));
+    if (hasMetric_('pto') && !exc.notEval.pto && rk.ptoStatus) {
+      bits.push((rk.ptoBalance !== null && rk.ptoBalance !== undefined ? 'PTO balance ' + perfFmtHrs_(rk.ptoBalance) + ', plan ' : 'PTO plan ') +
+                (rk.ptoStatus === 'Good' ? 'healthy' : 'at risk'));
+    }
   }
   tiles.push({ lens: 'eval', eyebrow: 'Evaluated week', title: ev || '—',
     sub: w ? (w.dateRange || '') + (w.isPast ? '' : ' · in progress') : '',
@@ -4701,7 +4691,6 @@ function perfTiles_(emp, row, exc, emps, story) {
     if (a && a.weeks) {
       if (hasMetric_('goals') && !exc.notEval.goals && a.goalsWeeks) t.push('goals up to date ' + a.goalsCompliant + ' of ' + a.goalsWeeks + ' weeks');
       if (hasMetric_('tracked') && !exc.notEval.tracked && a.plannedHrs) t.push('logged ' + Math.round(a.trackedHrs || 0) + ' h of ' + Math.round(a.plannedHrs) + ' h planned');
-      if (hasMetric_('rcr') && !exc.notEval.rcr && a.rcr !== null && a.rcr !== undefined) t.push('RCR ' + (Math.round(a.rcr * 10) / 10).toFixed(1));
       if (hasMetric_('kudos') && !exc.notEval.kudos) t.push('kudos ' + a.kudos.recv + ' in · ' + a.kudos.gave + ' out');
     }
     return { m: m, b: b, tile: { lens: gran, eyebrow: eyebrow, title: b ? b.label : '—', sub: b ? (b.weekRangeLabel || '') : '',
@@ -4726,11 +4715,11 @@ function perfTiles_(emp, row, exc, emps, story) {
 var PERF_HIST_ROWS = {
   score:   { label: 'Score',        help: '0–100, weighted' },
   goals:   { label: 'Goals',        help: 'weeks up to date' },
-  tracked: { label: 'Logged time',  help: 'hours · % of target (90% of plan)' },
-  planned: { label: 'Planned time', help: 'hours · % of the week after PTO' },
-  rcr:     { label: 'RCR',          help: 'bar 2.0 · target 2.5' },
+  tracked: { label: 'Logged time',  help: 'total hours logged' },
+  planned: { label: 'Planned time', help: 'total hours planned' },
+  rcr:     { label: 'RCR',          help: 'context only' },
   kudos:   { label: 'Kudos',        help: 'received · given' },
-  pto:     { label: 'PTO plan',     help: 'state at period close' },
+  pto:     { label: 'PTO plan',     help: 'balance at period close' },
   si:      { label: 'SI rating',    help: 'manager rating, 1–5' },
 };
 var PERF_HIST_TITLE = { eval: 'The 8 weeks up to the evaluated week', week: 'Week by week', month: 'Month by month', quarter: 'Quarter by quarter' };
@@ -4762,42 +4751,43 @@ function perfHistory_(emp, row, exc) {
     var t = '—', sub = '';
     if (c.id === 'score') t = v === null ? '—' : String(v);
     else if (c.id === 'goals') t = !a.goalsWeeks ? '—' : single ? (a.goalsCompliant ? 'Up to date' : 'Behind') : a.goalsCompliant + ' / ' + a.goalsWeeks;
-    // Time rows (2026.W42): the hour total is the cell, the rate sits under it —
-    // "148 h" over "93% of target · 37 h/wk" — so a manager reads hours first.
-    else if (c.id === 'tracked') {
-      var ht = perfHoursLine_(a.trackedHrs, a.plannedHrs, a.weeks);
-      t = a.trackedHrs === null ? '—' : ht.logged;
-      sub = (v === null ? '' : Math.round(v * 100) + '% of target') + (single || a.trackedHrs === null ? '' : ' · ' + ht.loggedPerWk + '/wk');
-    }
-    else if (c.id === 'planned') {
-      var hp = perfHoursLine_(a.trackedHrs, a.plannedHrs, a.weeks);
-      t = a.plannedHrs === null ? '—' : hp.planned;
-      sub = a.plannedHrs === null ? '' : (v === null ? '' : Math.round(v * 100) + '% of week') + (single ? '' : ' · ' + hp.plannedPerWk + '/wk');
-    }
+    // Time rows (2026.W42): the plain hour TOTAL for the period — per week, per
+    // month, per quarter — and nothing else. No ratio: the colour already says
+    // how the hours compare with the bar.
+    else if (c.id === 'tracked') t = a.trackedHrs === null ? '—' : perfFmtHrs_(a.trackedHrs);
+    else if (c.id === 'planned') t = a.plannedHrs === null ? '—' : perfFmtHrs_(a.plannedHrs);
     else if (c.id === 'rcr') t = v === null ? '—' : (Math.round(v * 10) / 10).toFixed(1);
-    else if (c.id === 'kudos') t = (v ? v.recv : 0) + ' in · ' + (v ? v.gave : 0) + ' out';
-    else if (c.id === 'pto') t = v === null ? '—' : v >= 1 ? 'Good' : 'At risk';
+    else if (c.id === 'kudos') t = (v ? v.recv : 0) + ' · ' + (v ? v.gave : 0);   // received · given (row help says so)
+    // PTO (2026.W42): the balance in hours at period close is the number a
+    // manager can act on; Good / At risk stays as the colour and the small word.
+    else if (c.id === 'pto') {
+      if (v === null) t = '—';
+      else if (a.ptoBalance !== null && a.ptoBalance !== undefined) { t = perfFmtHrs_(a.ptoBalance); sub = v >= 1 ? 'Good' : 'At risk'; }
+      else t = v >= 1 ? 'Good' : 'At risk';
+    }
     else if (c.id === 'si') t = v === null ? '—' : String(Math.round(v));
-    return { t: t, sub: sub.replace(/^ · /, ''), s: ne ? 'n' : perfSignalFor_(c.id, c.id === 'goals' ? a.goals : v, row.coh) };
+    return { t: t, sub: sub, s: ne ? 'n' : perfSignalFor_(c.id, c.id === 'goals' ? a.goals : v, row.coh) };
   }
-  var colsCss = 'minmax(118px, 150px) repeat(' + buckets.length + ', minmax(' + (lens === 'quarter' ? 110 : lens === 'month' ? 84 : 66) + 'px, 1fr))';
-  var head = '<div class="prp-trow prp-thead" style="grid-template-columns:' + colsCss + '"><div class="prp-c0"><b>Measure</b><small>' +
-    (lens === 'month' ? 'per month' : lens === 'quarter' ? 'per quarter' : 'per week') + '</small></div>' +
+  // ONE table (2026.W42): header and rows share their columns, so every value
+  // sits directly under its period whatever the cell holds.
+  var head = '<colgroup><col style="width:118px">' + buckets.map(function() { return '<col>'; }).join('') + '</colgroup>' +
+    '<thead><tr><th class="prp-c0" scope="col"><b>Measure</b><small>' +
+    (lens === 'month' ? 'per month' : lens === 'quarter' ? 'per quarter' : 'per week') + '</small></th>' +
     buckets.map(function(b) {
-      return '<div class="prp-hh' + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + esc(b.label) +
-        (b.sub ? '<small>' + esc(b.sub) + '</small>' : '') + '</div>';
-    }).join('') + '</div>';
-  var rows = cols.map(function(c) {
+      return '<th scope="col" class="prp-hh' + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + esc(b.label) +
+        (b.sub ? '<small>' + esc(b.sub) + '</small>' : '') + '</th>';
+    }).join('') + '</tr></thead>';
+  var rows = '<tbody>' + cols.map(function(c) {
     var meta = PERF_HIST_ROWS[c.id] || { label: c.label, help: '' };
     // The measure name is the hover help and the way into Documentation (2026.W42).
-    return '<div class="prp-trow" style="grid-template-columns:' + colsCss + '"><div class="prp-c0"><b>' + perfTipLabel_(c.id, meta.label) + '</b><small>' +
-      esc(exc.notEval[c.id] ? 'shown, not evaluated' : meta.help) + '</small></div>' +
+    return '<tr><td class="prp-c0"><b>' + perfTipLabel_(c.id, meta.label) + '</b><small>' +
+      esc(exc.notEval[c.id] ? 'shown, not evaluated' : meta.help) + '</small></td>' +
       buckets.map(function(b, i) {
         var x = cellFor(c, per[i], b);
-        return '<div class="prp-hc prp-s-' + x.s + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + esc(x.t) +
-          (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') + '</div>';
-      }).join('') + '</div>';
-  }).join('');
+        return '<td><div class="prp-hc prp-s-' + x.s + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + esc(x.t) +
+          (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') + '</div></td>';
+      }).join('') + '</tr>';
+  }).join('') + '</tbody>';
   var bars = buckets.map(function(b, i) {
     var a = per[i], v = a && a.weeks ? a.score : null;
     var s = v === null ? 'm' : perfSignalFor_('score', v, row.coh);
@@ -4812,77 +4802,11 @@ function perfHistory_(emp, row, exc) {
     html: '<div class="prp-chart" aria-label="Score per period">' +
         '<div class="prp-ref" style="bottom:' + (22 + Math.round(gB * 1.2)) + 'px">' + gB + '</div>' +
         '<div class="prp-ref" style="bottom:' + (22 + Math.round(yB * 1.2)) + 'px">' + yB + '</div>' + bars + '</div>' +
-      '<div class="prp-tscroll">' + head + rows + '</div>' +
+      '<div class="prp-tscroll"><table class="prp-htable" style="min-width:' + Math.max(560, 118 + buckets.length * 56) + 'px">' + head + rows + '</table></div>' +
       '<div class="prp-legend"><span><i class="prp-s-g"></i>Met</span><span><i class="prp-s-y"></i>Close</span>' +
       '<span><i class="prp-s-r"></i>Missed</span><span><i class="prp-s-m"></i>No data / not evaluated</span>' +
       '<span>Faded = in progress · outlined = the period being evaluated</span></div>',
   };
-}
-
-// ── Hours at a glance (2026.W42) ─────────────────────────────────────────────
-// The plain totals a manager asks for before any rate: hours planned in Tempo
-// and hours logged, for the week, the month and the quarter. Per grain the
-// closed period comes first and the one still running under it ("so far",
-// faded). Reads the same per-bucket aggregates as the history table and the
-// grid, so the three surfaces can never disagree. The colour is the Logged
-// time signal (tracked ÷ 90% of plan against the cohort bar); "of plan" itself
-// is the uncapped logged ÷ planned. Nothing here comes from the server anew —
-// scope and self-exclusion stay exactly the payload's.
-function perfHoursRows_(emp, row, exc) {
-  var rows = [];
-  function sig(a) {
-    if (!a || !a.weeks) return 'm';
-    if (exc.notEval.tracked) return 'n';
-    return perfSignalFor_('tracked', a.tracked, row.coh);
-  }
-  function push(grain, label, sub, a, prog) {
-    var h = perfHoursLine_(a ? a.trackedHrs : null, a ? a.plannedHrs : null, a ? a.weeks : 0);
-    rows.push({ grain: grain, label: label, sub: sub, prog: prog, weeks: a ? a.weeks : 0, h: h, sig: sig(a) });
-  }
-  // Week: the evaluated week (people view) or the last closed one (grid), then
-  // the current week when that is a different one.
-  var open = perfOpenWeeks_(), ev = perfEvalWeek_(), evW = null, curW = null;
-  var curLabel = (DATA.meta && DATA.meta.currentWeekLabel) || null;
-  open.forEach(function(w) { if (w.label === ev) evW = w; if (w.label === curLabel) curW = w; });
-  var grace = perfGraceLabels_();
-  function weekAgg(w) {
-    if (!w || !(emp.weeks && emp.weeks[w.label])) return null;
-    return perfBucketAgg_([{ label: w.label, rk: computeRkScore(emp, w.label) }], grace);
-  }
-  if (evW) push('week', evW.label, (evW.dateRange || '') + (evW.isPast ? '' : ' · so far'), weekAgg(evW), !evW.isPast);
-  if (curW && (!evW || curW.label !== evW.label)) push('week', curW.label, (curW.dateRange || '') + ' · so far', weekAgg(curW), true);
-  ['month', 'quarter'].forEach(function(g) {
-    var m = perfModelFor_(g), per = m.byEmp[emp.normName] || [];
-    var li = m.lastIdx, b = m.buckets[li];
-    if (b) push(g, b.label, (b.weekRangeLabel || '') + (b.containsCurrent ? ' · so far' : ''), per[li], !!b.containsCurrent);
-    var ci = -1;
-    m.buckets.forEach(function(x, i) { if (x.containsCurrent) ci = i; });
-    if (ci !== -1 && ci !== li) push(g, m.buckets[ci].label, (m.buckets[ci].weekRangeLabel || '') + ' · so far', per[ci], true);
-  });
-  return rows;
-}
-function perfHoursHtml_(emp, row, exc) {
-  var rows = perfHoursRows_(emp, row, exc);
-  var GR = { week: 'Week', month: 'Month', quarter: 'Quarter' };
-  var body = rows.map(function(r, i) {
-    var first = i === 0 || rows[i - 1].grain !== r.grain;
-    var multi = r.weeks > 1;
-    return '<tr class="' + (first ? 'pr-hgrain' : '') + (r.prog ? ' prog' : '') + '">' +
-      '<td><b>' + esc((first ? GR[r.grain] + ' · ' : '') + r.label) + '</b>' +
-        (r.sub || multi ? '<small>' + esc([r.sub, multi ? r.weeks + ' weeks with data' : ''].filter(Boolean).join(' · ')) + '</small>' : '') + '</td>' +
-      '<td class="num"><b>' + esc(r.h.planned) + '</b></td>' +
-      '<td class="num"><b>' + esc(r.h.logged) + '</b></td>' +
-      '<td class="num"><span class="pr-hpct ' + r.sig + '">' + esc(r.h.pctTxt) + '</span></td>' +
-      '<td class="num">' + (multi ? esc(r.h.loggedPerWk + ' / ' + r.h.plannedPerWk) : '') + '</td></tr>';
-  }).join('');
-  var note = exc.notEval.tracked
-    ? 'Shown for information only — this job family is outside the time-tracking mandate, so the hours carry no signal.'
-    : 'Hours in Tempo for ' + String(emp.name || '').split(/\s+/)[0] + ' · colour follows the Logged time bar · faded rows are still running.';
-  return '<h4>' + perfTipLabel_('hours', 'Hours at a glance') + '</h4>' +
-    '<p class="pr-hours-sub">' + esc(note) + '</p>' +
-    '<div class="pr-hours-wrap"><table class="pr-hours">' +
-    '<thead><tr><th>Period</th><th class="num">Planned</th><th class="num">Logged</th><th class="num">Of plan</th><th class="num" title="Average per week with data: logged / planned">Per week</th></tr></thead>' +
-    '<tbody>' + (body || '<tr><td colspan="5" class="pr-sub">No hours recorded in this window.</td></tr>') + '</tbody></table></div>';
 }
 
 function perfCardHtml_(emp, emps) {
@@ -4891,7 +4815,6 @@ function perfCardHtml_(emp, emps) {
   var story = perfStory_(perfStoryInput_(emp, row, exc));
   var tiles = perfTiles_(emp, row, exc, emps, story);
   var hist = perfHistory_(emp, row, exc);
-  var hoursHtml = hasMetric_('tracked') ? '<div class="prp-box">' + perfHoursHtml_(emp, row, exc) + '</div>' : '';
   var meta = [emp.jobTitle, emp.keyLocation, emp.supervisor ? 'reports to ' + emp.supervisor : '',
               row.tenure ? row.tenure + ' tenure' : ''].filter(Boolean).join(' · ');
   function li(x) { return '<li>' + esc(x) + '</li>'; }
@@ -4929,10 +4852,9 @@ function perfCardHtml_(emp, emps) {
     '<div class="prp-pgrid"><div class="prp-col">' +
       '<div class="prp-short"><p class="prp-eyebrow">The short version</p>' +
         '<p class="prp-lead">' + esc(story.lead) + '</p>' +
-        '<ul>' + [story.strength, story.gap, story.rcrLine].filter(Boolean).map(li).join('') + '</ul>' +
+        '<ul>' + [story.strength, story.gap].filter(Boolean).map(li).join('') + '</ul>' +
         (story.basis ? '<p class="prp-basis">' + esc(story.basis) + '</p>' : '') + '</div>' +
       '<div class="prp-tiles">' + tilesHtml + '</div>' +
-      hoursHtml +
       '<div class="prp-box"><h4>Worth asking about</h4><ul>' + story.ask.map(li).join('') + '</ul>' +
         '<h4>Context</h4>' + story.context.map(function(x) { return '<p>' + esc(x) + '</p>'; }).join('') + '</div>' +
     '</div><div class="prp-col">' +
@@ -5106,7 +5028,7 @@ function copyPerfStory_(norm, btn) {
   var tiles = perfTiles_(emp, row, exc, getFilteredEmployees(), st);
   var lines = [emp.name + ' — ' + (emp.jobTitle || '') + (row.tenure ? ' · ' + row.tenure + ' tenure' : ''),
                st.verdict + ' · ' + st.trendName.replace(/^\S+\s/, ''), '', st.lead];
-  [st.strength, st.gap, st.rcrLine].filter(Boolean).forEach(function(x) { lines.push('• ' + x); });
+  [st.strength, st.gap].filter(Boolean).forEach(function(x) { lines.push('• ' + x); });
   lines.push('', 'Worth asking about:');
   st.ask.forEach(function(x) { lines.push('• ' + x); });
   lines.push('', 'Context:');
@@ -5553,7 +5475,9 @@ function perfDrillHtml_(emp, row, model, opts) {
   function block(id, title, bodyHtml) {
     var c = cellByCol[id];
     if (!c) return;
-    var info = c.notEval || c.sig === 'm' || id === 'kudos';
+    // Kudos and RCR are informational: kudos is never red, RCR is not in the
+    // rocketeer's control (2026.W42) — both sink below the evaluated blocks.
+    var info = c.notEval || c.sig === 'm' || id === 'kudos' || id === 'rcr';
     blocks.push({ sev: info ? 0 : (SEV[c.sig] || 0), html:
       '<div class="pr-block' + (info ? ' info' : '') + '">' +
       '<h4>' + prDot_(c.sig) + title +
@@ -5621,19 +5545,6 @@ function perfDrillHtml_(emp, row, model, opts) {
       ? '<ul class="pr-exlist">' + exLines.map(function(l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>'
       : '<p class="pr-sub">No exceptions — every evaluated week at bar across the window.</p>') +
     '</div>' });
-
-  // ── Hours at a glance (sev 3.8, 2026.W42): planned vs logged totals for the
-  // week, the month and the quarter — the plain numbers behind the Tracked and
-  // Planned rates, whatever grain the grid is on. The card renders its own copy
-  // above the evidence, so the embedded drill skips it.
-  if (cellByCol.tracked && !(opts && opts.embedded)) {
-    var anyHrs0 = ['week', 'month', 'quarter'].some(function(g) {
-      return (perfModelFor_(g).byEmp[emp.normName] || []).some(function(a) { return a && (a.trackedHrs || a.plannedHrs); });
-    });
-    if (!cellByCol.tracked.notEval || anyHrs0) {
-      blocks.push({ sev: 3.8, html: '<div class="pr-block span2">' + perfHoursHtml_(emp, row, perfExceptions_(emp)) + '</div>' });
-    }
-  }
 
   // ── Quarterly = macro view (sev 3.5): Score trend line + large KPI blocks;
   // the detailed pacing charts belong to the Monthly/Weekly views.
@@ -5722,11 +5633,13 @@ function perfDrillHtml_(emp, row, model, opts) {
   if (cellByCol.pto && !cellByCol.pto.notEval) {
     // Per-WEEK strip (spec v3 §D): a red week stays visible inside a green
     // quarter — the bucket dot already follows the latest week (lastNonNull).
-    var ptoWeeks = [];
+    var ptoWeeks = [], ptoBal = null, ptoBalAsOf = null;
     (DATA.q4Weeks || []).forEach(function(w) {
       if (w.isFuture) return;
       var wd = emp.weeks && emp.weeks[w.label];
       var ph = wd && wd.ptoHealth ? wd.ptoHealth : null;
+      // Latest balance in the record (2026.W42): the number a manager can act on.
+      if (ph && ph.balance !== null && ph.balance !== undefined && !isNaN(+ph.balance)) { ptoBal = +ph.balance; ptoBalAsOf = ph.balanceAsOf || w.label; }
       ptoWeeks.push({ label: w.label, cur: w.label === DATA.meta.currentWeekLabel,
                       status: ph ? ph.status : null, reason: ph && ph.reason ? ph.reason : '' });
     });
@@ -5738,6 +5651,7 @@ function perfDrillHtml_(emp, row, model, opts) {
       return '<span class="pr-heat ' + cls + (p.cur ? ' cur' : '') + '" title="' + esc(tip) + '"></span>';
     }).join('');
     block('pto', 'PTO health',
+      (ptoBal !== null ? '<p><b>Balance ' + perfFmtHrs_(ptoBal) + '</b>' + (ptoBalAsOf ? ' <span class="pr-sub">as of ' + esc(String(ptoBalAsOf)) + '</span>' : '') + '</p>' : '') +
       '<p>' + (evald.length ? 'Good ' + good + ' of ' + evald.length + ' evaluated weeks (' +
                Math.round(good / evald.length * 100) + '%)' : 'No evaluated weeks.') + '</p>' +
       '<div class="pr-heatwrap">' + strip + '</div>');
@@ -6346,14 +6260,9 @@ function perfStory_(inp) {
       : 'No recurring gaps: every measure was met in at least 3 of every 4 weeks.';
   }
 
-  var rcrLine = '', ask = [];
-  var r = inp.rcr;
-  if (r && r.months && r.months.length) {
-    var ms = r.months, latest = ms[ms.length - 1], earliest = ms[0];
-    var rHits = ms.filter(function(x) { return x.val >= r.bar; }).length;
-    rcrLine = 'RCR was at or above the ' + r.bar.toFixed(1) + ' bar in ' + rHits + ' of the last ' + ms.length + ' month' + (ms.length === 1 ? '' : 's') +
-      ' (latest: ' + latest.val.toFixed(1) + ' in ' + latest.name + '; target ' + r.target.toFixed(1) + ').';
-  }
+  // RCR is never part of the story (2026.W42): the rocketeer does not control it,
+  // so it stays on the metric checklist and out of the summary and the asks.
+  var ask = [];
   var tail = all.slice(-4);
   PERF_STORY_METRICS.forEach(function(m) {
     var ev = tail.filter(function(w) { return w.met && w.met[m.id] !== null && w.met[m.id] !== undefined; });
@@ -6365,11 +6274,6 @@ function perfStory_(inp) {
     if (missed.length >= 2) ask.push(perfCap_(m.miss) + ' in ' + missed.length + ' of the last ' + ev.length + ' weeks (' +
       missed.map(function(w) { return w.short; }).join(', ') + ').');
   });
-  if (r && r.months && r.months.length) {
-    var lt = r.months[r.months.length - 1], er = r.months[0];
-    if (lt.val < r.bar) ask.push('RCR was ' + lt.val.toFixed(1) + ' in ' + lt.name + ', under the ' + r.bar.toFixed(1) + ' bar' +
-      (r.months.length > 1 && lt.val < er.val - 0.1 ? ' and down from ' + er.val.toFixed(1) + ' in ' + er.name : '') + '.');
-  }
   if (!ask.length) ask.push(inp.onLeave ? 'Nothing to review while on leave.' : 'Nothing recurring in the last 4 weeks.');
 
   var ctx = [];
@@ -6387,7 +6291,7 @@ function perfStory_(inp) {
     verdict: inp.onLeave ? 'On leave' : inp.ramp ? 'Ramp-up · not ranked' : PERF_TIER_NAME[tier],
     verdictTier: inp.onLeave || inp.ramp ? 'none' : tier,
     trend: trend, trendName: trend === 'up' ? '▲ Improving' : trend === 'down' ? '▼ Slipping' : '= Steady',
-    lead: lead, strength: strength, gap: gap, rcrLine: rcrLine, ask: ask, context: ctx,
+    lead: lead, strength: strength, gap: gap, ask: ask, context: ctx,
     best: best ? best.m.short : null, worst: worst ? worst.m.short : null,
     a4: a4, b4: b4, a8: a8, n: n,
     basis: n ? 'Based on ' + n + ' scored week' + (n === 1 ? '' : 's') + (inp.span ? ', ' + inp.span : '') + '.' : '',
@@ -6416,8 +6320,10 @@ function perfRowDriver_(cells) {
   var all = ev.filter(function(c) { return c.id !== 'score'; });
   // PTO health is a wellbeing signal, not a performance miss: it never puts
   // someone in Support on its own; it is named under Watch (or noted on Celebrate).
+  // RCR is context the rocketeer does not control (2026.W42): it never drives
+  // the lane or the Why at all — it stays on the checklist.
   var ptoRisk = all.some(function(c) { return c.id === 'pto' && c.sig === 'r'; });
-  var metrics = all.filter(function(c) { return c.id !== 'pto'; });
+  var metrics = all.filter(function(c) { return c.id !== 'pto' && c.id !== 'rcr'; });
   if (!metrics.length) return { lane: 'steady', text: 'Not enough evaluated data yet' };
   var reds = metrics.filter(function(c) { return c.sig === 'r'; });
   var yels = metrics.filter(function(c) { return c.sig === 'y'; });
@@ -6500,6 +6406,7 @@ function perfBucketAgg_(weekRows, graceLabels) {
     kudos:          { recv: rows.reduce(function(a, r) { return a + (r.rk.kudosCount || 0); }, 0),
                       gave: rows.reduce(function(a, r) { return a + (r.rk.kudosGivenCount || 0); }, 0) },
     pto:            lastNonNull('ptoNorm'),   // signal = state at bucket close, not the share
+    ptoBalance:     lastNonNull('ptoBalance'),   // balance (h) at bucket close (2026.W42)
     ptoGoodShare:   avg('ptoNorm'),
     rcr:            lastNonNull('rcrVal'),
     si:             lastNonNull('siVal'),
@@ -6528,7 +6435,7 @@ function perfReadingNote_(signals) {
 function perfFlagTip_(cells) {
   var reds = [], yels = [];
   cells.forEach(function(c) {
-    if (c.notEval) return;
+    if (c.notEval || c.col.id === 'rcr') return;   // RCR is context, never a flag (2026.W42)
     if (c.sig === 'r') reds.push(c.col.label);
     else if (c.sig === 'y') yels.push(c.col.label);
   });
@@ -6671,32 +6578,18 @@ function perfExceptionReport_(entries, cap) {
   return lines;
 }
 
-// Hours at a glance (2026.W42): the plain totals behind the Logged / Planned
-// rates. pct = logged ÷ planned, NOT capped (null without a plan); whole hours
-// from 10 h up, one decimal below so a 2.5 h week survives; per-week figures
-// divide by the bucket's data weeks.
+// Hour totals (2026.W42): whole hours from 10 h up, one decimal below so a
+// 2.5 h week survives. Plain totals only — no ratio is ever derived here.
 function perfFmtHrs_(h) {
   if (h === null || h === undefined || (typeof h === 'number' && isNaN(h))) return '—';
   var n = +h;
   return (Math.abs(n) >= 10 ? Math.round(n) : Math.round(n * 10) / 10) + ' h';
 }
-function perfHoursLine_(trackedHrs, plannedHrs, weeks) {
-  var t = (trackedHrs === null || trackedHrs === undefined || isNaN(+trackedHrs)) ? null : +trackedHrs;
-  var p = (plannedHrs === null || plannedHrs === undefined || isNaN(+plannedHrs)) ? null : +plannedHrs;
-  var pct = (p !== null && p > 0 && t !== null) ? Math.round(t / p * 100) : null;
-  var w = weeks && weeks > 1 ? weeks : 1;
-  return {
-    logged: perfFmtHrs_(t), planned: perfFmtHrs_(p), pct: pct,
-    pctTxt: pct === null ? '—' : pct + '%',
-    loggedPerWk: t === null ? '—' : perfFmtHrs_(t / w),
-    plannedPerWk: p === null ? '—' : perfFmtHrs_(p / w),
-  };
-}
 // One phrase for tooltips: "logged 37 h of 40 h planned (over 4 weeks)".
 function perfHoursPhrase_(trackedHrs, plannedHrs, weeks) {
-  var h = perfHoursLine_(trackedHrs, plannedHrs, weeks);
-  if (h.logged === '—' && h.planned === '—') return 'no hours recorded';
-  return 'logged ' + h.logged + ' of ' + h.planned + ' planned' + (weeks > 1 ? ' over ' + weeks + ' weeks' : '');
+  var l = perfFmtHrs_(trackedHrs), p = perfFmtHrs_(plannedHrs);
+  if (l === '—' && p === '—') return 'no hours recorded';
+  return 'logged ' + l + ' of ' + p + ' planned' + (weeks > 1 ? ' over ' + weeks + ' weeks' : '');
 }
 
 // CSV encoder (RFC 4180): quotes fields containing commas/quotes/newlines.
@@ -6919,6 +6812,7 @@ function computeRkScore(emp, weekLabel) {
     kudosGivenCount:wd.kudos ? (wd.kudos.givenCount || 0) : 0,
     siNorm:     si,      siVal:      siVal,
     ptoNorm:    pto,     ptoStatus:  wd.ptoHealth ? wd.ptoHealth.status : null,
+    ptoBalance: (wd.ptoHealth && wd.ptoHealth.balance != null && !isNaN(+wd.ptoHealth.balance)) ? +wd.ptoHealth.balance : null,
   };
 }
 

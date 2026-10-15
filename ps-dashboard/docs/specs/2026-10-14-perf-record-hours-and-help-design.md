@@ -17,7 +17,17 @@ The ask: total hours per week, then per month, then per quarter; a plain-English
 
 ## What changed
 
-### Hours at a glance
+### Revision, same day (user feedback 2026-10-14)
+
+Three corrections after the first deploy (@300), live in the next deploy:
+
+1. **"Hours at a glance" removed, and no ratio on hours.** The block below was built and shipped as @300, then removed at the user's request: the history table already breaks hours down by week, month and quarter, and a "% of plan" figure is not wanted — *we just need the total hours*. The history table's Logged time / Planned time cells now hold the plain hour total for the period and nothing else; `perfHoursLine_` (the ratio helper) is gone; `perfFmtHrs_` and `perfHoursPhrase_` stay. The history is now **one real `<table class="prp-htable">`** (sticky measure column, shared columns) instead of one CSS grid per row, so every value sits directly under its period header — a wide cell used to push its own row's columns out of line with the header.
+2. **RCR is context, not a focus.** The rocketeer does not control RCR, so it keeps its cell, colour and monthly chart on the checklist but never enters "The short version", "Worth asking about", the Team grid lane / Why (`perfRowDriver_` skips it like PTO), the flag counts (`perfRowModels_`, `perfFlagTip_`) or the row reading. `perfStory_` no longer takes or returns anything RCR-related; the evidence RCR block is informational (sinks below evaluated blocks).
+3. **PTO shows the balance.** `computeRkScore` exposes `ptoBalance` (from `ptoHealth.balance`), `perfBucketAgg_` carries the balance at bucket close, and the history cell shows the hours with Good / At risk underneath; the evaluated-week tile, the grid tooltip and the evidence PTO block show it too.
+
+The section below documents the removed block for the record.
+
+### Hours at a glance (removed the same day — kept for the record)
 
 A small table, rendered by `perfHoursHtml_` from `perfHoursRows_`, in two places:
 
@@ -89,7 +99,7 @@ The bubble is the one that shipped for the Team Contribution Pulse rows in 2026.
 
 ## Tests
 
-- `tests/perf-record-checks.js` — `perfFmtHrs_` rounding, `perfHoursLine_` (uncapped pct, no-plan, zero-plan, nothing recorded, per-week averages), `perfHoursPhrase_`.
+- `tests/perf-record-checks.js` — `perfFmtHrs_` rounding, `perfHoursPhrase_` (never a percentage), the ratio helper's absence, `ptoBalance` through `perfBucketAgg_`, RCR excluded from the story / lane / flag tooltip.
 - `tests/perf-record-help-checks.js` — every `PERF_COLS` id has a tip, tips are prose without HTML or colour words, every anchor exists once, Goals opens Goals Evaluation, the rates table says *3 of 4 = 75%*, the bubble accepts `.tipq`, keyboard handlers exist, the hours surfaces are wired, the helpers live in the engine region.
 - `tests/pulse-tips-checks.js` — unchanged and still green (the bubble generalisation keeps the pulse wiring).
 - Render check with `tests/render-harness` (Playwright): card hours rows, history cells, bubble on hover and on focus, click → Documentation with the section flashed under the top bar, grid headers with ⓘ, grid tooltip text, panel block order.

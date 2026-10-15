@@ -8,21 +8,17 @@ Managers reading a person's record wanted two things: the plain hour totals behi
 
 ## What you will see
 
-**Hours at a glance.** Under the Week · Month · Quarter tiles on a person's card there is a small table with hours planned in Tempo and hours actually logged for:
+**Hours in the history table.** The Logged time and Planned time rows of the history table ("The 8 weeks up to the evaluated week", or month by month, quarter by quarter) now show the plain hour total for each period and nothing else: hours logged, hours planned, per week, per month, per quarter. No ratio is added; the colour is the only judgement. The table is now one real table, so every value sits directly under its period header, whatever the cell holds. (A separate "Hours at a glance" block with a "% of plan" column was built first and removed the same day at the user's request.)
 
-- the evaluated week, then the current week so far;
-- the last closed month, then the current month so far;
-- the last closed quarter, then the current quarter so far.
+**PTO balance.** The PTO plan row shows the PTO balance in hours at the close of each period, coloured Good / At risk, instead of a bare "Good". The evaluated-week tile, the grid tooltip and the evidence panel show the balance too.
 
-Each row shows "Of plan" (logged ÷ planned, not capped, so a week with more logged than planned reads above 100%) and, for a month or a quarter, the average per week. Rows still running are faded and marked "so far". The same table opens at the top of the evidence panel in the Team grid.
+**RCR is context, not a focus.** The rocketeer does not control RCR, so it stays on the metric checklist (its cell, its colour, its monthly chart in the evidence) but it no longer appears in "The short version", in "Worth asking about", in the Team grid's lane or Why, or in the flag counts.
 
-**Hours in the history table.** The Logged time and Planned time rows now show the hour total in the cell and the rate underneath, so you read hours first.
-
-**Help where you need it.** Hover any measure name (in the history table, the Hours block or the Team grid headers) for a plain-English explanation of what it measures, how its rate is built at week, month and quarter grain, and where the bar sits. Click the name, or the ⓘ beside a grid header, and Documentation opens on the matching section, highlighted. The Goals explanation says it outright: the rate is the share of checked weeks that passed, so up to date in 3 of 4 weeks of a month shows as 75%.
+**Help where you need it.** Hover any measure name (in the history table or the Team grid headers) for a plain-English explanation of what it measures, how its rate is built at week, month and quarter grain, and where the bar sits. Click the name, or the ⓘ beside a grid header, and Documentation opens on the matching section, highlighted. The Goals explanation says it outright: the rate is the share of checked weeks that passed, so up to date in 3 of 4 weeks of a month shows as 75%.
 
 **Documentation.** The Performance Record section gained a table, "How every rate is built — week, month, quarter", with one row per measure: the one-week reading, the month or quarter reading, and the bar.
 
-**PNG exports.** The person card, the grid's evidence panel and the grid itself now save in one format: the whole table (nothing scrolled off or clipped), the action buttons out, the same file name pattern (`performance-card-<name>-<period>.png`).
+**PNG exports.** The person card, the grid's evidence panel and the grid itself now save in one format: the whole history table (nothing scrolled off or clipped), the action buttons out, the same file name pattern (`performance-card-<name>-<period>.png`).
 
 Also in this release: the hover bubbles on the Team Contribution Pulse rows of the Overview, published on 2026-10-13, had been dropped by the deployments that followed the same day. They are back.
 
@@ -35,4 +31,4 @@ Also in this release: the hover bubbles on the Team Contribution Pulse rows of t
 
 - Branch `worktree-perf-record-hours-help` (local repo, D:\Development), on top of the @299 baseline.
 - Design spec: `ps-dashboard/docs/specs/2026-10-14-perf-record-hours-and-help-design.md`.
-- Tests: `tests/perf-record-help-checks.js` (new, 79 checks) and `tests/perf-record-checks.js` (220 checks).
+- Tests: `tests/perf-record-help-checks.js` (new) and `tests/perf-record-checks.js`.

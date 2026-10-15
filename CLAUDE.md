@@ -545,7 +545,21 @@ Documentation that defines it. Two rules keep this from drifting:
   `tests/perf-record-help-checks.js` fails otherwise. Tip copy names no colour:
   the grid and the card paint the same signal in different palettes.
 
-**Hours at a glance** (`perfHoursHtml_`, 2026.W42) is the plain planned/logged
-total per week · month · quarter on the person card and the grid's evidence panel;
-"of plan" is logged ÷ planned uncapped, the colour is the Logged time signal.
+Three Performance Record rules the user set on 2026-10-14 (2026.W42):
+
+- **Hours are plain totals, never a ratio.** The card's history table shows the
+  hours logged / planned per week, per month, per quarter and nothing else (the
+  colour is the only judgement). The short-lived "Hours at a glance" block and
+  its "% of plan" were removed the same day at the user's request — do not bring
+  a percentage back onto the hour cells. The history is ONE `<table
+  class="prp-htable">` so every value sits under its period header.
+- **RCR is context, not a focus.** The rocketeer does not control it, so it keeps
+  its cell on the checklist but never enters the summary, the asks, the lane, the
+  Why, the flag counts or the row reading (`perfRowDriver_`, `perfRowModels_`,
+  `perfFlagTip_`, `perfStory_` all skip it).
+- **PTO shows the balance.** `computeRkScore` / `perfBucketAgg_` carry
+  `ptoBalance` (from `ptoHealth.balance`); the history cell, the evaluated-week
+  tile, the grid tooltip and the evidence block show the hours, with Good / At
+  risk as colour and small print.
+
 Spec: `ps-dashboard/docs/specs/2026-10-14-perf-record-hours-and-help-design.md`.

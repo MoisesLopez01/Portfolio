@@ -326,10 +326,13 @@ ck('crew context explains carve',       crew.context.some(function(c) { return /
 ck('PTO weeks named in context',        crew.context.some(function(c) { return /^PTO in W33; the time targets/.test(c); }));
 ck('null goals never counted',          !/goals/.test(crew.strength + crew.gap));
 
+// RCR is context the rocketeer does not control (2026.W42): the story never
+// mentions it, even when an old-shape input still carries an rcr block.
 const rcr = perfStory_({ first: 'Ana', weeks: weeks([80, 82, 81]),
   rcr: { months: [{ name: 'July', val: 2.6 }, { name: 'August', val: 2.2 }, { name: 'September', val: 1.8 }], bar: 2.0, target: 2.5 } });
-ck('RCR line counts months at the bar', /RCR was at or above the 2\.0 bar in 2 of the last 3 months \(latest: 1\.8 in September; target 2\.5\)/.test(rcr.rcrLine));
-ck('RCR under the bar is an ask',       rcr.ask.some(function(a) { return a === 'RCR was 1.8 in September, under the 2.0 bar and down from 2.6 in July.'; }));
+ck('story carries no RCR line',          rcr.rcrLine === undefined);
+ck('RCR under the bar is NOT an ask',    !rcr.ask.some(function(a) { return /RCR/.test(a); }));
+ck('nothing in the story names RCR',     !/RCR/.test([rcr.lead, rcr.strength, rcr.gap].concat(rcr.ask).join(' ')));
 
 const empty = perfStory_({ first: 'Zoe', weeks: [] });
 ck('no data → says so',                 /no scored weeks/.test(empty.lead) && empty.basis === '');
@@ -391,29 +394,39 @@ ck('phone card is a full-screen sheet', /body\.prp-card-open \.prp-card \{ displ
 ck('evidence reuses the drill',         /perfDrillHtml_\(emp, row, perfModel_\(\), \{ embedded: true \}\)/.test(html));
 ck('model memo is per granularity',     /var _perfModelByGran = \{\};/.test(html));
 
-// ── 2026.W42: Hours at a glance helpers (pure) ───────────────────────────────
+// ── 2026.W42: hour totals (pure) — plain hours, never a ratio ─────────────────
 ck('fmt: whole hours from 10 h up',      perfFmtHrs_(37.4) === '37 h' && perfFmtHrs_(152.6) === '153 h');
 ck('fmt: one decimal under 10 h',        perfFmtHrs_(2.46) === '2.5 h' && perfFmtHrs_(0) === '0 h');
 ck('fmt: null/NaN → em dash',            perfFmtHrs_(null) === '—' && perfFmtHrs_(undefined) === '—' && perfFmtHrs_(NaN) === '—');
-(function() {
-  const w = perfHoursLine_(36, 37, 1);
-  ck('week line: logged/planned/pct',    w.logged === '36 h' && w.planned === '37 h' && w.pct === 97 && w.pctTxt === '97%');
-  ck('week line: per-week equals the week itself', w.loggedPerWk === '36 h' && w.plannedPerWk === '37 h');
-  const m = perfHoursLine_(146, 152, 4);
-  ck('month line: totals + per-week averages', m.logged === '146 h' && m.planned === '152 h' && m.pct === 96 && m.loggedPerWk === '37 h');
-  ck('month line: planned per week',     m.plannedPerWk === '38 h');
-  const over = perfHoursLine_(44, 40, 1);
-  ck('pct is NOT capped (logged > plan reads above 100%)', over.pct === 110);
-  const noPlan = perfHoursLine_(12, null, 1);
-  ck('no plan → no pct, hours still shown', noPlan.pct === null && noPlan.pctTxt === '—' && noPlan.logged === '12 h' && noPlan.planned === '—');
-  const zeroPlan = perfHoursLine_(0, 0, 1);
-  ck('zero plan (full PTO week) → no pct', zeroPlan.pct === null && zeroPlan.planned === '0 h');
-  const nothing = perfHoursLine_(null, null, 0);
-  ck('nothing recorded → dashes', nothing.logged === '—' && nothing.planned === '—' && nothing.pct === null);
-})();
+ck('no ratio helper survives (user: hours only, no % ratio)', typeof perfHoursLine_ === 'undefined');
 ck('phrase: single week',                perfHoursPhrase_(36, 37, 1) === 'logged 36 h of 37 h planned');
 ck('phrase: multi-week names the span',  perfHoursPhrase_(146, 152, 4) === 'logged 146 h of 152 h planned over 4 weeks');
 ck('phrase: nothing recorded',           perfHoursPhrase_(null, null, 1) === 'no hours recorded');
+ck('phrase: never a percentage',         !/%/.test(perfHoursPhrase_(44, 40, 1)));
+
+// ── 2026.W42: PTO balance rides the weekly rows into the buckets ─────────────
+(function() {
+  const rows = [
+    { label: '2026.W30', rk: rk({ ptoNorm: 1, ptoBalance: 64 }) },
+    { label: '2026.W31', rk: rk({ ptoNorm: 0, ptoBalance: 112.4 }) },
+    { label: '2026.W32', rk: rk({ ptoNorm: null, ptoBalance: null, trackedHrs: 30 }) },
+  ];
+  const a = perfBucketAgg_(rows);
+  ck('bucket ptoBalance = last non-null balance', a.ptoBalance === 112.4);
+  ck('bucket pto signal still = last non-null state', a.pto === 0);
+})();
+
+// ── 2026.W42: RCR is context — never a flag, never a lane driver ─────────────
+(function() {
+  const c = function(id, sig, trend) { return { id: id, label: id, sig: sig, trend: trend || '→', delta: '', notEval: false }; };
+  const d = perfRowDriver_([c('score', 'g'), c('goals', 'g'), c('tracked', 'g'), c('rcr', 'r', '↘')]);
+  ck('red RCR alone does not put a green row in Support', d.lane === 'celebrate');
+  ck('the Why never names RCR',            !/rcr/i.test(d.text));
+  const d2 = perfRowDriver_([c('score', 'y'), c('rcr', 'y')]);
+  ck('yellow RCR alone is not a Watch driver', d2.lane === 'steady' || !/rcr/i.test(d2.text));
+  const tip = perfFlagTip_([{ col: { id: 'rcr', label: 'RCR' }, sig: 'r', notEval: false }, { col: { id: 'goals', label: 'Goals' }, sig: 'y', notEval: false }]);
+  ck('flag tooltip skips RCR',             !/RCR/.test(tip) && /Yellow: Goals/.test(tip));
+})();
 
 console.log((fail ? '❌ ' : '✅ ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
