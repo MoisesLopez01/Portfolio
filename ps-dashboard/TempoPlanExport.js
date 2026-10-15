@@ -57,12 +57,19 @@
 var EXPORT_HISTORY_WEEKS = 52;
 
 /**
- * Set by backfillPlanHistory() to widen the plan export's FETCH window for one
- * run (normally it only fetches the small refresh window and freezes the rest).
- * null = normal cheap run. Module-level rather than a parameter because
- * CONFIGPlan.FROM_DATE is read from a dozen places deep in the pipeline.
+ * Widens the plan export's FETCH window for one run (normally it only fetches
+ * the small refresh window and freezes the rest). Set by runPlanRefresh_ for
+ * backfillPlanHistory() / refreshPlanHistory(), and by fetchTempoPlannedTime
+ * itself for the weekly deep pass. null = routine cheap run. Module-level
+ * rather than a parameter because CONFIGPlan.FROM_DATE is read from a dozen
+ * places deep in the pipeline.
  */
 var PLAN_BACKFILL_WEEKS_ = null;
+
+/** Script Property: ISO week ("2026.W42") of the last deep refresh pass. */
+var PLAN_DEEP_REFRESH_PROP_ = "PS_PLAN_DEEP_REFRESH_WEEK";
+/** Script Property: completed weeks refreshPlanHistory() re-fetches (optional). */
+var PLAN_REFRESH_WEEKS_PROP_ = "PS_PLAN_REFRESH_WEEKS";
 
 /** Read the shared dial, tolerating a standalone deployment. */
 function exportHistoryWeeks_() {
@@ -129,17 +136,37 @@ const CONFIGPlan = {
   //   small recent+future REFRESH window and merges it over the stored grid.
   //   Same pattern as TempoCapacityTime.js.
   //
-  //   fetch window  = REFRESH_PAST_WEEKS + current + FUTURE_WEEKS  (8 weeks)
+  //   fetch window  = REFRESH_PAST_WEEKS + current + FUTURE_WEEKS  (12 weeks)
+  //                   DEEP_REFRESH_PAST_WEEKS + current + FUTURE_WEEKS (19, once a week)
   //   sheet window  = RETAIN_HISTORY_WEEKS of history               (52 weeks)
   //
-  //   ~1,300 requests / ~2 min per run — 3× cheaper than the 18-week full
-  //   rebuild it replaced — and history depth is now FREE, so this can finally
-  //   match the other three exports.
+  //   ~2,000 requests / ~3 min on a routine run, ~3,100 / ~5 min on the weekly
+  //   deep pass — still well under the 18-week full rebuild this replaced, and
+  //   history depth is FREE, so this matches the other three exports.
   //
-  // REFRESH_PAST_WEEKS covers late edits to just-completed weeks. Everything
-  // older is frozen from the sheet and never re-fetched. Raise it if planners
-  // routinely revise plans more than a fortnight after the fact.
-  REFRESH_PAST_WEEKS: 2, // completed weeks re-fetched each run
+  // REFRESH_PAST_WEEKS covers late edits to completed weeks. Everything older
+  // is frozen from the sheet until the next deep pass (below).
+  //
+  // WHY 6, NOT 2 (2026-10-15, 2026.W42): planners DO revise plans well after
+  // the fact. One person's 2026.W37 read 18 hrs in the sheet against 24 in
+  // Tempo: a repeating HLM-39 series had been bumped from 2h to 2.5h/day on
+  // 2026-10-14 — five weeks after the week ended — and a VEEV project plan had
+  // been added since. W37 had been frozen since 2026.W39, so neither edit ever
+  // reached the sheet, and the parity checks could not see it either: they
+  // compare the fetch window with itself, never with frozen history. The
+  // dashboard shows a rolling 5-week view, so every week it can display is now
+  // re-fetched on every run (5 + 1 margin); edits further back are caught by
+  // the weekly deep pass.
+  REFRESH_PAST_WEEKS: 6, // completed weeks re-fetched EVERY run (≥ the dashboard's 5-week view)
+
+  // DEEP PASS: the first run of each ISO week widens the refresh window to this
+  // many completed weeks. An edit to a repeating series ("all plans in this
+  // series") rewrites EVERY past occurrence at once, so no routine window is
+  // deep enough on its own; a quarter back, once a week, is the bounded answer.
+  // The last deep week is remembered in Script Property PS_PLAN_DEEP_REFRESH_WEEK
+  // (planDeepRefreshDue_ / markPlanDeepRefreshDone_). refreshPlanHistory() runs
+  // one by hand at any depth; backfillPlanHistory() is the full 52-week rebuild.
+  DEEP_REFRESH_PAST_WEEKS: 13,
   FUTURE_WEEKS: 5,       // full future weeks of runway (dashboards need 3)
 
   // How much history the SHEET retains. Costs nothing per run now that history
@@ -156,7 +183,8 @@ const CONFIGPlan = {
   // the person-parity repair — operates on this one window, so those integrity
   // checks stay exactly as valid as before (they compare like with like). The
   // frozen history is merged in afterwards, outside their scope.
-  // PLAN_BACKFILL_WEEKS_ widens it for a single manual backfillPlanHistory() run.
+  // PLAN_BACKFILL_WEEKS_ widens it for one run: backfillPlanHistory(),
+  // refreshPlanHistory(), or the trigger's own weekly deep pass.
   get FROM_DATE() {
     var back = typeof PLAN_BACKFILL_WEEKS_ === "number" && PLAN_BACKFILL_WEEKS_ !== null
       ? PLAN_BACKFILL_WEEKS_
@@ -383,24 +411,95 @@ function backfillPlanHistory() {
   // dashboard's callable surface at all. Hard-calling it would break every export.
   if (typeof requireMaintainer_ === 'function') requireMaintainer_('backfillPlanHistory');
   else Logger.log('⚠️ [backfillPlanHistory] requireMaintainer_ not in this project — running ungated.');
-  const weeksBack = CONFIGPlan.RETAIN_HISTORY_WEEKS;
+  Logger.log(
+    `🏗️ [backfillPlanHistory] ONE-TIME deep run over ${CONFIGPlan.RETAIN_HISTORY_WEEKS} ` +
+      `weeks of history. This is the expensive pass — expect ~15–20 minutes.`,
+  );
+  runPlanRefresh_(CONFIGPlan.RETAIN_HISTORY_WEEKS, "backfillPlanHistory");
+}
+
+/**
+ * MANUAL: re-fetches a chosen number of completed weeks now — for a plan edit
+ * older than the routine window that must reach the sheet before the next
+ * weekly deep pass, or one older than that pass reaches. The editor's Run menu
+ * cannot pass arguments, so the depth comes from Script Property
+ * PS_PLAN_REFRESH_WEEKS (completed weeks; default DEEP_REFRESH_PAST_WEEKS).
+ * Cheaper than backfillPlanHistory(): one request per (week × person with
+ * plans) over just that depth.
+ */
+function refreshPlanHistory() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. Same typeof reasoning as backfillPlanHistory().
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('refreshPlanHistory');
+  else Logger.log('⚠️ [refreshPlanHistory] requireMaintainer_ not in this project — running ungated.');
+  const raw = PropertiesService.getScriptProperties().getProperty(PLAN_REFRESH_WEEKS_PROP_);
+  const weeksBack = Math.max(1, parseInt(raw, 10) || CONFIGPlan.DEEP_REFRESH_PAST_WEEKS);
+  Logger.log(
+    `ℹ️ [refreshPlanHistory] depth ${weeksBack} completed week(s)` +
+      (parseInt(raw, 10) > 0
+        ? ` from Script Property ${PLAN_REFRESH_WEEKS_PROP_}.`
+        : ` (default; set Script Property ${PLAN_REFRESH_WEEKS_PROP_} to change it).`),
+  );
+  runPlanRefresh_(weeksBack, "refreshPlanHistory");
+}
+
+/**
+ * Runs one export with the FETCH window widened to `weeksBack` completed weeks,
+ * then restores the routine window — even on a throw, because a leaked override
+ * would turn every subsequent trigger run into the expensive deep fetch.
+ * @param {number} weeksBack - completed weeks to re-fetch
+ * @param {string} label     - caller name for the log
+ */
+function runPlanRefresh_(weeksBack, label) {
   PLAN_BACKFILL_WEEKS_ = weeksBack;
   try {
     Logger.log(
-      `🏗️ [backfillPlanHistory] ONE-TIME deep run: fetching ${weeksBack} weeks of ` +
-        `history + ${CONFIGPlan.FUTURE_WEEKS} future (${CONFIGPlan.FROM_DATE} → ` +
-        `${CONFIGPlan.TO_DATE}). This is the expensive pass — expect ~15–20 minutes.`,
+      `🏗️ [${label}] re-fetching ${weeksBack} completed week(s) + current + ` +
+        `${CONFIGPlan.FUTURE_WEEKS} future (${CONFIGPlan.FROM_DATE} → ${CONFIGPlan.TO_DATE}).`,
     );
     fetchTempoPlannedTime();
     Logger.log(
-      `✅ [backfillPlanHistory] done. Normal runs now refresh only ` +
-        `${CONFIGPlan.REFRESH_PAST_WEEKS} past + current + ${CONFIGPlan.FUTURE_WEEKS} ` +
-        `future week(s) and freeze the rest — do NOT put this function on a trigger.`,
+      `✅ [${label}] done. Routine runs refresh ${CONFIGPlan.REFRESH_PAST_WEEKS} past + ` +
+        `current + ${CONFIGPlan.FUTURE_WEEKS} future week(s) and freeze the rest — ` +
+        `do NOT put this function on a trigger.`,
     );
   } finally {
-    // Always restore, even on throw: a leaked override would turn every
-    // subsequent trigger run into the expensive deep fetch.
     PLAN_BACKFILL_WEEKS_ = null;
+  }
+}
+
+// ── SECTION: WEEKLY DEEP PASS BOOKKEEPING ─────────────────────
+
+/**
+ * True when no deep pass has run yet this ISO week. Fails CLOSED (routine run)
+ * if Script Properties cannot be read: a missed deep pass costs one week of
+ * staleness, a throw here would cost the whole export.
+ * @param {Object=} props - Script Properties (injectable for tests)
+ * @param {Date=}   today
+ */
+function planDeepRefreshDue_(props, today) {
+  try {
+    const store = props || PropertiesService.getScriptProperties();
+    const last = String(store.getProperty(PLAN_DEEP_REFRESH_PROP_) || "").trim();
+    return last !== isoWeekLabel_(today || new Date());
+  } catch (e) {
+    Logger.log(`⚠️ [deepPass] could not read ${PLAN_DEEP_REFRESH_PROP_} (${e.message}) — routine run.`);
+    return false;
+  }
+}
+
+/**
+ * Records that this ISO week's deep pass has happened. Called only after the
+ * sheet was written, so a run that died mid-way is retried next trigger.
+ * @param {Object=} props - Script Properties (injectable for tests)
+ * @param {Date=}   today
+ */
+function markPlanDeepRefreshDone_(props, today) {
+  try {
+    const store = props || PropertiesService.getScriptProperties();
+    store.setProperty(PLAN_DEEP_REFRESH_PROP_, isoWeekLabel_(today || new Date()));
+  } catch (e) {
+    Logger.log(`⚠️ [deepPass] could not write ${PLAN_DEEP_REFRESH_PROP_} (${e.message}) — next run repeats the deep pass.`);
   }
 }
 
@@ -421,6 +520,16 @@ function fetchTempoPlannedTime() {
   // dashboard's callable surface at all. Hard-calling it would break every export.
   if (typeof requireMaintainer_ === 'function') requireMaintainer_('fetchTempoPlannedTime');
   else Logger.log('⚠️ [fetchTempoPlannedTime] requireMaintainer_ not in this project — running ungated.');
+
+  // Depth of this run. A manual override (backfillPlanHistory / refreshPlanHistory)
+  // wins; otherwise the first run of each ISO week widens to the deep window and
+  // every other run uses the routine one — see DEEP_REFRESH_PAST_WEEKS.
+  const autoDeep = PLAN_BACKFILL_WEEKS_ === null && planDeepRefreshDue_();
+  if (autoDeep) PLAN_BACKFILL_WEEKS_ = CONFIGPlan.DEEP_REFRESH_PAST_WEEKS;
+  const weeksBack =
+    PLAN_BACKFILL_WEEKS_ === null ? CONFIGPlan.REFRESH_PAST_WEEKS : PLAN_BACKFILL_WEEKS_;
+  const depthNote =
+    PLAN_BACKFILL_WEEKS_ === null ? "routine" : autoDeep ? "weekly deep pass" : "manual override";
   try {
     Logger.log(
       `🕐 [fetchTempoPlannedTime] Started at ${new Date().toISOString()}`,
@@ -433,7 +542,9 @@ function fetchTempoPlannedTime() {
     const fromDate = parseDateLocal_(CONFIGPlan.FROM_DATE);
     const toDate = parseDateLocal_(CONFIGPlan.TO_DATE);
     Logger.log(
-      `ℹ️ Date range: ${CONFIGPlan.FROM_DATE} → ${CONFIGPlan.TO_DATE}`,
+      `ℹ️ Date range: ${CONFIGPlan.FROM_DATE} → ${CONFIGPlan.TO_DATE} — ` +
+        `${weeksBack} completed week(s) re-fetched (${depthNote}); older weeks stay ` +
+        `frozen from the sheet.`,
     );
 
     // Step 3: Build week column ranges spanning the full date range
@@ -656,12 +767,20 @@ function fetchTempoPlannedTime() {
       Logger.log(`⚠️ Name normalization skipped (${e.message}) — run normalizeAllNames() manually.`);
     }
 
+    // A run that reached the deep depth (automatic or by hand) is this week's
+    // deep pass. Marked only now, after the write, so a failed run retries.
+    if (weeksBack >= CONFIGPlan.DEEP_REFRESH_PAST_WEEKS) markPlanDeepRefreshDone_();
+
     Logger.log(
-      `✅ [fetchTempoPlannedTime] Done. ${merged.rows.length} rows written.`,
+      `✅ [fetchTempoPlannedTime] Done. ${merged.rows.length} rows written (${depthNote}).`,
     );
   } catch (e) {
     Logger.log(`❌ [fetchTempoPlannedTime] ${e.message}`);
     throw e;
+  } finally {
+    // Restore only what THIS function set: a manual override belongs to
+    // runPlanRefresh_, which restores it itself.
+    if (autoDeep) PLAN_BACKFILL_WEEKS_ = null;
   }
 }
 
