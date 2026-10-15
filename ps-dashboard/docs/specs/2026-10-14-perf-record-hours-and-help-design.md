@@ -1,6 +1,6 @@
 # Performance Record — hours at a glance and plain-English help
 
-**Date:** 2026-10-14 (2026.W42) · **Surface:** `PS Dashboard.html`, 📈 Performance Record + 📖 Documentation · **Status:** live as @300 (GTT-943, 2026-10-14)
+**Date:** 2026-10-14 (2026.W42) · **Surface:** `PS Dashboard.html`, 📈 Performance Record + 📖 Documentation · **Status:** live as @301 (GTT-943, 2026-10-14; @300 was the first cut, revised the same day — see "Revision, same day")
 
 ### PNG exports (added the same day)
 
