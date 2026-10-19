@@ -759,7 +759,7 @@
      // lives only in the header comment cannot travel with the data, so a
      // dashboard reading a three-week-old sheet has no way to know which rules
      // produced it. Bump this with the header comment — they are one fact.
-     VERSION: "3.21.1",
+     VERSION: "3.22.0",
 
     NON_DELIVERY_CATEGORIES: ["Internal"],
 
@@ -939,6 +939,10 @@
     // probe-only now, and dropping two custom fields from every page also shrinks
     // the responses that already shrink-and-retry on truncation.
     CONFIGJ.WORKSTREAM_FIELD,
+    // Rank (v3.22.0, 2026-10-15): Jira's board/backlog order — the LexoRank string
+    // ("0|i0qp1s:") a PM sets by dragging. Text-sortable. Exported so readers can
+    // draw epics and tasks in the order the team plans them (WorkGraph Explorer).
+    "customfield_10019",
   ].filter(Boolean);
   // NOTE on page size: "comment" above is the heavyweight field — it returns
   // every comment as a full ADF tree, so a 100-issue page can run past 500 KB.
@@ -2741,6 +2745,11 @@
     // week. "" = changelog not fetched for this row, "none" = never edited.
     // See jbDuePushLog_.
     /* 34 */ "Due Push Log",
+    // ── Board order (v3.22.0) ──
+    // APPEND-ONLY, like every column above: Jira's Rank (customfield_10019), the
+    // LexoRank string behind board / backlog order ("0|i0qp1s:"). Compare as plain
+    // text — "a" < "b" means a is ranked above b. "" when Jira returned no rank.
+    /* 35 */ "Rank",
   ];
 
   function issueToRow_(issue, weekLabel, spaceKey) {
@@ -2826,6 +2835,8 @@
       jbDueDateChangedFlag_(issue),
       // ── Column 34 (due-date push log, v3.20.0) ──
       jbDuePushLog_(issue),
+      // ── Column 35 (board order, v3.22.0) ──
+      typeof f.customfield_10019 === "string" ? f.customfield_10019 : "",
     ];
   }
 
