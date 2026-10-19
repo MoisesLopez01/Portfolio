@@ -107,13 +107,21 @@ const CI_CONFIG = {
 
 // ============================================================
 // 🎨  CONTRIBUTION STATUS PALETTE — extends COLORS from Jira Backlog.js
-// ⚠️ LOAD ORDER: COLORS is a top-level const in Jira Backlog.js, so that file
-//    must run before this one or the spread below throws ReferenceError at load
-//    and takes the WHOLE project down (every doGet). The Apps Script editor kept
-//    the order by hand; with clasp it is pinned by filePushOrder in .clasp.json.
+// ⚠️ LOAD ORDER: COLORS is a top-level const in Jira Backlog.js. It used to be
+//    spread here (`...COLORS`), which read it at LOAD time: whenever this file
+//    ran before Jira Backlog.js the spread threw "ReferenceError: COLORS is not
+//    defined" and took the WHOLE project down (every doGet, every editor Run).
+//    The brand keys are getters now, so COLORS is read at CALL time, after every
+//    file has loaded — file order no longer matters. Never read another file's
+//    globals at the top level of this file.
 // ============================================================
 const CI_COLORS = {
-  ...COLORS,   // VOID_BLUE, ORBE_BLUE, IVORY, LIGHT_CREAM, ROYAL, JUNE
+  get VOID_BLUE()   { return COLORS.VOID_BLUE; },
+  get ORBE_BLUE()   { return COLORS.ORBE_BLUE; },
+  get IVORY()       { return COLORS.IVORY; },
+  get LIGHT_CREAM() { return COLORS.LIGHT_CREAM; },
+  get ROYAL()       { return COLORS.ROYAL; },
+  get JUNE()        { return COLORS.JUNE; },
 
   // Contribution status palette
   ACTIVE_BG:   "#C6EFCE",  ACTIVE_FG:   "#276221",
