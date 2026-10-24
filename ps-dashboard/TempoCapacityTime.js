@@ -895,12 +895,12 @@ function _test_capacityWindow_() {
   };
 
   // Empty sheet → backfill from the rolling floor; to = Sunday of W35
-  // (served week W30 + FUTURE_WEEKS (5) further weeks).
+  // (served week W30 + FUTURE_WEEKS (8 since 2026-10-22) further weeks).
   const w1 = computeCapacityWindow_([], friday);
   assertEq_(fmtDate_(w1.from), fmtDate_(capacityFloorMonday_(friday)),
             "empty sheet backfills from the rolling floor");
   assertEq_(w1.backfill, true, "backfill flag set");
-  assertEq_(fmtDate_(w1.to), "2026-08-30", "to = Sunday of served week + FUTURE_WEEKS (W35)");
+  assertEq_(fmtDate_(w1.to), "2026-09-20", "to = Sunday of served week + FUTURE_WEEKS (W38)");
 
   // PARITY with the planned export: the served week (W30) is the anchor, so
   // the sheet spans exactly [W30 − HISTORY_WEEKS, W30 + FUTURE_WEEKS] — what
@@ -912,7 +912,7 @@ function _test_capacityWindow_() {
   assertEq_(fmtDate_(capacityFloorMonday_(friday)), "2025-07-21",
             "floor = served Monday − HISTORY_WEEKS (2025.W30), not today's Monday − HISTORY_WEEKS");
   assertEq_(isoWeekLabel_(capacityFloorMonday_(friday)), "2025.W30", "floor ISO label");
-  assertEq_(isoWeekLabel_(w1.to), "2026.W35", "horizon ISO label = served week + FUTURE_WEEKS");
+  assertEq_(isoWeekLabel_(w1.to), "2026.W38", "horizon ISO label = served week + FUTURE_WEEKS");
   // A Monday run serves the week AFTER (this week is under way and frozen).
   assertEq_(fmtDate_(computeCapacityWindow_([], new Date("2026-07-13T09:00:00")).served), "2026-07-20",
             "a Monday-of-W29 run also serves W30");
@@ -927,7 +927,7 @@ function _test_capacityWindow_() {
   const w3 = computeCapacityWindow_(storedFromFloorTo_("2026.W29"),
                                     new Date("2026-07-31T09:00:00"));
   assertEq_(fmtDate_(w3.from), "2026-07-20", "gap heal: from = Monday after last stored week");
-  assertEq_(fmtDate_(w3.to), "2026-09-13", "gap heal: to still = served week W32 + FUTURE_WEEKS (W37)");
+  assertEq_(fmtDate_(w3.to), "2026-10-04", "gap heal: to still = served week W32 + FUTURE_WEEKS (W40)");
 
   // Monday run: "next Monday" is STRICTLY after today; gap rule may pull from back to today.
   const w4 = computeCapacityWindow_(storedFromFloorTo_("2026.W28"),
@@ -941,7 +941,7 @@ function _test_capacityWindow_() {
   assertEq_(fmtDate_(w5.from), fmtDate_(capacityFloorMonday_(friday)),
             "stored history shallower than the floor → deep re-fetch from the floor");
   assertEq_(w5.backfill, true, "deepened floor sets the backfill flag");
-  assertEq_(fmtDate_(w5.to), "2026-08-30", "deep re-fetch still ends at the future horizon");
+  assertEq_(fmtDate_(w5.to), "2026-09-20", "deep re-fetch still ends at the future horizon");
   // …and once the grid covers the floor, it converges back to forward-only.
   assertEq_(computeCapacityWindow_(storedFromFloorTo_("2026.W33"), friday).backfill, false,
             "converges to the cheap forward-only path once history is filled");

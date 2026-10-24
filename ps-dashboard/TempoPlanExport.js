@@ -136,8 +136,8 @@ const CONFIGPlan = {
   //   small recent+future REFRESH window and merges it over the stored grid.
   //   Same pattern as TempoCapacityTime.js.
   //
-  //   fetch window  = REFRESH_PAST_WEEKS + current + FUTURE_WEEKS  (12 weeks)
-  //                   DEEP_REFRESH_PAST_WEEKS + current + FUTURE_WEEKS (19, once a week)
+  //   fetch window  = REFRESH_PAST_WEEKS + current + FUTURE_WEEKS  (15 weeks since 2026-10-22; 12 before)
+  //                   DEEP_REFRESH_PAST_WEEKS + current + FUTURE_WEEKS (22, once a week; 19 before)
   //   sheet window  = RETAIN_HISTORY_WEEKS of history               (52 weeks)
   //
   //   ~2,000 requests / ~3 min on a routine run, ~3,100 / ~5 min on the weekly
@@ -167,7 +167,7 @@ const CONFIGPlan = {
   // (planDeepRefreshDue_ / markPlanDeepRefreshDone_). refreshPlanHistory() runs
   // one by hand at any depth; backfillPlanHistory() is the full 52-week rebuild.
   DEEP_REFRESH_PAST_WEEKS: 13,
-  FUTURE_WEEKS: 5,       // full future weeks of runway (dashboards need 3)
+  FUTURE_WEEKS: 8,       // full future weeks of runway: the Delivery Health Availability tab reads the live week + 8 ahead (owner 2026-10-22, 2026.W43; was 5)
 
   // How much history the SHEET retains. Costs nothing per run now that history
   // is frozen, so it tracks the shared dial like the other three exports.
