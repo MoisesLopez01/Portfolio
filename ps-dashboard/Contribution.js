@@ -3016,6 +3016,23 @@ function runContributorIntelligence_(opts) {
   opts = opts || {};
   const orgLeader = opts.orgLeader ? String(opts.orgLeader).trim() : "";
   Logger.log(`▶ [runContributorIntelligence_] Started at ${new Date().toISOString()}${orgLeader ? `  —  org: ${orgLeader}` : ""}`);
+  const { ss, axis, lastMonths, weeks, orgCtx, all, crewMembers, contributors, nonContributors } =
+    buildContributionModel_(orgLeader);
+  return writeContributionSheets_(ss, { axis, lastMonths, weeks, orgCtx, all, crewMembers, contributors, nonContributors });
+}
+
+/**
+ * The data pipeline behind every Contributor Intelligence output — the three
+ * sheets (writeContributionSheets_) and the modern web view
+ * (buildContributionViewPayload_) both read this model, so a number can never
+ * differ between them. Reads the source sheets, joins every metric to the
+ * roster, applies the org scope (leader excluded) and segments the active pool
+ * into Contributors / Non-Contributors / Crew.
+ * @param {string} orgLeader  Roster name, or "" for the company-wide run
+ * @returns {{ ss, axis, lastMonths: string[], weeks: object[], fc: object, orgCtx: object|null,
+ *             all: object[], crewMembers: object[], contributors: object[], nonContributors: object[] }}
+ */
+function buildContributionModel_(orgLeader) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   Logger.log("📂 Loading source sheets...");
@@ -3162,6 +3179,16 @@ function runContributorIntelligence_(opts) {
     e.tierInfo = classifyNonContributor_(e);
     e.isInternalGA = true;
   });
+
+  return { ss, axis, lastMonths, weeks, fc, orgCtx, all, crewMembers, contributors, nonContributors };
+}
+
+/**
+ * Writes the three Contributor Intelligence tabs from a buildContributionModel_ result.
+ * @returns {object} run summary (also what the org dialog displays)
+ */
+function writeContributionSheets_(ss, model) {
+  const { axis, lastMonths, weeks, orgCtx, all, crewMembers, contributors, nonContributors } = model;
 
   // Sheet names: company run → the configured tabs; org run → "<tab> · <Leader>".
   // An org run writes only the segments that have people (a director's org is
@@ -3503,12 +3530,171 @@ function showOrgPicker() {
   SpreadsheetApp.getUi().showModalDialog(html, "Contributor Intelligence — run for one org");
 }
 
+// ============================================================
+// ── SECTION: MODERN VIEW (web UI) ────────────────────────────
+// ============================================================
+// "Contribution View.html" is the prototype for the PS Dashboard's next look. It
+// renders the SAME model the sheets are written from (buildContributionModel_),
+// serialised by buildContributionViewPayload_ — a pure function, so the numbers
+// on screen are the numbers in the tabs. Spec: docs/specs/2026-10-24-contribution-modern-view-design.md
+
+/** Round to 2 decimals; null for anything that is not a finite number. */
+function viewNum_(v, d) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (!isFinite(n)) return null;
+  const k = Math.pow(10, d === undefined ? 2 : d);
+  return Math.round(n * k) / k;
+}
+
+/** Job cluster label without its sort prefix: "2. Engineering & Support (IC)" → "Engineering & Support (IC)". */
+function viewClusterLabel_(emp) {
+  return getJobCluster_(emp).replace(/^\d+\.\s*/, "");
+}
+
+/**
+ * One person as the view reads them. Plain JSON only — google.script.run drops
+ * Dates and undefined, so every value is a string, a finite number, a boolean,
+ * null or an array of those.
+ * @param {object} e        employee record from buildEmployeeMap_
+ * @param {string} segment  "contributor" | "non" | "crew"
+ */
+function viewPerson_(e, segment) {
+  const t = e.tierInfo || {};
+  const series = (e.monthlyRCR || []).map(p => [p.month, viewNum_(p.value)]);
+  return {
+    id: e.internalId || "", name: e.name || "", title: e.jobTitle || "", level: e.jobLevel || "",
+    dept: e.dept || "", supervisor: e.supervisor || "", region: e.region || "",
+    cluster: viewClusterLabel_(e), segment,
+    tenure: viewNum_(e.tenure, 1),
+    tier: t.tier || "No Data", badge: t.badge || t.tier || "No Data", tierNote: t.note || "",
+    rcr: viewNum_(e.rcrCurrent), rcrSeries: series, legacyYtd: viewNum_(e.ytdRCR), trend: e.trend || "—",
+    goal: e.goalEngagementPct === null || e.goalEngagementPct === undefined ? null : viewNum_(e.goalEngagementPct, 0),
+    goalAvgComments: viewNum_(e.goalAvgCommentsPerWeek, 1),
+    comments: (e.goalMonthlyComments || []).map(v => viewNum_(v, 0) || 0),
+    kudos: e.kudosL3W || 0,
+    si: (e.siScores || []).map(s => viewNum_(s, 1)), siLatest: viewNum_(e.latestSI, 1), siAvg: viewNum_(e.avgSI, 1),
+    hrs:  (e.weeklyTrackedHrs || []).map(h => viewNum_(h, 1) || 0),
+    jira: (e.jiraEpicCounts || []).map(c => viewNum_(c, 0) || 0),
+    signals: String(buildSignal_(e) || "").split(/\s{2}·\s{2}/).filter(Boolean),
+    satellites: e.criticalSatelliteCount || 0,
+    rampUp: !!e.isRampUp, onLeave: !!e.onLeave, isManager: !!e.isManager,
+  };
+}
+
+/** Tier counts for a list of people records (the same tier the badge shows). */
+function viewTierCounts_(people) {
+  const c = { Critical: 0, Watch: 0, Healthy: 0, Champion: 0, Onboarding: 0, "No Data": 0, "Non-Contributor": 0 };
+  people.forEach(p => { c[p.tier] = (c[p.tier] || 0) + 1; });
+  return c;
+}
+
+/** buildGroupSummary_ rows, trimmed to what the view draws. */
+function viewGroups_(emps, keyOf, axis) {
+  return buildGroupSummary_(emps, keyOf, axis)
+    .sort((a, b) => (a.avgRCR === null ? 999 : a.avgRCR) - (b.avgRCR === null ? 999 : b.avgRCR))
+    .map(g => ({
+      label: g.label, count: g.count,
+      critical: g.critical, watch: g.watch, healthy: g.healthy, champion: g.champion,
+      rcr: viewNum_(g.avgRCR), rcrN: g.rcrN, goal: g.avgGoal, si: g.avgSI === "—" ? null : viewNum_(g.avgSI, 1),
+    }));
+}
+
+/**
+ * Serialises a buildContributionModel_ result for Contribution View.html.
+ * Pure: no Sheets, no Session — covered by tests/contribution-view-checks.js.
+ * Order inside each segment is the sheet's: Critical → Watch → Healthy →
+ * Champion → No Data for contributors, tier then goal engagement for the rest.
+ */
+function buildContributionViewPayload_(model) {
+  const { axis, lastMonths, weeks, orgCtx, all, crewMembers, contributors, nonContributors } = model;
+  const fc  = model.fc || null;
+  const cur = e => e.rcrCurrent;
+  const rank = [
+    contributors.filter(e => cur(e) !== null && cur(e) <= CONFIG.RCR_CRITICAL).sort((a, b) => cur(a) - cur(b)),
+    contributors.filter(e => cur(e) !== null && cur(e) > CONFIG.RCR_CRITICAL && cur(e) <= CONFIG.RCR_WATCH).sort((a, b) => cur(a) - cur(b)),
+    contributors.filter(e => cur(e) !== null && cur(e) > CONFIG.RCR_WATCH && cur(e) <= CONFIG.RCR_HEALTHY).sort((a, b) => cur(b) - cur(a)),
+    contributors.filter(e => cur(e) !== null && cur(e) > CONFIG.RCR_HEALTHY).sort((a, b) => cur(b) - cur(a)),
+    contributors.filter(e => cur(e) === null),
+  ];
+  const tierOrder = { Champion: 1, Healthy: 2, Watch: 3, Critical: 4, Onboarding: 5, "No Data": 6 };
+  const ncSorted = nonContributors.slice().sort((a, b) =>
+    (tierOrder[a.tierInfo.tier] || 99) - (tierOrder[b.tierInfo.tier] || 99) ||
+    (b.goalEngagementPct || 0) - (a.goalEngagementPct || 0));
+  const crewSorted = crewMembers.slice().sort((a, b) => (b.rcrCurrent || 0) - (a.rcrCurrent || 0));
+
+  const contrib = [].concat.apply([], rank).map(e => viewPerson_(e, "contributor"));
+  const non     = ncSorted.map(e => viewPerson_(e, "non"));
+  const crew    = crewSorted.map(e => viewPerson_(e, "crew"));
+  const grp     = groupRcr_(all, axis);
+
+  return {
+    meta: {
+      scope: orgCtx ? "org" : "company",
+      leader: orgCtx ? orgCtx.orgLeader : null,
+      orgSize: all.length,
+      generatedAt: new Date().toISOString(),
+      latestMonth: axis && axis.latest ? axis.latest.name : null,
+      rcrMethod: grp.method, rcrMethodLabel: rcrMethodLabel_(grp.method),
+      rcr: { value: viewNum_(grp.value), n: grp.n, month: grp.month },
+      months: axis && axis.months ? axis.months.map(m => m.name) : [],
+      trendMonths: lastMonths || [],
+      weekLabels: (weeks || []).map(w => w.label),
+      weekStarts: (weeks || []).map(w => toIsoDate_(w.start)),
+      siQuarters: fc ? fc.siQuarters : [],
+      goalsQuarter: fc ? fc.reportQuarter : "",
+      goalsNote: RUN_LABELS_.goalsNote || "",
+      ytdLabel: ytdLabelFor_(axis),
+      thresholds: { critical: CONFIG.RCR_CRITICAL, watch: CONFIG.RCR_WATCH, healthy: CONFIG.RCR_HEALTHY },
+      siLabels: CONFIG.SI_LABELS,
+      counts: { contributors: contrib.length, nonContributors: non.length, crew: crew.length },
+    },
+    contributors: contrib,
+    nonContributors: non,
+    crew,
+    tiers: {
+      contributors: viewTierCounts_(contrib),
+      nonContributors: viewTierCounts_(non),
+      crew: viewTierCounts_(crew),
+    },
+    groups: {
+      cluster:    viewGroups_(contributors, viewClusterLabel_, axis),
+      supervisor: viewGroups_(contributors, e => e.supervisor || "(Unassigned)", axis),
+      region:     viewGroups_(contributors, e => e.region || "(Unassigned)", axis),
+      ncSupervisor: viewGroups_(nonContributors, e => e.supervisor || "(Unassigned)", axis),
+    },
+  };
+}
+
+/**
+ * The web view's data call. `orgLeader` "" = company-wide.
+ * Gated like the exporters it mirrors: same people data, same audience.
+ * @param {string} [orgLeader]
+ */
+function getContributionView(orgLeader) {
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('getContributionView');
+  else Logger.log('⚠️ [getContributionView] requireMaintainer_ not in this project — running ungated.');
+  const name = String(orgLeader || "").trim();
+  return buildContributionViewPayload_(buildContributionModel_(name));
+}
+
+/** Menu: opens the modern view in a large modeless dialog. */
+function showContributionView() {
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('showContributionView');
+  const html = HtmlService.createHtmlOutputFromFile("Contribution View")
+    .setWidth(1400)
+    .setHeight(860);
+  SpreadsheetApp.getUi().showModelessDialog(html, "Contributor Intelligence");
+}
+
 /**
  * Installs the custom spreadsheet menu on open.
  */
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("🚀 Contributor Intelligence")
+    .addItem("🖥  Open modern view", "showContributionView")
+    .addSeparator()
     .addItem("▶  Run Full Analysis", "runContributorIntelligence")
     .addItem("🏢  Run for an org…", "showOrgPicker")
     .addSeparator()

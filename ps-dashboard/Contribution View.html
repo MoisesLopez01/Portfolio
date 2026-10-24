@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contributor Intelligence</title>
+<style>
+/* ── Tokens ────────────────────────────────────────────────────────────────
+   Same names and values as PS Dashboard.html's :root (brand + RCR tier pairs +
+   the dark rail), so any block here can be lifted into the dashboard unchanged.
+   Dark mode swaps only the surface tokens; the rail is dark in both themes. */
+:root {
+  --void:#0F1941; --orbe:#058CDC; --ivory:#DCCDBE; --cream:#FFFAF5; --june:#FF9B87; --royal:#2864E6;
+  --slate:#64748b; --surface:#F8FAFC; --border:#E2E8F0; --text:#1E293B; --muted:#8693A6;
+  --card-bg:#fff; --th-bg:#F8FAFC; --hover-row:#F4F7FD; --input-bg:#fff; --ink-strong:#0F1941;
+  --st-good:#00875A; --st-warn:#FF991F; --st-bad:#DE350B;
+  --rcr-critical-bg:#FDECEA; --rcr-critical-fg:#B71C1C; --rcr-critical-bar:#E5484D;
+  --rcr-watch-bg:#FFF8E1;    --rcr-watch-fg:#7B4800;    --rcr-watch-bar:#F5A524;
+  --rcr-healthy-bg:#F1F8F4;  --rcr-healthy-fg:#1B5E20;  --rcr-healthy-bar:#2FAE6B;
+  --rcr-champion-bg:#EEF4FF; --rcr-champion-fg:#0D3B8C; --rcr-champion-bar:#2864E6;
+  --rcr-nodata-bg:#F1F3F6;   --rcr-nodata-fg:#6B7686;   --rcr-nodata-bar:#C3CBD6;
+  --rcr-nc-bg:#F3F0FF;       --rcr-nc-fg:#6B21A8;
+  --radius:14px; --shadow:0 1px 3px rgba(15,25,65,.08), 0 1px 2px rgba(15,25,65,.04);
+  --nav-bg:#0B1230; --nav-text:#FFFAF5; --nav-muted:#98A6C8; --nav-border:#1B2551; --nav-hover:#151E45; --nav-active:#1E2A5E;
+  --navw:208px; --scale:1;
+}
+@media(min-width:1440px){:root{--scale:1.08}}
+@media(min-width:1920px){:root{--scale:1.2}}
+:root[data-theme="dark"] {
+  --surface:#0E1424; --card-bg:#151C31; --border:#27314D; --text:#E3E8F4; --muted:#8C98B3; --slate:#A3AFC8;
+  --th-bg:#1A2240; --hover-row:#1B2444; --input-bg:#10172B; --ink-strong:#F2F5FC;
+  --rcr-critical-bg:#3A1C22; --rcr-critical-fg:#FF9A9F;
+  --rcr-watch-bg:#37290F;    --rcr-watch-fg:#FFC857;
+  --rcr-healthy-bg:#12301F;  --rcr-healthy-fg:#7FDBA6;
+  --rcr-champion-bg:#15264F; --rcr-champion-fg:#9DBDFF;
+  --rcr-nodata-bg:#232B42;   --rcr-nodata-fg:#9AA6BF;
+  --rcr-nc-bg:#2A1E4A;       --rcr-nc-fg:#C9A4F5;
+  --shadow:0 1px 3px rgba(0,0,0,.4);
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html { font-size:calc(14px * var(--scale)); }
+body { font-family:'Roboto','Franklin Gothic Book',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+       background:var(--surface); color:var(--text); padding-left:var(--navw); min-height:100vh; line-height:1.45; }
+h1,h2,h3,.kpi-value,.num-lg { font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif; }
+button { font:inherit; color:inherit; cursor:pointer; }
+:focus-visible { outline:2px solid var(--orbe); outline-offset:2px; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.tab-num { font-variant-numeric:tabular-nums; }
+
+/* ── Rail ─────────────────────────────────────────────────────────────── */
+.rail { position:fixed; inset:0 auto 0 0; width:var(--navw); background:var(--nav-bg); color:var(--nav-text);
+        display:flex; flex-direction:column; padding:16px 10px; gap:4px; z-index:200; border-right:1px solid var(--nav-border); }
+.brand { display:flex; align-items:center; gap:10px; padding:4px 8px 16px; }
+.brand-mark { width:30px; height:30px; border-radius:9px; background:linear-gradient(135deg,var(--orbe),var(--royal)); display:grid; place-items:center; flex:none; }
+.brand-mark svg { width:17px; height:17px; stroke:#fff; }
+.brand b { display:block; font-family:'Roboto Condensed',sans-serif; font-size:1rem; letter-spacing:.01em; line-height:1.1; }
+.brand span { font-size:.68rem; color:var(--nav-muted); text-transform:uppercase; letter-spacing:.08em; font-weight:600; }
+.rail-label { font-size:.66rem; text-transform:uppercase; letter-spacing:.1em; color:var(--nav-muted); font-weight:700; padding:12px 10px 4px; }
+.nav-item { display:flex; align-items:center; gap:10px; width:100%; border:0; background:transparent; color:var(--nav-muted);
+            padding:9px 10px; border-radius:10px; font-size:.9rem; font-weight:500; text-align:left; transition:background .15s,color .15s; }
+.nav-item svg { width:17px; height:17px; stroke:currentColor; flex:none; }
+.nav-item:hover { background:var(--nav-hover); color:var(--nav-text); }
+.nav-item[aria-current="page"] { background:var(--nav-active); color:#fff; box-shadow:inset 3px 0 0 var(--orbe); }
+.nav-item .count { margin-left:auto; font-size:.72rem; font-weight:700; background:rgba(255,255,255,.1); border-radius:99px; padding:1px 8px; }
+.rail-foot { margin-top:auto; font-size:.7rem; color:var(--nav-muted); padding:8px 10px; line-height:1.4; }
+
+/* ── Top bar ──────────────────────────────────────────────────────────── */
+.topbar { position:sticky; top:0; z-index:100; background:var(--card-bg); border-bottom:1px solid var(--border);
+          box-shadow:0 2px 8px rgba(15,25,65,.05); padding:10px 24px; display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; }
+.title { flex:1 1 220px; min-width:0; }
+.title h1 { font-size:1.2rem; color:var(--ink-strong); line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.title p { font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; }
+.chip { display:inline-flex; align-items:center; gap:6px; border-radius:99px; padding:4px 12px; font-size:.75rem; font-weight:700; white-space:nowrap; }
+.chip.scope { background:var(--orbe); color:#fff; }
+.field { display:flex; align-items:center; gap:6px; background:var(--input-bg); border:1px solid var(--border); border-radius:99px; padding:0 12px; height:34px; }
+.field svg { width:14px; height:14px; stroke:var(--muted); flex:none; }
+.field input, .field select { border:0; background:transparent; color:var(--text); font:inherit; font-size:.85rem; height:100%; outline:0; min-width:0; }
+.field:focus-within { border-color:var(--orbe); box-shadow:0 0 0 3px rgba(5,140,220,.15); }
+.field select option { background:var(--card-bg); color:var(--text); }
+.field input { width:min(210px,32vw); }
+.icon-btn { width:34px; height:34px; border-radius:99px; border:1px solid var(--border); background:var(--card-bg); display:grid; place-items:center; color:var(--slate); transition:background .15s; }
+.icon-btn:hover { background:var(--surface); }
+.icon-btn svg { width:15px; height:15px; stroke:currentColor; }
+.icon-btn.spin svg { animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+main { padding:20px 24px 48px; max-width:1760px; margin:0 auto; }
+.view { display:none; } .view.on { display:block; animation:fade .18s ease-out; }
+@keyframes fade { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+.card { background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
+.card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:14px 18px 0; }
+.card-head h2 { font-size:1.05rem; color:var(--ink-strong); }
+.card-head small { color:var(--muted); font-size:.75rem; }
+.card-body { padding:12px 18px 18px; }
+.grid { display:grid; gap:16px; }
+.g-kpi { grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); margin-bottom:16px; }
+.g-2 { grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); margin-bottom:16px; }
+@media(max-width:1100px){ .g-2 { grid-template-columns:minmax(0,1fr); } }
+
+/* ── KPI ──────────────────────────────────────────────────────────────── */
+.kpi { padding:16px 18px; position:relative; overflow:hidden; }
+.kpi::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--accent,var(--orbe)); }
+.kpi-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; }
+.kpi-value { font-size:2.1rem; font-weight:700; color:var(--ink-strong); line-height:1.1; margin-top:4px; }
+.kpi-sub { font-size:.78rem; color:var(--slate); margin-top:2px; }
+.kpi[data-go] { cursor:pointer; } .kpi[data-go]:hover { border-color:var(--orbe); }
+
+/* ── Tier badge + bars ────────────────────────────────────────────────── */
+.badge { display:inline-flex; align-items:center; gap:5px; border-radius:99px; padding:2px 10px; font-size:.72rem; font-weight:700; white-space:nowrap; background:var(--b-bg); color:var(--b-fg); }
+.badge::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+.t-critical { --b-bg:var(--rcr-critical-bg); --b-fg:var(--rcr-critical-fg); --bar:var(--rcr-critical-bar); }
+.t-watch    { --b-bg:var(--rcr-watch-bg);    --b-fg:var(--rcr-watch-fg);    --bar:var(--rcr-watch-bar); }
+.t-healthy  { --b-bg:var(--rcr-healthy-bg);  --b-fg:var(--rcr-healthy-fg);  --bar:var(--rcr-healthy-bar); }
+.t-champion { --b-bg:var(--rcr-champion-bg); --b-fg:var(--rcr-champion-fg); --bar:var(--rcr-champion-bar); }
+.t-nodata, .t-onboarding { --b-bg:var(--rcr-nodata-bg); --b-fg:var(--rcr-nodata-fg); --bar:var(--rcr-nodata-bar); }
+.t-non-contributor { --b-bg:var(--rcr-nc-bg); --b-fg:var(--rcr-nc-fg); --bar:var(--rcr-nc-fg); }
+.stack { display:flex; height:12px; border-radius:99px; overflow:hidden; background:var(--border); gap:2px; }
+.stack i { display:block; background:var(--bar); min-width:3px; transition:flex .3s; }
+.stack.sm { height:8px; width:120px; }
+[hidden] { display:none !important; }
+.seg-row { display:grid; grid-template-columns:120px minmax(0,1fr); gap:6px 12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--border); }
+.seg-row > div:first-child { grid-row:1 / span 2; }
+.seg-row .legend { grid-column:2; }
+.seg-row:last-child { border-bottom:0; }
+.seg-row b { font-size:.88rem; color:var(--ink-strong); } .seg-row small { display:block; color:var(--muted); font-size:.72rem; }
+.seg-row .legend { display:flex; gap:10px; flex-wrap:wrap; font-size:.74rem; color:var(--slate); justify-content:flex-start; }
+.legend button { border:0; background:transparent; display:inline-flex; align-items:center; gap:5px; padding:2px 4px; border-radius:6px; color:var(--slate); font-size:.74rem; }
+.legend button:hover { background:var(--surface); }
+.legend i { width:9px; height:9px; border-radius:3px; background:var(--bar); display:inline-block; }
+
+/* ── Attention list ───────────────────────────────────────────────────── */
+.att { list-style:none; }
+.att li { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 12px; padding:10px 6px; border-bottom:1px solid var(--border); cursor:pointer; border-radius:8px; }
+.att li:last-child { border-bottom:0; } .att li:hover { background:var(--hover-row); }
+.att .who { font-weight:600; color:var(--ink-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.att .why { grid-column:1; font-size:.78rem; color:var(--slate); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.att .val { grid-row:1 / span 2; grid-column:2; align-self:center; text-align:right; }
+.att .val b { font-size:1.25rem; color:var(--rcr-critical-fg); font-family:'Roboto Condensed',sans-serif; display:block; line-height:1; }
+.att .val small { font-size:.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+
+/* ── Toolbar + table ──────────────────────────────────────────────────── */
+.toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; margin-bottom:12px; }
+.pills { display:flex; flex-wrap:wrap; gap:6px; }
+.pill { border:1px solid var(--border); background:var(--card-bg); border-radius:99px; padding:4px 12px; font-size:.78rem; font-weight:600; color:var(--slate); display:inline-flex; gap:6px; align-items:center; }
+.pill:hover { background:var(--surface); }
+.pill[aria-pressed="true"] { background:var(--void); border-color:var(--void); color:#fff; }
+:root[data-theme="dark"] .pill[aria-pressed="true"] { background:var(--orbe); border-color:var(--orbe); }
+.pill em { font-style:normal; font-size:.7rem; opacity:.75; }
+.result-note { margin-left:auto; font-size:.78rem; color:var(--muted); }
+.table-wrap { overflow:auto; max-height:calc(100vh - 190px); border-radius:var(--radius); }
+table { width:100%; border-collapse:separate; border-spacing:0; font-size:.86rem; }
+thead th { position:sticky; top:0; z-index:2; background:var(--th-bg); text-align:left; font-size:.68rem; text-transform:uppercase; letter-spacing:.07em;
+           color:var(--muted); font-weight:700; padding:10px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+thead th button { border:0; background:transparent; font:inherit; text-transform:inherit; letter-spacing:inherit; color:inherit; display:inline-flex; gap:4px; align-items:center; padding:0; }
+thead th button:hover { color:var(--ink-strong); }
+thead th[aria-sort="ascending"] button::after { content:"▲"; font-size:.6rem; color:var(--orbe); }
+thead th[aria-sort="descending"] button::after { content:"▼"; font-size:.6rem; color:var(--orbe); }
+tbody td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+tbody td { white-space:nowrap; }
+tbody tr { cursor:pointer; } tbody tr:hover td { background:var(--hover-row); }
+tbody tr:focus-visible { outline-offset:-2px; }
+td.name { min-width:210px; max-width:300px; }
+td.name b { display:block; color:var(--ink-strong); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+td.name small { display:block; color:var(--muted); font-size:.74rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tag { display:inline-block; font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; border-radius:5px; padding:1px 6px; background:var(--rcr-nodata-bg); color:var(--rcr-nodata-fg); margin-left:6px; vertical-align:1px; }
+.tag.warn { background:var(--rcr-critical-bg); color:var(--rcr-critical-fg); }
+.rcr-cell { display:flex; align-items:center; gap:10px; }
+.rcr-cell b { font-family:'Roboto Condensed',sans-serif; font-size:1.05rem; min-width:2.4ch; text-align:right; color:var(--ink-strong); }
+.spark { display:block; overflow:visible; }
+.bar-cell { display:flex; align-items:center; gap:8px; min-width:92px; }
+.bar-cell .track { flex:1; height:6px; border-radius:99px; background:var(--border); overflow:hidden; min-width:48px; }
+.bar-cell .track i { display:block; height:100%; border-radius:99px; background:var(--bar,var(--orbe)); }
+.bar-cell span { font-size:.8rem; min-width:3.3ch; text-align:right; }
+.dots { display:inline-flex; gap:3px; align-items:center; margin-left:8px; vertical-align:middle; }
+.dots i { width:7px; height:7px; border-radius:50%; background:var(--border); } .dots i.on { background:var(--orbe); }
+.minibars { display:inline-flex; align-items:flex-end; gap:3px; height:24px; }
+.minibars i { width:7px; border-radius:2px 2px 0 0; background:var(--orbe); opacity:.85; min-height:2px; }
+.minibars i.zero { background:var(--st-bad); opacity:1; }
+.sig { color:var(--slate); font-size:.8rem; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dim { color:var(--muted); }
+.empty { padding:56px 20px; text-align:center; color:var(--muted); }
+.empty b { display:block; color:var(--ink-strong); font-size:1rem; margin-bottom:4px; }
+
+/* ── Teams ────────────────────────────────────────────────────────────── */
+.teams { display:grid; gap:16px; margin-bottom:16px; }
+.teams table td:first-child { font-weight:600; color:var(--ink-strong); }
+.link-row { cursor:pointer; }
+
+/* ── Drawer ───────────────────────────────────────────────────────────── */
+.scrim { position:fixed; inset:0; background:rgba(8,12,30,.45); z-index:300; opacity:0; pointer-events:none; transition:opacity .2s; }
+.scrim.on { opacity:1; pointer-events:auto; }
+.drawer { position:fixed; top:0; right:0; bottom:0; width:min(520px,100vw); background:var(--card-bg); z-index:301; transform:translateX(102%); transition:transform .24s cubic-bezier(.2,.8,.2,1);
+          box-shadow:-8px 0 32px rgba(8,12,30,.25); display:flex; flex-direction:column; border-left:1px solid var(--border); }
+.drawer.on { transform:none; }
+.dr-head { padding:18px 20px 14px; border-bottom:1px solid var(--border); display:flex; gap:12px; align-items:flex-start; }
+.dr-head h2 { font-size:1.35rem; color:var(--ink-strong); line-height:1.15; } .dr-head p { color:var(--slate); font-size:.85rem; }
+.dr-head .x { margin-left:auto; flex:none; }
+.dr-body { padding:16px 20px 28px; overflow:auto; display:grid; gap:18px; align-content:start; }
+.dr-sec h3 { font-size:.7rem; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin-bottom:8px; font-family:Roboto,sans-serif; font-weight:700; }
+.kv { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.kv div { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:8px 10px; }
+.kv small { display:block; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.kv b { font-size:1.05rem; color:var(--ink-strong); font-family:'Roboto Condensed',sans-serif; }
+.sigs { list-style:none; display:grid; gap:6px; }
+.sigs li { padding:8px 10px; border-radius:10px; background:var(--surface); border-left:3px solid var(--st-warn); font-size:.84rem; }
+.sigs li.ok { border-left-color:var(--st-good); color:var(--slate); }
+.wk { display:grid; grid-template-columns:auto repeat(4,minmax(0,1fr)); gap:4px 8px; font-size:.82rem; align-items:center; }
+.wk .h { font-size:.66rem; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.06em; text-align:center; }
+.wk .r { color:var(--slate); } .wk .c { text-align:center; background:var(--surface); border-radius:8px; padding:5px 0; font-weight:600; }
+.wk .c.bad { background:var(--rcr-critical-bg); color:var(--rcr-critical-fg); }
+.note { font-size:.8rem; color:var(--slate); background:var(--rcr-watch-bg); color:var(--rcr-watch-fg); border-radius:10px; padding:8px 10px; }
+
+/* ── States ───────────────────────────────────────────────────────────── */
+.state { display:grid; place-items:center; min-height:60vh; text-align:center; padding:24px; }
+.state .box { max-width:420px; } .state h2 { color:var(--ink-strong); margin-bottom:6px; }
+.state p { color:var(--slate); font-size:.9rem; margin-bottom:14px; }
+.btn { border:0; background:var(--void); color:#fff; border-radius:99px; padding:8px 18px; font-weight:700; font-size:.85rem; }
+:root[data-theme="dark"] .btn { background:var(--orbe); }
+.skel { background:linear-gradient(90deg,var(--border) 25%,var(--surface) 50%,var(--border) 75%); background-size:200% 100%; animation:shimmer 1.2s infinite; border-radius:var(--radius); }
+@keyframes shimmer { to { background-position:-200% 0; } }
+.foot { margin-top:8px; font-size:.74rem; color:var(--muted); line-height:1.6; }
+.foot b { color:var(--slate); }
+
+/* ── Narrow: rail becomes a top strip ─────────────────────────────────── */
+@media(max-width:900px){
+  body { padding-left:0; padding-top:52px; }
+  .rail { inset:0 0 auto 0; width:auto; flex-direction:row; align-items:center; overflow-x:auto; padding:6px 10px; gap:2px; border-right:0; border-bottom:1px solid var(--nav-border); }
+  .brand { padding:0 8px 0 0; } .brand div, .rail-label, .rail-foot { display:none; }
+  .nav-item { width:auto; white-space:nowrap; padding:7px 10px; } .nav-item .count { display:none; }
+  .nav-item[aria-current="page"] { box-shadow:inset 0 -3px 0 var(--orbe); }
+  .topbar { top:52px; padding:10px 16px; } main { padding:16px; }
+  .seg-row { grid-template-columns:1fr; } .seg-row > div:first-child { grid-row:auto; } .seg-row .legend { grid-column:1; }
+  .table-wrap { max-height:none; }
+}
+@media print {
+  .rail, .topbar .field, .topbar .icon-btn, .toolbar, .drawer, .scrim { display:none !important; }
+  body { padding:0; background:#fff; } .topbar { position:static; box-shadow:none; }
+  .table-wrap { max-height:none; overflow:visible; } .card { box-shadow:none; break-inside:avoid; }
+  .view { display:block !important; } #view-contributors, #view-non, #view-crew { page-break-before:always; }
+}
+@media (prefers-reduced-motion:reduce){ *, *::before, *::after { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+
+<nav class="rail" aria-label="Views">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l5-1 10-10a4 4 0 00-5-5L4 14l-1 5z M14 6l4 4"/></svg></div>
+    <div><b>Contribution</b><span>Intelligence</span></div>
+  </div>
+  <div class="rail-label">Views</div>
+  <button class="nav-item" data-view="overview" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</button>
+  <button class="nav-item" data-view="contributors"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Contributors<span class="count" id="nc-contrib">–</span></button>
+  <button class="nav-item" data-view="non"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8"/></svg>Non-contributors<span class="count" id="nc-non">–</span></button>
+  <button class="nav-item" data-view="crew"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>Crew<span class="count" id="nc-crew">–</span></button>
+  <div class="rail-label">Roll-ups</div>
+  <button class="nav-item" data-view="teams"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V10m5 11V4m5 17v-8m5 8V8"/></svg>Teams</button>
+  <div class="rail-foot" id="railFoot"></div>
+</nav>
+
+<header class="topbar">
+  <div class="title"><h1 id="ttl">Contributor Intelligence</h1><p id="sub">Loading…</p></div>
+  <span class="chip scope" id="scopeChip" hidden></span>
+  <label class="field" id="orgField" hidden title="Scope everything to one leader's org (their own record is excluded)">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V7l6-4 6 4v14M10 21v-5h4v5"/></svg>
+    <span class="sr-only">Org scope</span>
+    <select id="orgSel"><option value="">Whole company</option></select>
+  </label>
+  <label class="field">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <span class="sr-only">Search people</span>
+    <input id="q" type="search" placeholder="Search name, title, team…" autocomplete="off">
+  </label>
+  <button class="icon-btn" id="refresh" title="Reload from the sheets" aria-label="Reload"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5"/></svg></button>
+  <button class="icon-btn" id="theme" title="Light / dark" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></button>
+  <button class="icon-btn" id="print" title="Print / save as PDF" aria-label="Print"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg></button>
+</header>
+
+<main id="main" aria-live="polite">
+  <div class="state"><div class="box"><div class="skel" style="height:14px;width:220px;margin:0 auto 12px"></div><div class="skel" style="height:90px;width:min(520px,80vw)"></div><p style="margin-top:14px">Reading the roster, RCR, goals, SI and Tempo hours…</p></div></div>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drName" aria-hidden="true"></aside>
+
+<script>
+(function () {
+'use strict';
+var D = null;                         // payload from getContributionView
+var S = { view: 'overview', q: '', tier: {}, sup: '', sort: { key: null, dir: 1 }, org: '' };
+var $ = function (id) { return document.getElementById(id); };
+var TIER_ORDER = ['Critical', 'Watch', 'Healthy', 'Champion', 'Onboarding', 'No Data', 'Non-Contributor'];
+var TIER_RANK = {}; TIER_ORDER.forEach(function (t, i) { TIER_RANK[t] = i; });
+var cls = function (t) { return 't-' + String(t).toLowerCase().replace(/[^a-z]+/g, '-'); };
+var esc = function (s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+var f2 = function (v) { return v === null || v === undefined ? '—' : Number(v).toFixed(2); };
+var f1 = function (v) { return v === null || v === undefined ? '—' : Number(v).toFixed(1); };
+var run = function () { return window.google && google.script && google.script.run; };
+
+/* ── Tier of a monthly value — the server's thresholds, applied to history ── */
+function tierOfRcr(v) {
+  if (v === null || v === undefined) return 'No Data';
+  var t = D.meta.thresholds;
+  return v <= t.critical ? 'Critical' : v <= t.watch ? 'Watch' : v <= t.healthy ? 'Healthy' : 'Champion';
+}
+function badge(t, label) { return '<span class="badge ' + cls(t) + '">' + esc(label || t) + '</span>'; }
+
+/* ── Small SVG pieces ──────────────────────────────────────────────────── */
+function spark(series, w, h) {
+  var pts = (series || []).filter(function (p) { return p[1] !== null; });
+  if (pts.length < 2) return '<span class="dim" style="font-size:.75rem">' + (pts.length ? 'one month' : 'no series') + '</span>';
+  var vals = pts.map(function (p) { return p[1]; }), t = D.meta.thresholds;
+  var lo = Math.min(0, Math.min.apply(null, vals)), hi = Math.max(t.watch, Math.max.apply(null, vals));
+  var x = function (i) { return 2 + i * (w - 4) / (pts.length - 1); }, y = function (v) { return h - 2 - (v - lo) / ((hi - lo) || 1) * (h - 4); };
+  var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p[1]).toFixed(1); }).join('');
+  var last = vals[vals.length - 1], col = 'var(--rcr-' + tierOfRcr(last).toLowerCase() + '-bar)';
+  var title = pts.map(function (p) { return p[0] + ' ' + f2(p[1]); }).join(' · ');
+  return '<svg class="spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="RCR by month: ' + esc(title) + '"><title>' + esc(title) + '</title>' +
+    '<line x1="0" x2="' + w + '" y1="' + y(t.critical).toFixed(1) + '" y2="' + y(t.critical).toFixed(1) + '" stroke="var(--border)" stroke-dasharray="2 3"/>' +
+    '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<circle cx="' + x(pts.length - 1).toFixed(1) + '" cy="' + y(last).toFixed(1) + '" r="2.8" fill="' + col + '"/></svg>';
+}
+function minibars(arr, max) {
+  max = max || 40;
+  return '<span class="minibars" role="img" aria-label="' + esc((arr || []).join(', ')) + '">' + (arr || []).map(function (v, i) {
+    return '<i class="' + (v <= 0 ? 'zero' : '') + '" style="height:' + Math.max(2, Math.min(24, v / max * 24)) + 'px" title="' + esc(D.meta.weekLabels[i] + ': ' + v) + '"></i>';
+  }).join('') + '</span>';
+}
+function pctBar(v) {
+  if (v === null || v === undefined) return '<span class="dim">—</span>';
+  var tier = v >= 80 ? 'champion' : v >= 60 ? 'healthy' : v >= 40 ? 'watch' : 'critical';
+  return '<div class="bar-cell t-' + tier + '"><div class="track"><i style="width:' + Math.min(100, v) + '%"></i></div><span class="tab-num">' + v + '%</span></div>';
+}
+function siCell(p) {
+  if (p.siLatest === null) return '<span class="dim">—</span>';
+  var dots = '';
+  for (var i = 1; i <= 5; i++) dots += '<i class="' + (i <= Math.round(p.siLatest) ? 'on' : '') + '"></i>';
+  return '<span title="' + esc((D.meta.siLabels[Math.round(p.siLatest)] || '') + ' — ' + p.si.map(function (s, i) { return D.meta.siQuarters[i] + ': ' + (s === null ? '—' : s); }).join(', ')) + '"><b class="tab-num">' + f1(p.siLatest) + '</b><span class="dots">' + dots + '</span></span>';
+}
+function stack(counts, order) {
+  var total = order.reduce(function (a, t) { return a + (counts[t] || 0); }, 0);
+  if (!total) return '<div class="stack"></div>';
+  return '<div class="stack" role="img" aria-label="' + esc(order.map(function (t) { return (counts[t] || 0) + ' ' + t; }).join(', ')) + '">' +
+    order.filter(function (t) { return counts[t]; }).map(function (t) { return '<i class="' + cls(t) + '" style="flex:' + counts[t] + '" title="' + counts[t] + ' ' + esc(t) + '"></i>'; }).join('') + '</div>';
+}
+
+/* ── Filtering / sorting ───────────────────────────────────────────────── */
+function listFor(view) { return view === 'contributors' ? D.contributors : view === 'non' ? D.nonContributors : D.crew; }
+function visible(view) {
+  var q = S.q.trim().toLowerCase(), anyTier = Object.keys(S.tier).some(function (k) { return S.tier[k]; });
+  var out = listFor(view).filter(function (p) {
+    if (anyTier && !S.tier[p.tier]) return false;
+    if (S.sup && p.supervisor !== S.sup) return false;
+    if (q && (p.name + ' ' + p.title + ' ' + p.supervisor + ' ' + p.region + ' ' + p.dept + ' ' + p.cluster).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  var k = S.sort.key;
+  if (k) {
+    var val = function (p) {
+      return k === 'name' ? p.name.toLowerCase() : k === 'supervisor' ? p.supervisor.toLowerCase() : k === 'tier' ? TIER_RANK[p.tier] :
+             k === 'rcr' ? p.rcr : k === 'goal' ? p.goal : k === 'si' ? p.siLatest : k === 'hrs' ? p.hrs[p.hrs.length - 1] :
+             k === 'kudos' ? p.kudos : k === 'region' ? p.region.toLowerCase() : k === 'dept' ? p.dept.toLowerCase() : null;
+    };
+    out = out.slice().sort(function (a, b) {
+      var x = val(a), y = val(b);
+      if (x === null || x === undefined) return 1; if (y === null || y === undefined) return -1;
+      return (x < y ? -1 : x > y ? 1 : 0) * S.sort.dir;
+    });
+  }
+  return out;
+}
+
+/* ── Views ─────────────────────────────────────────────────────────────── */
+var COLS = {
+  contributors: [['name', 'Rocketeer'], ['supervisor', 'Supervisor'], ['tier', 'Tier'], ['rcr', 'RCR'], [null, 'Trend'], ['goal', 'Goals'], ['si', 'SI'], ['hrs', 'Logged hrs'], ['kudos', 'Kudos'], [null, 'Signal']],
+  non:          [['name', 'Rocketeer'], ['dept', 'Department'], ['supervisor', 'Supervisor'], ['tier', 'Tier'], ['goal', 'Goals'], [null, 'Comments/wk'], ['si', 'SI'], ['hrs', 'Logged hrs'], ['kudos', 'Kudos'], [null, 'Signal']],
+  crew:         [['name', 'Crew member'], ['supervisor', 'Supervisor'], ['region', 'Region'], ['tier', 'Tier'], ['rcr', 'RCR'], [null, 'Trend'], ['hrs', 'Logged hrs'], [null, 'Jira'], ['kudos', 'Kudos']],
+};
+function nameCell(p) {
+  var tags = (p.rampUp ? '<span class="tag" title="Hired within 3 months — excluded from RCR, SI, Goals and Kudos team metrics">ramp-up</span>' : '') +
+             (p.onLeave ? '<span class="tag" title="On long leave">leave</span>' : '') +
+             (p.satellites ? '<span class="tag warn" title="Supervises ' + p.satellites + ' critical satellite(s)">team risk ' + p.satellites + '</span>' : '');
+  return '<td class="name"><b>' + esc(p.name) + tags + '</b><small>' + esc(p.title) + (p.level ? ' · ' + esc(p.level) : '') + '</small></td>';
+}
+function rowHtml(p, view, idx) {
+  var sig = p.signals[0] || '', more = p.signals.length > 1 ? ' (+' + (p.signals.length - 1) + ')' : '';
+  var rcr = '<td><div class="rcr-cell"><b class="tab-num">' + f2(p.rcr) + '</b></div></td>';
+  var trend = '<td>' + spark(p.rcrSeries, 84, 26) + '</td>';
+  var tier = '<td>' + badge(p.tier, p.badge) + '</td>';
+  var sup = '<td>' + (p.supervisor ? esc(p.supervisor) : '<span class="dim">—</span>') + '</td>';
+  var hrs = '<td>' + minibars(p.hrs) + '</td>';
+  var kud = '<td class="tab-num">' + (p.kudos || '<span class="dim">0</span>') + '</td>';
+  var sg = '<td class="sig" title="' + esc(p.signals.join(' · ')) + '">' + esc(sig) + '<span class="dim">' + more + '</span></td>';
+  var cells = view === 'contributors' ? [nameCell(p), sup, tier, rcr, trend, '<td>' + pctBar(p.goal) + '</td>', '<td>' + siCell(p) + '</td>', hrs, kud, sg]
+            : view === 'non'          ? [nameCell(p), '<td>' + esc(p.dept) + '</td>', sup, tier, '<td>' + pctBar(p.goal) + '</td>', '<td class="tab-num">' + f1(p.goalAvgComments) + '</td>', '<td>' + siCell(p) + '</td>', hrs, kud, sg]
+            : [nameCell(p), sup, '<td>' + esc(p.region) + '</td>', tier, rcr, trend, hrs, '<td>' + minibars(p.jira, 6) + '</td>', kud];
+  return '<tr tabindex="0" data-i="' + idx + '" data-v="' + view + '">' + cells.join('') + '</tr>';
+}
+function tableView(view) {
+  var rows = visible(view), all = listFor(view), segName = { contributors: 'contributors', non: 'non-contributors', crew: 'crew members' }[view];
+  var present = {}; all.forEach(function (p) { present[p.tier] = (present[p.tier] || 0) + 1; });
+  var sups = Array.from(new Set(all.map(function (p) { return p.supervisor; }).filter(Boolean))).sort();
+  var pills = TIER_ORDER.filter(function (t) { return present[t]; }).map(function (t) {
+    return '<button class="pill" data-tier="' + esc(t) + '" aria-pressed="' + (!!S.tier[t]) + '">' + esc(t) + ' <em>' + present[t] + '</em></button>';
+  }).join('');
+  var supSel = '<label class="field" style="height:30px"><span class="sr-only">Supervisor</span><select id="supSel"><option value="">All supervisors</option>' +
+    sups.map(function (s) { return '<option' + (s === S.sup ? ' selected' : '') + ' value="' + esc(s) + '">' + esc(s) + '</option>'; }).join('') + '</select></label>';
+  var head = COLS[view].map(function (c) {
+    var sorted = S.sort.key && S.sort.key === c[0];
+    return '<th scope="col"' + (sorted ? ' aria-sort="' + (S.sort.dir > 0 ? 'ascending' : 'descending') + '"' : '') + '>' +
+      (c[0] ? '<button data-sort="' + c[0] + '">' + esc(c[1]) + '</button>' : esc(c[1])) + '</th>';
+  }).join('').replace('Logged hrs', 'Logged hrs <span class="dim" style="text-transform:none;letter-spacing:0">' + esc(D.meta.weekLabels[0] + '→' + D.meta.weekLabels[D.meta.weekLabels.length - 1]) + '</span>');
+  var body = rows.length ? rows.map(function (p) { return rowHtml(p, view, listFor(view).indexOf(p)); }).join('')
+    : '<tr><td colspan="' + COLS[view].length + '"><div class="empty"><b>Nobody matches</b>Clear a filter or the search box to see all ' + all.length + ' ' + segName + '.</div></td></tr>';
+  var note = view === 'contributors' && D.meta.goalsNote ? ' · ' + esc(D.meta.goalsNote) : '';
+  return '<div class="toolbar"><div class="pills">' + pills + '</div>' + supSel + '<span class="result-note">' + rows.length + ' of ' + all.length + ' ' + segName + note + '</span></div>' +
+    '<div class="card"><div class="table-wrap"><table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
+}
+
+function overviewView() {
+  var m = D.meta, c = D.contributors, tc = D.tiers.contributors;
+  var crit = tc.Critical || 0, sat = c.filter(function (p) { return p.satellites > 0; }).length;
+  var goalVals = c.concat(D.nonContributors).filter(function (p) { return p.goal !== null; }).map(function (p) { return p.goal; });
+  var goalAvg = goalVals.length ? Math.round(goalVals.reduce(function (a, b) { return a + b; }, 0) / goalVals.length) : null;
+  var siVals = c.concat(D.nonContributors).filter(function (p) { return p.siLatest !== null; }).map(function (p) { return p.siLatest; });
+  var siAvg = siVals.length ? siVals.reduce(function (a, b) { return a + b; }, 0) / siVals.length : null;
+  var rcrAccent = m.rcr.value === null ? 'var(--rcr-nodata-bar)' : 'var(--rcr-' + tierOfRcr(m.rcr.value).toLowerCase() + '-bar)';
+  var kpis =
+    '<div class="card kpi" style="--accent:var(--orbe)"><div class="kpi-label">People in scope</div><div class="kpi-value tab-num">' + m.orgSize + '</div><div class="kpi-sub">' + m.counts.contributors + ' contributors · ' + m.counts.nonContributors + ' other · ' + m.counts.crew + ' crew</div></div>' +
+    '<div class="card kpi" style="--accent:' + rcrAccent + '" title="' + esc(m.rcrMethodLabel) + '"><div class="kpi-label">Group RCR' + (m.rcr.month ? ' · ' + esc(m.rcr.month) : '') + '</div><div class="kpi-value tab-num">' + f2(m.rcr.value) + '</div><div class="kpi-sub">n = ' + m.rcr.n + ' counted · ' + (m.rcrMethod === 'direct-rate' ? 'direct rate' : m.rcrMethod === 'sum-ratio' ? 'sum ratio' : m.rcrMethod ? 'mean fallback' : 'no data') + '</div></div>' +
+    '<div class="card kpi" data-go="critical" style="--accent:var(--rcr-critical-bar)" tabindex="0" role="button"><div class="kpi-label">Critical contributors</div><div class="kpi-value tab-num">' + crit + '</div><div class="kpi-sub">RCR ≤ ' + m.thresholds.critical + (sat ? ' · ' + sat + ' with team risk' : '') + '</div></div>' +
+    '<div class="card kpi" style="--accent:var(--rcr-watch-bar)"><div class="kpi-label">Goal engagement' + (m.goalsQuarter ? ' · ' + esc(m.goalsQuarter) : '') + '</div><div class="kpi-value tab-num">' + (goalAvg === null ? '—' : goalAvg + '%') + '</div><div class="kpi-sub">mean across ' + goalVals.length + ' people</div></div>' +
+    '<div class="card kpi" style="--accent:var(--royal)"><div class="kpi-label">Manager SI rating</div><div class="kpi-value tab-num">' + f1(siAvg) + '<span style="font-size:1rem;color:var(--muted)"> / 5</span></div><div class="kpi-sub">latest quarter · ' + siVals.length + ' rated</div></div>';
+
+  var segs = [['contributors', 'Contributors', 'by latest-month RCR', D.tiers.contributors, ['Critical', 'Watch', 'Healthy', 'Champion', 'No Data']],
+              ['non', 'Non-contributors', 'by goal engagement', D.tiers.nonContributors, ['Champion', 'Healthy', 'Watch', 'Critical', 'Onboarding', 'No Data']],
+              ['crew', 'Crew', 'by latest-month RCR', D.tiers.crew, ['Critical', 'Watch', 'Healthy', 'Champion', 'No Data']]];
+  var segHtml = segs.filter(function (s) { return D.meta.counts[s[0] === 'non' ? 'nonContributors' : s[0]] > 0; }).map(function (s) {
+    var leg = s[4].filter(function (t) { return s[3][t]; }).map(function (t) { return '<button class="' + cls(t) + '" data-jump="' + s[0] + '" data-tier="' + esc(t) + '"><i></i>' + s[3][t] + ' ' + esc(t) + '</button>'; }).join('');
+    return '<div class="seg-row"><div><b>' + s[1] + '</b><small>' + s[2] + '</small></div>' + stack(s[3], s[4]) + '<div class="legend">' + leg + '</div></div>';
+  }).join('');
+
+  // Tier mix per axis month — each person's own value for that month against the same thresholds.
+  var months = m.months.slice(-6), mix = months.map(function (mo) {
+    var cnt = { Critical: 0, Watch: 0, Healthy: 0, Champion: 0 }, n = 0;
+    c.forEach(function (p) { var pt = p.rcrSeries.filter(function (x) { return x[0] === mo; })[0]; if (pt && pt[1] !== null) { cnt[tierOfRcr(pt[1])]++; n++; } });
+    return { mo: mo, cnt: cnt, n: n };
+  });
+  var maxN = Math.max.apply(null, mix.map(function (x) { return x.n; }).concat([1]));
+  var W = 460, H = 190, bw = Math.min(46, (W - 40) / Math.max(mix.length, 1) - 12), chart = '';
+  mix.forEach(function (x, i) {
+    var cx = 30 + i * ((W - 40) / mix.length) + ((W - 40) / mix.length - bw) / 2, y = H - 26;
+    ['Champion', 'Healthy', 'Watch', 'Critical'].forEach(function (t) {
+      var h = x.cnt[t] / maxN * (H - 52); y -= h;
+      if (x.cnt[t]) chart += '<rect x="' + cx.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw + '" height="' + Math.max(h - 1.5, 1).toFixed(1) + '" rx="3" fill="var(--rcr-' + t.toLowerCase() + '-bar)"><title>' + esc(x.mo + ' · ' + x.cnt[t] + ' ' + t) + '</title></rect>';
+    });
+    chart += '<text x="' + (cx + bw / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="var(--muted)">' + esc(x.mo) + '</text>' +
+             '<text x="' + (cx + bw / 2).toFixed(1) + '" y="' + (H - 30 - x.n / maxN * (H - 52)).toFixed(1) + '" text-anchor="middle" font-size="11" font-weight="700" fill="var(--slate)">' + x.n + '</text>';
+  });
+  var attention = c.filter(function (p) { return p.tier === 'Critical'; }).sort(function (a, b) { return (b.satellites - a.satellites) || (a.rcr - b.rcr); }).slice(0, 7);
+  var attHtml = attention.length ? '<ul class="att">' + attention.map(function (p) {
+    return '<li tabindex="0" data-open="' + c.indexOf(p) + '"><span class="who">' + esc(p.name) + '</span><span class="why">' + esc(p.signals[0] || p.trend) + (p.supervisor ? ' · ' + esc(p.supervisor) : '') + '</span>' +
+           '<span class="val"><b class="tab-num">' + f2(p.rcr) + '</b><small>RCR</small></span></li>';
+  }).join('') + '</ul>' : '<div class="empty"><b>No critical contributors</b>Nobody is at or below ' + m.thresholds.critical + ' RCR this month.</div>';
+
+  return '<div class="grid g-kpi">' + kpis + '</div>' +
+    '<div class="grid g-2"><section class="card"><div class="card-head"><h2>Tier mix</h2><small>click a count to open that slice</small></div><div class="card-body">' + segHtml + '</div></section>' +
+    '<section class="card"><div class="card-head"><h2>Needs attention</h2><small>critical contributors, team-risk first</small></div><div class="card-body">' + attHtml + '</div></section></div>' +
+    '<section class="card"><div class="card-head"><h2>Contributor tier mix by month</h2><small>' + (months.length ? esc(months[0] + ' → ' + months[months.length - 1]) : '') + ' · each person against today\'s thresholds</small></div><div class="card-body">' +
+    (mix.length ? '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:640px;display:block" role="img" aria-label="Contributors per RCR tier by month">' + chart + '</svg>' : '<div class="empty">No RCR months yet.</div>') +
+    '<div class="legend" style="display:flex;gap:14px;margin-top:6px">' + ['Critical', 'Watch', 'Healthy', 'Champion'].map(function (t) { return '<span class="' + cls(t) + '" style="font-size:.76rem;color:var(--slate);display:inline-flex;gap:5px;align-items:center"><i style="width:9px;height:9px;border-radius:3px;background:var(--bar)"></i>' + t + '</span>'; }).join('') + '</div></div></section>' +
+    '<p class="foot"><b>Method.</b> ' + esc(m.rcrMethodLabel) + '. Tiers: Critical ≤ ' + m.thresholds.critical + ' · Watch ≤ ' + m.thresholds.watch + ' · Healthy ≤ ' + m.thresholds.healthy + ' · Champion above. ' +
+    (m.goalsNote ? esc(m.goalsNote) + '. ' : '') + (m.scope === 'org' ? '<b>' + esc(m.leader) + '\'s own record is excluded.</b> ' : '') +
+    'Generated ' + esc(new Date(m.generatedAt).toLocaleString()) + '.</p>';
+}
+
+function groupTable(title, rows, linkSup) {
+  if (!rows || !rows.length) return '';
+  return '<section class="card"><div class="card-head"><h2>' + esc(title) + '</h2><small>lowest RCR first' + (linkSup ? ' · click a row to open its people' : '') + '</small></div><div class="card-body" style="padding-top:8px"><div class="table-wrap" style="max-height:none"><table><thead><tr><th>Group</th><th>People</th><th>Tier mix</th><th>RCR</th><th>Goals</th><th>SI</th></tr></thead><tbody>' +
+    rows.map(function (g) {
+      return '<tr class="' + (linkSup ? 'link-row' : '') + '"' + (linkSup ? ' tabindex="0" data-sup="' + esc(g.label) + '"' : '') + '><td>' + esc(g.label) + '</td><td class="tab-num">' + g.count + '</td><td>' +
+        '<div class="stack sm">' + [['Critical', g.critical], ['Watch', g.watch], ['Healthy', g.healthy], ['Champion', g.champion]].filter(function (x) { return x[1]; }).map(function (x) { return '<i class="' + cls(x[0]) + '" style="flex:' + x[1] + '" title="' + x[1] + ' ' + x[0] + '"></i>'; }).join('') + '</div></td>' +
+        '<td class="tab-num"><b>' + f2(g.rcr) + '</b>' + (g.rcrN ? ' <span class="dim">n=' + g.rcrN + '</span>' : '') + '</td><td>' + pctBar(g.goal) + '</td><td class="tab-num">' + f1(g.si) + '</td></tr>';
+    }).join('') + '</tbody></table></div></div></section>';
+}
+function teamsView() {
+  var G = D.groups;
+  return '<div class="teams">' + groupTable('Supervisors', G.supervisor, true) + groupTable('Job profile clusters', G.cluster) + groupTable('Resource regions', G.region) +
+    groupTable('Supervisors — non-contributors', G.ncSupervisor, false) + '</div>';
+}
+
+/* ── Drawer ────────────────────────────────────────────────────────────── */
+var lastFocus = null;
+function openDrawer(p) {
+  var m = D.meta, t = m.thresholds, seg = p.segment;
+  var series = (p.rcrSeries || []);
+  var big = series.filter(function (x) { return x[1] !== null; }).length >= 2 ? (function () {
+    var w = 440, h = 120, vals = series.map(function (x) { return x[1]; }), lo = 0, hi = Math.max(t.healthy, Math.max.apply(null, vals)) * 1.05;
+    var x = function (i) { return 14 + i * (w - 28) / Math.max(series.length - 1, 1); }, y = function (v) { return h - 22 - (v - lo) / (hi - lo) * (h - 34); };
+    var lines = [[t.critical, 'critical'], [t.watch, 'watch'], [t.healthy, 'healthy']].map(function (l) {
+      return '<line x1="14" x2="' + (w - 14) + '" y1="' + y(l[0]).toFixed(1) + '" y2="' + y(l[0]).toFixed(1) + '" stroke="var(--rcr-' + l[1] + '-bar)" stroke-opacity=".45" stroke-dasharray="3 4"/><text x="' + (w - 14) + '" y="' + (y(l[0]) - 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="var(--muted)">' + l[0] + '</text>';
+    }).join('');
+    var d = series.map(function (s, i) { return s[1] === null ? '' : (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(s[1]).toFixed(1); }).join('');
+    var dots = series.map(function (s, i) { return s[1] === null ? '' : '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(s[1]).toFixed(1) + '" r="3.5" fill="var(--rcr-' + tierOfRcr(s[1]).toLowerCase() + '-bar)"><title>' + esc(s[0] + ' · ' + f2(s[1])) + '</title></circle>'; }).join('');
+    var labs = series.map(function (s, i) { return '<text x="' + x(i).toFixed(1) + '" y="' + (h - 6) + '" text-anchor="middle" font-size="10" fill="var(--muted)">' + esc(s[0]) + '</text>'; }).join('');
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="RCR by month">' + lines + '<path d="' + d + '" fill="none" stroke="var(--slate)" stroke-width="1.8" stroke-linejoin="round"/>' + dots + labs + '</svg>';
+  })() : '<div class="dim" style="font-size:.85rem">' + (series.length ? 'Only one month of RCR so far.' : 'No RCR series for this person.') + '</div>';
+  var wkRow = function (label, arr, bad) {
+    return '<div class="r">' + label + '</div>' + arr.map(function (v) { return '<div class="c' + (bad && bad(v) ? ' bad' : '') + ' tab-num">' + v + '</div>'; }).join('');
+  };
+  var weeks = '<div class="wk"><div></div>' + m.weekLabels.map(function (w, i) { return '<div class="h" title="week of ' + esc(m.weekStarts[i]) + '">' + esc(w) + '</div>'; }).join('') +
+    wkRow('Logged hrs', p.hrs, function (v) { return v <= 0; }) + wkRow('Jira epics', p.jira) + (seg !== 'crew' ? wkRow('Goal comments', p.comments) : '') + '</div>';
+  var sis = p.si.some(function (s) { return s !== null; }) ? '<div class="wk" style="grid-template-columns:auto repeat(' + p.si.length + ',minmax(0,1fr))"><div></div>' + m.siQuarters.map(function (q) { return '<div class="h">' + esc(q) + '</div>'; }).join('') +
+    '<div class="r">Manager rating</div>' + p.si.map(function (s) { return '<div class="c tab-num">' + (s === null ? '—' : s) + '</div>'; }).join('') + '</div>' : '<div class="dim" style="font-size:.85rem">No SI ratings.</div>';
+  var sigs = p.signals.length ? '<ul class="sigs">' + p.signals.map(function (s) { return '<li' + (/^(No material signal|Consistent|Contractor performing)/.test(s) ? ' class="ok"' : '') + '>' + esc(s) + '</li>'; }).join('') + '</ul>' : '';
+  $('drawer').innerHTML =
+    '<div class="dr-head"><div style="min-width:0"><h2 id="drName">' + esc(p.name) + '</h2><p>' + esc(p.title) + (p.level ? ' · ' + esc(p.level) : '') + '</p><p style="margin-top:6px">' + badge(p.tier, p.badge) +
+    (p.supervisor ? ' <span class="dim" style="font-size:.8rem;margin-left:6px">reports to ' + esc(p.supervisor) + '</span>' : '') + '</p></div>' +
+    '<button class="icon-btn x" id="drClose" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
+    '<div class="dr-body">' +
+    (p.tierNote ? '<div class="note">' + esc(p.tierNote) + '</div>' : '') +
+    '<div class="kv"><div><small>RCR ' + esc(m.latestMonth || '') + '</small><b class="tab-num">' + f2(p.rcr) + '</b></div><div><small>' + esc(m.ytdLabel) + '</small><b class="tab-num">' + f2(p.legacyYtd) + '</b></div><div><small>Trend</small><b style="font-size:.9rem">' + esc(p.trend) + '</b></div>' +
+    '<div><small>Goals</small><b class="tab-num">' + (p.goal === null ? '—' : p.goal + '%') + '</b></div><div><small>Kudos (3 wks)</small><b class="tab-num">' + p.kudos + '</b></div><div><small>Tenure</small><b class="tab-num">' + (p.tenure === null ? '—' : p.tenure + ' y') + '</b></div></div>' +
+    '<div class="dr-sec"><h3>Signals</h3>' + sigs + '</div>' +
+    '<div class="dr-sec"><h3>RCR by month</h3>' + big + '</div>' +
+    '<div class="dr-sec"><h3>Last ' + m.weekLabels.length + ' completed weeks</h3>' + weeks + '</div>' +
+    '<div class="dr-sec"><h3>Small Improvements</h3>' + sis + '</div>' +
+    '<div class="dr-sec"><h3>Where they sit</h3><div class="kv"><div><small>Department</small><b style="font-size:.9rem">' + esc(p.dept || '—') + '</b></div><div><small>Region</small><b style="font-size:.9rem">' + esc(p.region || '—') + '</b></div><div><small>Profile</small><b style="font-size:.9rem">' + esc(p.cluster) + '</b></div></div></div>' +
+    '</div>';
+  lastFocus = document.activeElement;
+  $('drawer').classList.add('on'); $('drawer').setAttribute('aria-hidden', 'false'); $('scrim').classList.add('on');
+  $('drClose').focus();
+}
+function closeDrawer() {
+  $('drawer').classList.remove('on'); $('drawer').setAttribute('aria-hidden', 'true'); $('scrim').classList.remove('on');
+  if (lastFocus && lastFocus.focus) lastFocus.focus();
+}
+
+/* ── Render + events ───────────────────────────────────────────────────── */
+function render() {
+  if (!D) return;
+  var m = D.meta;
+  $('ttl').textContent = m.scope === 'org' ? m.leader + ' — org' : 'Contributor Intelligence';
+  $('sub').textContent = (m.latestMonth ? 'RCR ' + m.latestMonth + ' · ' : '') + m.orgSize + ' people' + (m.goalsQuarter ? ' · goals ' + m.goalsQuarter : '');
+  var chip = $('scopeChip'); chip.hidden = m.scope !== 'org'; chip.textContent = 'Org scope · leader excluded';
+  $('nc-contrib').textContent = m.counts.contributors; $('nc-non').textContent = m.counts.nonContributors; $('nc-crew').textContent = m.counts.crew;
+  $('railFoot').textContent = m.rcrMethod ? 'RCR: ' + (m.rcrMethod === 'direct-rate' ? 'direct rate' : m.rcrMethod === 'sum-ratio' ? 'sum ratio' : 'mean') + ' · n=' + m.rcr.n : '';
+  var views = { overview: overviewView, contributors: function () { return tableView('contributors'); }, non: function () { return tableView('non'); }, crew: function () { return tableView('crew'); }, teams: teamsView };
+  var scrollEl = document.querySelector('.table-wrap'), top = scrollEl ? scrollEl.scrollTop : 0;
+  $('main').innerHTML = '<div class="view on" id="view-' + S.view + '">' + views[S.view]() + '</div>';
+  var again = document.querySelector('.table-wrap'); if (again && top) again.scrollTop = top;
+  Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function (b) { b.setAttribute('aria-current', b.dataset.view === S.view ? 'page' : 'false'); });
+  var searchable = S.view === 'contributors' || S.view === 'non' || S.view === 'crew';
+  $('q').closest('.field').style.opacity = searchable ? 1 : .45;
+}
+function go(view, opts) {
+  opts = opts || {};
+  if (view !== S.view) { S.sort = { key: null, dir: 1 }; if (!opts.keep) { S.tier = {}; S.sup = ''; } }
+  S.view = view; render(); window.scrollTo(0, 0);
+}
+function setView(view) { return go(view); }
+
+document.addEventListener('click', function (e) {
+  var t = e.target, el;
+  if ((el = t.closest('.nav-item'))) return setView(el.dataset.view);
+  if ((el = t.closest('[data-sort]'))) { var k = el.dataset.sort; S.sort = S.sort.key === k ? { key: k, dir: -S.sort.dir } : { key: k, dir: 1 }; return render(); }
+  if ((el = t.closest('.pill'))) { S.tier[el.dataset.tier] = !S.tier[el.dataset.tier]; return render(); }
+  if ((el = t.closest('[data-jump]'))) { S.view = el.dataset.jump; S.tier = {}; S.tier[el.dataset.tier] = true; S.sup = ''; S.sort = { key: null, dir: 1 }; render(); return window.scrollTo(0, 0); }
+  if ((el = t.closest('[data-go="critical"]'))) { S.view = 'contributors'; S.tier = { Critical: true }; S.sup = ''; render(); return window.scrollTo(0, 0); }
+  if ((el = t.closest('[data-open]'))) return openDrawer(D.contributors[+el.dataset.open]);
+  if ((el = t.closest('[data-sup]'))) { S.view = 'contributors'; S.tier = {}; S.sup = el.dataset.sup; S.sort = { key: null, dir: 1 }; render(); return window.scrollTo(0, 0); }
+  if ((el = t.closest('tbody tr[data-i]'))) return openDrawer(listFor(el.dataset.v)[+el.dataset.i]);
+  if (t.closest('#drClose') || t.id === 'scrim') return closeDrawer();
+  if (t.closest('#retry') || t.closest('#refresh')) return load(S.org);
+  if (t.closest('#theme')) return setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+  if (t.closest('#print')) return window.print();
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && $('drawer').classList.contains('on')) return closeDrawer();
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('tbody tr[tabindex], .att li, .kpi[data-go]')) { e.preventDefault(); e.target.click(); }
+  if (e.key === 'Tab' && $('drawer').classList.contains('on')) {          // keep focus inside the modal drawer
+    var f = $('drawer').querySelectorAll('button,[href],select,input,[tabindex]:not([tabindex="-1"])');
+    if (!f.length) return; var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+document.addEventListener('change', function (e) {
+  if (e.target.id === 'supSel') { S.sup = e.target.value; render(); }
+  if (e.target.id === 'orgSel') { S.org = e.target.value; load(S.org); }
+});
+$('q').addEventListener('input', function (e) {
+  S.q = e.target.value;
+  if (S.view === 'overview' || S.view === 'teams') S.view = 'contributors';
+  render();
+  var q = $('q'); q.focus();
+});
+
+/* ── Theme (storage may be blocked inside the Sheets dialog) ───────────── */
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('cv-theme', t); } catch (e) { /* private window / blocked storage: just don't remember */ }
+}
+(function () {
+  var saved = null; try { saved = localStorage.getItem('cv-theme'); } catch (e) { /* ignore */ }
+  setTheme(saved || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+})();
+
+/* ── Data ──────────────────────────────────────────────────────────────── */
+function stateBox(html) { $('main').innerHTML = '<div class="state"><div class="box">' + html + '</div></div>'; }
+function load(org) {
+  S.org = org || '';
+  $('refresh').classList.add('spin'); $('sub').textContent = 'Loading…';
+  stateBox('<div class="skel" style="height:14px;width:220px;margin:0 auto 12px"></div><div class="skel" style="height:90px;width:min(520px,80vw)"></div><p style="margin-top:14px">Reading the roster, RCR, goals, SI and Tempo hours' + (org ? ' for ' + esc(org) + '’s org' : '') + '…</p>');
+  if (!run()) { $('refresh').classList.remove('spin'); return stateBox('<h2>Not running in Apps Script</h2><p>This page reads its data through <code>google.script.run</code>.</p>'); }
+  run().withSuccessHandler(function (p) {
+    $('refresh').classList.remove('spin'); D = p; S.tier = {}; S.sup = ''; S.sort = { key: null, dir: 1 }; render();
+  }).withFailureHandler(function (err) {
+    $('refresh').classList.remove('spin'); $('sub').textContent = 'Could not load';
+    stateBox('<h2>Couldn’t load the report</h2><p>' + esc((err && err.message) || err || 'Unknown error') + '</p><button class="btn" id="retry">Try again</button>');
+  }).getContributionView(org || '');
+}
+function loadCandidates() {
+  if (!run()) return;
+  run().withSuccessHandler(function (list) {
+    if (!list || !list.length) return;
+    var sel = $('orgSel');
+    list.forEach(function (c) { var o = document.createElement('option'); o.value = c.name; o.textContent = c.name + ' · ' + c.orgSize; sel.appendChild(o); });
+    $('orgField').hidden = false;
+  }).withFailureHandler(function () { /* picker is optional: the company view still works */ }).listOrgReportCandidates();
+}
+loadCandidates(); load('');
+})();
+</script>
+</body>
+</html>
