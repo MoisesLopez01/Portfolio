@@ -1841,6 +1841,22 @@ function normPS_(name) {
   return String(name || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+// A date CELL → the calendar day it shows in its WORKBOOK, as local midnight of the
+// script. getValues() hands a date cell over as a Date at midnight in the
+// workbook's zone; the script (America/Guatemala, UTC-6, no DST) reads it with
+// local getters. A workbook in America/Chicago is UTC-5 in summer, so its Monday
+// 00:00 arrives as Sunday 23:00 and the whole movement lands in the PREVIOUS ISO
+// week (reproduced W39-W42 of 2026, the 44 critical errors of 2026-10-19). The
+// fix is to read the day in the workbook's zone first. Text and numbers carry no
+// zone and keep parseDate_PS_'s behaviour; with no zone given nothing changes.
+function toLocalYmd_PS_(value, tz) {
+  if (value instanceof Date && !isNaN(value.getTime()) && tz) {
+    const p = Utilities.formatDate(value, tz, "yyyy-MM-dd").split("-").map(Number);
+    return new Date(p[0], p[1] - 1, p[2]);
+  }
+  return parseDate_PS_(value);
+}
+
 function parseDate_PS_(val) {
   if (!val) return null;
   if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
@@ -2611,10 +2627,16 @@ function readPTOAccumulationProfiles_(deptSet) {
       const lastRow = sh.getLastRow();
       const lastCol = sh.getLastColumn();
       if (lastRow < 2) { Logger.log(`⚠️ readPTOAccumulationProfiles_: no data rows.`); return null; }
-      return sh.getRange(1, 1, lastRow, lastCol).getValues();
+      // The workbook's own zone travels with its values: a date CELL reaches the
+      // script as a Date at midnight in THAT zone, and the script runs in another.
+      let wbTz = "";
+      try { wbTz = ss.getSpreadsheetTimeZone() || ""; } catch (e) { Logger.log("⚠️ readPTOAccumulationProfiles_: workbook zone unreadable: " + e.message); }
+      return { values: sh.getRange(1, 1, lastRow, lastCol).getValues(), tz: wbTz };
     });
     if (!rawData) return {};
-    const headers  = rawData[0].map(h => String(h).trim());
+    const wbTz     = rawData.tz;
+    const rawRows  = rawData.values;
+    const headers  = rawRows[0].map(h => String(h).trim());
 
     const COL = {
       empNum:  findCol_PTO_(headers, "Employee Number"),
@@ -2648,8 +2670,8 @@ function readPTOAccumulationProfiles_(deptSet) {
     const profiles   = {};
     let kept = 0, keptByName = 0, droppedDept = 0, droppedNoEmp = 0, droppedNoDate = 0;
 
-    for (let i = 1; i < rawData.length; i++) {
-      const row  = rawData[i];
+    for (let i = 1; i < rawRows.length; i++) {
+      const row  = rawRows[i];
       const dept = String(row[COL.dept] || "").trim();
 
       const empRaw = row[COL.empNum];
@@ -2668,7 +2690,7 @@ function readPTOAccumulationProfiles_(deptSet) {
         droppedNoEmp++; continue;
       }
 
-      const date = parseDate_PS_(row[COL.date]);
+      const date = toLocalYmd_PS_(row[COL.date], wbTz);
       if (!date) { droppedNoDate++; continue; }
 
       if (!profiles[key]) profiles[key] = { balanceHistory: [], plannedUsageDates: [], transactions: [], events: [], byName: !empNum };
