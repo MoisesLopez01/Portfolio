@@ -7,6 +7,9 @@
 // CREATED:
 // VERSION:     2.0.0
 // ENVIRONMENT: Google Apps Script
+// NOTE:        2026.W43 — the separate Contributionintelligence.js report was
+//              removed (superseded by PS Dashboard.html); this file is the only
+//              Contributor Intelligence code left in the project.
 // ============================================================
 
 // ============================================================
