@@ -56,7 +56,14 @@ function run() {
   eval(fs.readFileSync(path.join(engineDir, 'PS Contribution Report.js'), 'utf8'));
   const labels = (weeksArg || 'W39,W40,W41,W42').split(',').map(w => '2026.' + w);
   const weeks = labels.map(label => ({ label }));
+  const nowMs = Date.now();          // ramp-up is "hired within 3 months of NOW": the reconciler judges at this same instant
   const roster = readPSRoster_();
+  if (process.env.I1_ROSTER_ONLY) {  // roster contrast: dump every profile the app built, nothing else
+    const ymd = d => d ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') : '';
+    const people = {};
+    roster.forEach((p, norm) => { people[norm] = { name: p.name, internalId: p.internalId, employeeNumber: p.employeeNumber, keyLocation: p.keyLocation, supervisor: p.supervisor, jobTitle: p.jobTitle, cls: p.cls, dept: p.dept, email: p.email, hireDate: ymd(p.hireDate), isRampUp: !!p.isRampUp, isCrewMember: !!p.isCrewMember, onLeave: !!p.onLeave }; });
+    return { engine: path.basename(engineDir), nowMs, rosterSize: roster.size, people };
+  }
   const ptoProfiles = readPTOAccumulationProfiles_(null);
   const empNumToNorm = rosterIdMap_(roster, 'employeeNumber');
   const ptoUsage = buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, weeks, roster);
@@ -79,5 +86,6 @@ function run() {
 const result = run();
 fs.writeFileSync(outPath, JSON.stringify(result));
 const cnt = o => Object.keys(o).length;
+if (result.people) { console.log(result.engine, 'roster-only: people', result.rosterSize); process.exit(0); }
 console.log(result.engine, 'roster', result.rosterSize, 'ledger profiles', result.ledgerProfiles,
   result.weeks.map(w => `${w}: pto ${cnt(result.byWeek[w].pto)}, planned ${cnt(result.byWeek[w].plannedNet)}`).join(' | '));

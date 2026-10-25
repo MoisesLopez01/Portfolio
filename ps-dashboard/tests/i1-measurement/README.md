@@ -20,6 +20,17 @@ authorised environment.
    Set `CV_TZ_PTO` / `CV_TZ_ROSTER` / `CV_TZ_CONTAINER` to the zones read in **File → Settings → Time zone** of each book (defaults are the 2026-10-24 reading: PTO America/Chicago, roster and container America/Guatemala).
 4. `python -I reconcile.py <out.json> [--mutate-monday-to-sunday] [--json detail.json]`.
 
+## Roster contrast (people and their fields)
+
+Jira is out of scope for the PS Contribution metrics (owner, 2026-10-24); the **roster is in**.
+Export only the roster workbook as `roster.xlsx`, run `dump_sheets.py` (it skips absent books), then
+
+1. `I1_ROSTER_ONLY=1 node run-engine.js <engineDir> <I1_EXT>/sheets.json <roster-out.json>` dumps every profile `readPSRoster_` builds and the instant it ran.
+2. `python -I reconcile_roster.py <roster-out.json> [--mutate] [--json detail.json]` rebuilds the roster from the `.xlsx` with the specified rules in separate code and compares 13 fields per person. Critical = a person in/out wrongly, or supervisor, employee number, internal ID, crew flag, ramp-up, long leave, class, department, location. Non-critical = job title, email, hire date.
+3. `--mutate` is the control: one supervisor changed, one person turned "Terminated", one hire date moved a day — expect 2 critical + 1 non-critical.
+
+Limit: it checks that the app implements the rules; it cannot catch a mistake in the rules themselves.
+
 ## Controls the protocol asks for
 
 - **Mutation 1** — `--mutate-monday-to-sunday` moves one Monday PTO movement to the previous Sunday in memory; the corrected engine must then show a critical.

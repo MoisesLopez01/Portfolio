@@ -20,7 +20,9 @@ def cell(v):
 
 out = {}
 for key, (fn, tabs) in WANT.items():
-    wb = load_workbook(EXT + os.sep + fn, read_only=True, data_only=True)
+    if not os.path.exists(os.path.join(EXT, fn)):      # a roster-only run exports just roster.xlsx
+        print("skipped (not exported):", fn); continue
+    wb = load_workbook(os.path.join(EXT, fn), read_only=True, data_only=True)
     out[key] = {}
     for t in tabs:
         rows = [[cell(c) for c in r] for r in wb[t].iter_rows(values_only=True)]
