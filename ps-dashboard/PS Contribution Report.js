@@ -1849,6 +1849,13 @@ function normPS_(name) {
 // week (reproduced W39-W42 of 2026, the 44 critical errors of 2026-10-19). The
 // fix is to read the day in the workbook's zone first. Text and numbers carry no
 // zone and keep parseDate_PS_'s behaviour; with no zone given nothing changes.
+// The workbook's own zone, or "" when it cannot be read (a fake in a test, a
+// permission error): "" makes toLocalYmd_PS_ fall back to the old reading.
+function workbookTz_PS_(ss) {
+  try { return (ss && typeof ss.getSpreadsheetTimeZone === "function" && ss.getSpreadsheetTimeZone()) || ""; }
+  catch (e) { Logger.log("⚠️ workbookTz_PS_: workbook zone unreadable: " + e.message); return ""; }
+}
+
 function toLocalYmd_PS_(value, tz) {
   if (value instanceof Date && !isNaN(value.getTime()) && tz) {
     const p = Utilities.formatDate(value, tz, "yyyy-MM-dd").split("-").map(Number);
@@ -1914,14 +1921,15 @@ function loadSheet_PS_(ss, sheetName) {
     if (!sh) { SHEET_MEMO_[key] = null; }
     else {
       const data = sh.getDataRange().getValues();
+      const tz   = workbookTz_PS_(ss);   // date cells arrive as midnight in THIS zone (see toLocalYmd_PS_)
       SHEET_MEMO_[key] = (data.length < 2)
-        ? { headers: (data[0] || []).map(h => String(h).trim()), rows: [] }
-        : { headers: data[0].map(h => String(h).trim()), rows: data.slice(1) };
+        ? { headers: (data[0] || []).map(h => String(h).trim()), rows: [], tz }
+        : { headers: data[0].map(h => String(h).trim()), rows: data.slice(1), tz };
     }
   }
   const hit = SHEET_MEMO_[key];
   if (!hit) return null;
-  return { headers: hit.headers.slice(), rows: hit.rows.map(r => r.slice()) };
+  return { headers: hit.headers.slice(), rows: hit.rows.map(r => r.slice()), tz: hit.tz };
 }
 
 function weekToKey_PS_(label, defaultYear) {
@@ -2075,6 +2083,7 @@ function readRosterTab_(ss, sheetName, roster, isCrewTab, bridgesOut) {
   const raw  = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   const hdrs = raw[0].map(h => String(h).trim());
   const rows = raw.slice(1);
+  const rosterTz = workbookTz_PS_(ss);   // Hire Date cells arrive as midnight in the roster workbook's zone
 
   log_(`${sheetName} headers (${hdrs.length}): ${hdrs.join(" | ")}`);
 
@@ -2141,7 +2150,7 @@ function readRosterTab_(ss, sheetName, roster, isCrewTab, bridgesOut) {
     if (isInactive) { recordRosterBridge_(bridgesOut, name, supRaw); return; }
 
     // Ramp-up: in ramp-up if hired within threshold, unless manual flag overrides
-    const hireDate   = iHireDate !== -1 ? parseDate_PS_(row[iHireDate]) : null;
+    const hireDate   = iHireDate !== -1 ? toLocalYmd_PS_(row[iHireDate], rosterTz) : null;
     const rampFlag   = String(iRampFlag !== -1 ? row[iRampFlag] : "").trim().toLowerCase();
     const jobTitle   = String(iTitle      !== -1 ? row[iTitle]      : "").trim() || "Unknown";
     const isCrew     = isCrewTab || /crew member|contractor/i.test(jobTitle);
@@ -2629,8 +2638,7 @@ function readPTOAccumulationProfiles_(deptSet) {
       if (lastRow < 2) { Logger.log(`⚠️ readPTOAccumulationProfiles_: no data rows.`); return null; }
       // The workbook's own zone travels with its values: a date CELL reaches the
       // script as a Date at midnight in THAT zone, and the script runs in another.
-      let wbTz = "";
-      try { wbTz = ss.getSpreadsheetTimeZone() || ""; } catch (e) { Logger.log("⚠️ readPTOAccumulationProfiles_: workbook zone unreadable: " + e.message); }
+      const wbTz = workbookTz_PS_(ss);
       return { values: sh.getRange(1, 1, lastRow, lastCol).getValues(), tz: wbTz };
     });
     if (!rawData) return {};
@@ -2964,8 +2972,8 @@ function readKudosByWeek_(psNames, weeks) {
       wKey = weekToKey_PS_(String(row[iWeek]).trim(), defYear);
     }
     if (!wKey && iDate !== -1) {
-      const d = parseDate_PS_(row[iDate]);
-      if (d) wKey = `${isoWeekYear_PS_(d)}.W${isoWeekNum_PS_(d)}`;
+      const d = toLocalYmd_PS_(row[iDate], data.tz);
+      if (d) wKey =`${isoWeekYear_PS_(d)}.W${isoWeekNum_PS_(d)}`;
     }
     if (!wKey || !weekSet.has(wKey)) return;
 
@@ -3259,7 +3267,7 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
         if (pattern.test(_rawGoalName || _rawGoalId)) { _goalId = id; break; }
       }
       const _commentator = String(iCommentator !== -1 ? row[iCommentator] : "").trim();
-      const _commentDate = parseDate_PS_(row[iCommentDate]);
+      const _commentDate = toLocalYmd_PS_(row[iCommentDate], data.tz);
       if (_goalId && _commentDate && normPS_(_commentator) === _norm) {
         if (!allCommentsMap.has(_norm)) allCommentsMap.set(_norm, new Map());
         const _empComments = allCommentsMap.get(_norm);
@@ -3309,7 +3317,7 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
     }
     const status      = String(iStatus      !== -1 ? row[iStatus]      : "").trim();
     const commentator = String(iCommentator !== -1 ? row[iCommentator] : "").trim();
-    const commentDate = iCommentDate !== -1 ? parseDate_PS_(row[iCommentDate]) : null;
+    const commentDate = iCommentDate !== -1 ? toLocalYmd_PS_(row[iCommentDate], data.tz) : null;
 
     if (!goalMap.has(norm)) goalMap.set(norm, new Map());
     const empGoals = goalMap.get(norm);

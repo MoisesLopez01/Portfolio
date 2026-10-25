@@ -113,8 +113,34 @@ const blind = loadEngine().readPTOAccumulationProfiles_(null);
 ck('reader, workbook zone unreadable: falls back to the old reading (logged, not fatal) — the case the fix must not hide',
    blind['30001'] && weeksOf(blind['30001']).join('|') === 'W39|W40|W41|W42'.split('|').map(w => '2026.' + w).join('|'), blind['30001'] && weeksOf(blind['30001']).join('|'));
 
+// ── The same rule on every other sheet-date read (kudos, goals, roster, exporter) ──
+// loadSheet_PS_ carries the workbook zone, so the readers need nothing hard-coded.
+function loadSheetEngine() {
+  eval(fs.readFileSync(path.join(dir, 'PS Teams.js'), 'utf8'));
+  eval(fs.readFileSync(path.join(dir, 'PS Contribution Report.js'), 'utf8'));
+  return { loadSheet_PS_, workbookTz_PS_ };
+}
+const fakeBook = (id, tz) => ({
+  getId: () => id,
+  getSheetByName: () => ({ getDataRange: () => ({ getValues: () => [['Create Date'], [cellDate('2026-09-28', CHI)]] }) }),
+  ...(tz === undefined ? {} : { getSpreadsheetTimeZone: () => tz }),
+});
+const LS = loadSheetEngine();
+const withZone = LS.loadSheet_PS_(fakeBook('wb1', CHI), 'Kudos');
+ck('loadSheet_PS_ carries the workbook zone with the rows', withZone.tz === CHI && withZone.rows.length === 1);
+ck('…and a second (memoized) read still carries it', LS.loadSheet_PS_(fakeBook('wb1', CHI), 'Kudos').tz === CHI);
+ck('kudos / goals / exporter reading: a DST Monday cell lands in 2026.W40 via data.tz', label(E.toLocalYmd_PS_(withZone.rows[0][0], withZone.tz)) === '2026.W40');
+ck('a workbook without a readable zone gives "" (old reading, never a throw)',
+   LS.loadSheet_PS_(fakeBook('wb2'), 'Kudos').tz === '' && LS.workbookTz_PS_(null) === '' && LS.workbookTz_PS_({ getSpreadsheetTimeZone: () => { throw new Error('denied'); } }) === '');
+
 // ── Source guards ────────────────────────────────────────────────────────────
 const src = fs.readFileSync(path.join(dir, 'PS Contribution Report.js'), 'utf8');
+// Scope: the application only (PS Contribution Report.js + PS Dashboard.html). The
+// sheet exporter Contribution.js is deliberately untouched.
+ck('every sheet DATE cell of the application is converted with toLocalYmd_PS_ (kudos, goals ×2, roster hire date, PTO ledger)',
+   /toLocalYmd_PS_\(row\[iDate\], data\.tz\)/.test(src) && (src.match(/toLocalYmd_PS_\(row\[iCommentDate\], data\.tz\)/g) || []).length === 2 &&
+   /toLocalYmd_PS_\(row\[iHireDate\], rosterTz\)/.test(src) && /toLocalYmd_PS_\(row\[COL\.date\], wbTz\)/.test(src));
+ck('no sheet-row date is read with parseDate_PS_ any more in the application', !/parseDate_PS_\(row\[/.test(src));
 ck('the PTO ledger reader converts dates with toLocalYmd_PS_, not parseDate_PS_', /const date = toLocalYmd_PS_\(row\[COL\.date\], wbTz\);/.test(src));
 ck('the workbook zone is read from the workbook, never hard-coded', /ss\.getSpreadsheetTimeZone\(\)/.test(src) && !/toLocalYmd_PS_\([^)]*['"]America\//.test(src));
 
