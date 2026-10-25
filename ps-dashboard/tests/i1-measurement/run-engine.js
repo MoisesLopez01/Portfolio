@@ -6,7 +6,7 @@
 process.env.TZ = 'America/Guatemala';
 const fs = require('fs'), path = require('path');
 const [engineDir, sheetsPath, outPath, weeksArg, mutateArg] = process.argv.slice(2);
-const TZ = { pto: process.env.CV_TZ_PTO || 'America/Chicago', roster: process.env.CV_TZ_ROSTER || 'America/Guatemala', container: process.env.CV_TZ_CONTAINER || 'America/Guatemala' };
+const TZ = { pto: process.env.CV_TZ_PTO || 'America/Chicago', roster: process.env.CV_TZ_ROSTER || 'America/Guatemala', container: process.env.CV_TZ_CONTAINER || 'America/Guatemala', goals: process.env.CV_TZ_GOALS || 'America/Los_Angeles' };
 const raw = JSON.parse(fs.readFileSync(sheetsPath, 'utf8'));
 
 // civil "YYYY-MM-DDTHH:MM:SS" in `tz` → the instant Sheets hands the script
@@ -39,8 +39,8 @@ function sheetOf(book, tab) {
 const book = (key, id) => { const cache = {}; return {
   getId: () => id, getSpreadsheetTimeZone: () => TZ[key],
   getSheetByName: t => raw[key][t] ? (cache[t] || (cache[t] = sheetOf(key, t))) : null, getSheets: () => [] }; };
-const IDS = { roster: '1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0', pto: '1J_5EhrQqMMjUFH1Zm_Wpcbd47OFDlcKsdoGm-haS8Yo', container: 'container-1' };
-const books = { [IDS.roster]: book('roster', IDS.roster), [IDS.pto]: book('pto', IDS.pto), [IDS.container]: book('container', IDS.container) };
+const IDS = { roster: '1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0', pto: '1J_5EhrQqMMjUFH1Zm_Wpcbd47OFDlcKsdoGm-haS8Yo', goals: '1v5s0Ogka8nrxfT8u71BwG9KidwhD32TjzV_miKad5HQ', container: 'container-1' };
+const books = { [IDS.roster]: book('roster', IDS.roster), [IDS.pto]: book('pto', IDS.pto), [IDS.goals]: book('goals', IDS.goals), [IDS.container]: book('container', IDS.container) };
 
 global.Logger = { log() {} };
 global.SpreadsheetApp = { getActiveSpreadsheet: () => books[IDS.container], openById: id => books[id] || (() => { throw new Error('no book ' + id); })() };
@@ -63,6 +63,24 @@ function run() {
     const people = {};
     roster.forEach((p, norm) => { people[norm] = { name: p.name, internalId: p.internalId, employeeNumber: p.employeeNumber, keyLocation: p.keyLocation, supervisor: p.supervisor, jobTitle: p.jobTitle, cls: p.cls, dept: p.dept, email: p.email, hireDate: ymd(p.hireDate), isRampUp: !!p.isRampUp, isCrewMember: !!p.isCrewMember, onLeave: !!p.onLeave }; });
     return { engine: path.basename(engineDir), nowMs, rosterSize: roster.size, people };
+  }
+  if (process.env.I1_GOALS) {        // goals contrast: the production flow (three quarter runs + 41-week history), without the PTO exemption
+    const ctx = computeFiscalContext_();
+    const active = activeRoster_(roster);
+    const cur = buildCurrentQWeeks_PS_(ctx), prev = buildPrevQWeeks_PS_(ctx), prev2 = buildPrev2QWeeks_PS_(ctx);
+    const prevCtx  = { goalsQuarter: ctx.prevGoalsQuarter,  qStartIsoYear: ctx.prevQStartIsoYear,  qStartIsoWeek: ctx.prevQStartIsoWeek,  inGracePeriod: false, quarterClosed: true };
+    const prev2Ctx = { goalsQuarter: ctx.prev2GoalsQuarter, qStartIsoYear: ctx.prev2QStartIsoYear, qStartIsoWeek: ctx.prev2QStartIsoWeek, inGracePeriod: false, quarterClosed: true };
+    const extPast = [...buildHistWeeks_(CONFIG_PS.TRACKED_HIST_WEEKS), ...buildWeekWindow_PS_()].filter(w => !w.isFuture);
+    const runs = { prev2: readGoalsEngagement_(active, prev2, [], prev2Ctx, null, null), prev: readGoalsEngagement_(active, prev, [], prevCtx, null, null), cur: readGoalsEngagement_(active, cur, extPast, ctx, null, null) };
+    const wk = ws => ws.map(w => ({ label: w.label, monday: w.monday, sunday: w.sunday, isoWeek: w.isoWeek, year: w.year, isFuture: !!w.isFuture }));
+    const out = { engine: path.basename(engineDir), nowMs,
+      ctx: { goalsQuarter: ctx.goalsQuarter, inGracePeriod: !!ctx.inGracePeriod, quarterClosed: !!ctx.quarterClosed, qStartIsoYear: ctx.qStartIsoYear, qStartIsoWeek: ctx.qStartIsoWeek, prevGoalsQuarter: ctx.prevGoalsQuarter, prev2GoalsQuarter: ctx.prev2GoalsQuarter,
+              prevQStartIsoYear: ctx.prevQStartIsoYear, prevQStartIsoWeek: ctx.prevQStartIsoWeek, prev2QStartIsoYear: ctx.prev2QStartIsoYear, prev2QStartIsoWeek: ctx.prev2QStartIsoWeek },
+      activeNames: Array.from(active.keys()), weeks: { cur: wk(cur), prev: wk(prev), prev2: wk(prev2), hist: wk(extPast) },
+      verdicts: {}, comments: {} };
+    ['prev2', 'prev', 'cur'].forEach(r => { out.verdicts[r] = {}; Object.keys(runs[r]).filter(k => k[0] !== '_').forEach(w => { out.verdicts[r][w] = {}; Object.entries(runs[r][w].byEmployee).forEach(([n, e]) => { out.verdicts[r][w][n] = [e.compliant ? 1 : 0, e.rule === undefined || e.rule === null ? 0 : e.rule, e.qualifying === undefined ? -1 : e.qualifying, e.totalGoals === undefined ? -1 : e.totalGoals, e.overrideCompliant ? 1 : 0]; }); }); });
+    Object.keys(runs.cur).filter(k => k[0] !== '_').forEach(w => { Object.entries(runs.cur[w].byEmployee).forEach(([n, e]) => { if (e.selfCommentCount !== undefined) { (out.comments[w] = out.comments[w] || {})[n] = e.selfCommentCount; } }); });
+    return out;
   }
   const ptoProfiles = readPTOAccumulationProfiles_(null);
   const empNumToNorm = rosterIdMap_(roster, 'employeeNumber');
@@ -87,5 +105,6 @@ const result = run();
 fs.writeFileSync(outPath, JSON.stringify(result));
 const cnt = o => Object.keys(o).length;
 if (result.people) { console.log(result.engine, 'roster-only: people', result.rosterSize); process.exit(0); }
+if (result.verdicts) { console.log(result.engine, 'goals: active', result.activeNames.length, '| quarter', result.ctx.goalsQuarter, '| history weeks', result.weeks.hist.length); process.exit(0); }
 console.log(result.engine, 'roster', result.rosterSize, 'ledger profiles', result.ledgerProfiles,
   result.weeks.map(w => `${w}: pto ${cnt(result.byWeek[w].pto)}, planned ${cnt(result.byWeek[w].plannedNet)}`).join(' | '));

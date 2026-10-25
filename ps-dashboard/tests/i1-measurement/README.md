@@ -31,6 +31,17 @@ Export only the roster workbook as `roster.xlsx`, run `dump_sheets.py` (it skips
 
 Limit: it checks that the app implements the rules; it cannot catch a mistake in the rules themselves.
 
+## Goals contrast (weekly self-comment counts and compliance verdicts)
+
+Export the goals workbook as `goals.xlsx` (tab `RD`) plus `roster.xlsx`, run `dump_sheets.py`, then
+
+1. `I1_GOALS=1 node run-engine.js <engineDir> <I1_EXT>/sheets.json <goals-out.json>` runs the production flow (three quarter runs, 41-week history, PTO exemption off) and dumps per person-week comment counts and verdicts. The goals book's zone defaults to America/Los_Angeles (`CV_TZ_GOALS`).
+2. `python -I reconcile_goals.py <goals-out.json> [--mutate] [--json detail.json]` assigns each comment to the ISO week of the civil day the workbook shows and applies the compliance rules as specified. `--mutate` moves a Sunday comment to Monday 00:30 (the protocol's alteration test; expect 2 critical).
+3. The real comment dates carry no time of day, so nothing can shift. `python -I inject_late_comments.py <sheets.json> <goals-out.json> <sheets-inj.json>` gives a few real comments an evening time **in a copy** and prints the weeks involved; run both engines on the copy and contrast with the original `.xlsx`: the pre-fix engine must miss, the corrected one must not, and the noon control must move in neither.
+4. `node diff_engines.js <goals-305.json> <goals-307.json>` compares the two engines head to head: person-week verdicts and comment counts that differ, and how many people have a different verdict.
+
+Note: the app compares comment instants with UTC day boundaries, so the exposure of a timed comment starts at 17:00 Pacific (16:00 in winter) on Sunday, not at the Guatemala offset.
+
 ## Controls the protocol asks for
 
 - **Mutation 1** — `--mutate-monday-to-sunday` moves one Monday PTO movement to the previous Sunday in memory; the corrected engine must then show a critical.

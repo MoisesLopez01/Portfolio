@@ -10,6 +10,7 @@ WANT = {
     "pto":       ("pto.xlsx",       ["Accumulation Cost"]),
     "roster":    ("roster.xlsx",    ["Data", "Contractors Data"]),
     "container": ("container.xlsx", ["Planned Time Tempo", "Tempo Tracked Time", "Capacity Tempo"]),
+    "goals":     ("goals.xlsx",     ["RD"]),
 }
 def cell(v):
     if v is None: return ""
