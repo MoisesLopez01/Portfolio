@@ -1856,9 +1856,15 @@ function workbookTz_PS_(ss) {
   catch (e) { Logger.log("⚠️ workbookTz_PS_: workbook zone unreadable: " + e.message); return ""; }
 }
 
+// Utilities.formatDate is a slow service call and a ledger holds tens of thousands of
+// date cells that repeat (one midnight per day), so the [y, m, d] is memoised per
+// zone + instant: formatDate runs once per distinct day, not once per row.
+const YMD_MEMO_PS_ = {};
 function toLocalYmd_PS_(value, tz) {
   if (value instanceof Date && !isNaN(value.getTime()) && tz) {
-    const p = Utilities.formatDate(value, tz, "yyyy-MM-dd").split("-").map(Number);
+    const k = tz + "|" + value.getTime();
+    let p = YMD_MEMO_PS_[k];
+    if (!p) p = YMD_MEMO_PS_[k] = Utilities.formatDate(value, tz, "yyyy-MM-dd").split("-").map(Number);
     return new Date(p[0], p[1] - 1, p[2]);
   }
   return parseDate_PS_(value);
