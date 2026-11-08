@@ -4322,6 +4322,143 @@ function fullWeekHours_(x) {
   };
 }
 
+// ============================================================
+// SOURCE FRESHNESS — per-source cut-off, cadence and state (I2 / HT2, 2026.W45)
+// ============================================================
+// One global "Data as of" stamp cannot say how current EACH source is: the old
+// note showed the tracked-time export and credited it to Goals/PTO/Kudos too, and
+// the container workbook it fell back on changes on every visit (the access log).
+// Each of the eight sources of the thesis matrix (Tabla 2) now reports:
+//   cutoff  — when it was last loaded (kind "load") or which period it covers
+//             (kind "month" / "quarter": RCR last closed month, SI last quarter)
+//   cadence — the schedule it is expected to keep (from the code's own triggers)
+//   state   — "current" | "overdue" | "nodata", with the reason in plain words
+// An overdue source is not an error to hide: the point is that the reader can see
+// it. Pure function of (signals, asOf) so tests can freeze the clock at any cut.
+const SOURCE_FRESHNESS_ = [
+  { key: "roster",  label: "Roster (HRIS export)",            kind: "load",    cadence: "Daily",                          maxAgeH: 48 },
+  { key: "rcr",     label: "RCR (Finance)",                    kind: "month",   cadence: "Monthly — last closed month",    graceDays: 10 },
+  { key: "si",      label: "Manager rating (Small Improvements)", kind: "quarter", cadence: "Quarterly — last closed quarter", graceDays: 60 },
+  { key: "goals",   label: "Goals (RD sheet)",                 kind: "load",    cadence: "Weekly",                         maxAgeH: 8 * 24 },
+  { key: "planned", label: "Planned time (Tempo)",             kind: "load",    cadence: "Weekly — Mondays 08:00",         maxAgeH: 8 * 24 },
+  { key: "tracked", label: "Tracked time (Tempo)",             kind: "load",    cadence: "Daily — 06:00",                  maxAgeH: 48 },
+  { key: "kudos",   label: "Kudos (recognition channel)",      kind: "load",    cadence: "Daily",                          maxAgeH: 48 },
+  { key: "pto",     label: "PTO (Accumulation Cost)",          kind: "load",    cadence: "Weekly",                         maxAgeH: 8 * 24 },
+];
+
+// "Aug 26" | "2026.08 RCR" → months since year 0 (y*12+m); null when unreadable.
+function rcrMonthIndex_(name) {
+  const m = rcrMonthFromHeader_(name);
+  return m ? m.sortKey : null;
+}
+
+// "FY26Q4" → { fy: 26, q: 4 } → ordinal fy*4+q; null when unreadable.
+function fiscalQuarterIndex_(label) {
+  const m = /FY(\d{2})Q([1-4])/i.exec(String(label || ""));
+  return m ? parseInt(m[1], 10) * 4 + parseInt(m[2], 10) : null;
+}
+
+// Fiscal quarter (FY starts 1 July) of a date, as fy*4+q, plus its end date.
+function fiscalQuarterOf_(d) {
+  const y = d.getFullYear(), mo = d.getMonth();           // 0-based month
+  const fy = (mo >= 6 ? y + 1 : y) % 100;
+  const q  = mo >= 6 ? Math.floor((mo - 6) / 3) + 1 : Math.floor((mo + 6) / 3) + 1;
+  return fy * 4 + q;
+}
+
+function buildSourceFreshness_(signals, asOf) {
+  const now = asOf instanceof Date ? asOf : new Date(asOf);
+  const sig = signals || {};
+  return SOURCE_FRESHNESS_.map(src => {
+    const s = sig[src.key] || {};
+    const out = { key: src.key, label: src.label, cadence: src.cadence, kind: src.kind,
+                  cutoff: null, cutoffLabel: null, state: "nodata", reason: "" };
+    if (s.missing) { out.reason = s.missing; return out; }
+
+    if (src.kind === "load") {
+      const t = s.loadedAt ? new Date(s.loadedAt) : null;
+      if (!t || isNaN(t.getTime())) { out.reason = "No load timestamp recorded"; return out; }
+      out.cutoff = t.toISOString();
+      const ageH = (now.getTime() - t.getTime()) / 36e5;
+      if (ageH <= src.maxAgeH) { out.state = "current"; out.reason = "Loaded on schedule (" + src.cadence + ")"; }
+      else { out.state = "overdue"; out.reason = "Last load " + Math.floor(ageH / 24) + " days ago; expected " + src.cadence; }
+      return out;
+    }
+
+    if (src.kind === "month") {
+      const idx = rcrMonthIndex_(s.period);
+      if (idx === null) { out.reason = "No populated month"; return out; }
+      out.cutoffLabel = s.period;
+      // The last closed month is due once graceDays of the following month have passed.
+      const cur = now.getFullYear() * 12 + now.getMonth();
+      const due = now.getDate() > src.graceDays ? cur - 1 : cur - 2;
+      if (idx >= due) { out.state = "current"; out.reason = "Covers the last closed month due"; }
+      else { out.state = "overdue"; out.reason = RCR_MONTH_ABBR_[((due % 12) + 12) % 12] + " " + String(Math.floor(due / 12) % 100).padStart(2, "0") + " was due by day " + src.graceDays; }
+      return out;
+    }
+
+    // quarter
+    const qi = fiscalQuarterIndex_(s.period);
+    if (qi === null) { out.reason = "No quarter with ratings"; return out; }
+    out.cutoffLabel = String(s.period).toUpperCase();
+    // Ratings for the quarter that just closed are due graceDays after it ends.
+    const lagged = new Date(now.getTime() - src.graceDays * 864e5);
+    const due = fiscalQuarterOf_(lagged) - 1;
+    if (qi >= due) { out.state = "current"; out.reason = "Covers the last quarter whose review window has closed"; }
+    else {
+      const fy = Math.floor((due - 1) / 4), q = ((due - 1) % 4) + 1;
+      out.state = "overdue"; out.reason = "FY" + String(fy).padStart(2, "0") + "Q" + q + " ratings were due";
+    }
+    return out;
+  });
+}
+
+// Live signals for buildSourceFreshness_. Each read is independent and best-effort:
+// a failure leaves that source at "nodata" with its reason, never breaks the report.
+function driveLastUpdated_(id) {
+  try { return DriveApp.getFileById(id).getLastUpdated().toISOString(); }
+  catch (e) { Logger.log(`⚠️ freshness: Drive stamp unavailable for ${id}: ${e.message}`); return null; }
+}
+
+// The first Date in row 1 of a sheet (Kudos.js writes its run time to G1, after
+// the six headers). null when the tab or the stamp is absent.
+function sheetRow1Stamp_(ss, sheetName) {
+  try {
+    const sh = ss.getSheetByName(sheetName);
+    if (!sh) return null;
+    const row = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    const d = row.find(v => v instanceof Date && !isNaN(v.getTime()));
+    return d ? d.toISOString() : null;
+  } catch (e) { return null; }
+}
+
+// TempoPlanExport.js leaves "Last Export: <ISO>" as the note of A1 after each run.
+function plannedExportStamp_(ss) {
+  try {
+    const sh = ss.getSheetByName(CONFIG_PS.SHEET_PLANNED);
+    if (!sh) return null;
+    const m = /Last Export:\s*(\S+)/.exec(String(sh.getRange(1, 1).getNote() || ""));
+    return m && !isNaN(new Date(m[1]).getTime()) ? new Date(m[1]).toISOString() : null;
+  } catch (e) { return null; }
+}
+
+function collectFreshnessSignals_(rosterSize, trackedAll, rcrAll, siAll) {
+  const ids = getExternalSSIds_();
+  let ss = null;
+  try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) { /* no container */ }
+  const load = (at, missing) => missing ? { missing } : { loadedAt: at };
+  return {
+    roster:  rosterSize > 0 ? { loadedAt: driveLastUpdated_(ids.roster) } : { missing: "Roster returned no rows" },
+    rcr:     rcrAll && rcrAll.lastMonth ? { period: rcrAll.lastMonth } : { missing: "No populated RCR month" },
+    si:      siAll && siAll.teamAvg !== null && siAll.quarter ? { period: siAll.quarter } : { missing: "No SI ratings in the sheet" },
+    goals:   { loadedAt: driveLastUpdated_(ids.goals) },
+    planned: load(ss ? plannedExportStamp_(ss) : null, ss && !ss.getSheetByName(CONFIG_PS.SHEET_PLANNED) ? "Planned Time sheet not found" : null),
+    tracked: load(trackedAll && trackedAll._lastExport, ss && !ss.getSheetByName(CONFIG_PS.SHEET_TEMPO_TRACKED) ? "Tracked Time sheet not found" : null),
+    kudos:   load(ss ? sheetRow1Stamp_(ss, CONFIG_PS.SHEET_KUDOS) : null, ss && !ss.getSheetByName(CONFIG_PS.SHEET_KUDOS) ? "Kudos sheet not found" : null),
+    pto:     { loadedAt: driveLastUpdated_(ids.ptoAccum) },
+  };
+}
+
 // True for the roles that see the WHOLE roster — superadmin, admin, viewer.
 // Everyone else is manager-scoped. Kept as one predicate so the cache key and
 // the scope branch can never disagree about who gets a full-roster payload.
@@ -4975,6 +5112,8 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
       availableTeams: availableTeams || [],
       lastSheetEdit,
       trackedTimeLastExport: trackedAll._lastExport || null,
+      // Per-source cut-off · cadence · state (I2 / HT2). Impersonal, safe in the shared cache entry.
+      sourceFreshness:  buildSourceFreshness_(collectFreshnessSignals_(roster.size, trackedAll, rcrAll, siAll), new Date()),
       tempoReportsBase: CONFIG_PS.TEMPO_REPORTS_BASE || null,   // 2026.W42: base of the Tempo deep links
       currentWeekLabel: curWeek.label,
       rcrLastMonth:     rcrAll.lastMonth,

@@ -756,6 +756,12 @@ function fetchTempoPlannedTime() {
     // wipes the previous export.
     const sheet = prepareSheetForIsoWeeks_(ss, merged.isoWeeks);
     writeRows_(sheet, buildMergedRows_(merged), merged.isoWeeks);
+    // Run stamp for the dashboard's per-source freshness (I2 / HT2, 2026.W45): the
+    // grid has no free cell, so it rides as A1's note. Written only after a
+    // successful write, so a failed run leaves the previous stamp — and the
+    // dashboard then shows the source as overdue rather than current.
+    try { sheet.getRange(1, 1).setNote("Last Export: " + new Date().toISOString()); }
+    catch (e) { Logger.log(`⚠️ [fetchTempoPlannedTime] run stamp not written: ${e.message}`); }
 
     // Step 12: Name normalization (Change Names.js) — Tempo display names →
     // roster legal names, in-place, so downstream joins match without the
