@@ -98,6 +98,11 @@ const NAME_MAPST = {
     "Devin Thompson":"Devin Wayne Thompson",
     "Tomas Meneses Salazar":"Tomas Joaquin Meneses Salazar",
     "Christopher Taylor":"Paul Taylor",
+    // 2026-10-28 (2026.W44): the two Services people whose Tempo spelling the
+    // roster could not place — found by comparing Capacity Tempo with the
+    // roster. The Tempo Users tab's email now joins them regardless.
+    "Doods Perea":"Dindo D Perea",
+    "Samuel Ta":"Hien Ta",
     "":"",
     "":"",
     "":"",

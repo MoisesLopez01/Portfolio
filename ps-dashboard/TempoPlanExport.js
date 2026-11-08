@@ -201,6 +201,15 @@ const CONFIGPlan = {
   DIAG_PER_PLAN: true, // true = log a per-plan + per-project diagnostic table (find missing hours)
   API_BATCH_SIZE: 50, // Max items per Jira batch request
   TEMPO_PAGE_LIMIT: 500, // Max results per Tempo API page
+  // ── TEMPO USERS — the identity tab (2026-10-28, 2026.W44) ──
+  // One row per Tempo team member: Account ID, the display name as Tempo
+  // shows it, the name after NAME_MAPST.TEMPO, the Jira EMAIL, active flag,
+  // teams and the MERGE_MAP primary. Written by fetchTempoPlannedTime (daily)
+  // and fetchTempoCapacity (weekly) from the same Jira profile calls that
+  // already fetch display names, so it costs no extra request. The email is
+  // the join key dashboards should use against the HR roster: a Tempo display
+  // name ("Doods Perea", "Samuel Ta") is a spelling, an email is an identity.
+  TEMPO_USERS_SHEET: "Tempo Users",
   // fetchAll batch size for the week-scoped Tempo pass. Larger batches cut
   // wall time roughly linearly (each batch is one parallel round-trip); the
   // retry rounds absorb the extra transient 500s that bursts provoke.
@@ -772,6 +781,11 @@ function fetchTempoPlannedTime() {
     } catch (e) {
       Logger.log(`⚠️ Name normalization skipped (${e.message}) — run normalizeAllNames() manually.`);
     }
+
+    // Step 13: the identity tab — every team member's account id, Tempo name,
+    // mapped name and Jira email (2026-10-28). After the grid write, so a run
+    // that died above leaves yesterday's tab in place.
+    writeTempoUsersSheet_(ss, teamInfoById, "fetchTempoPlannedTime");
 
     // A run that reached the deep depth (automatic or by hand) is this week's
     // deep pass. Marked only now, after the write, so a failed run retries.
@@ -1627,6 +1641,14 @@ function fetchProjectLeads_(projectKeys, auth) {
  * @param {string}   token
  * @returns {Object} accountId → display name
  */
+/**
+ * Jira profiles per account id, filled by fetchUserNames_ on every run:
+ * { accountId: { name, email, active } }. writeTempoUsersSheet_ turns it into
+ * the "Tempo Users" tab. Module-level so the three exporters share one copy
+ * without changing fetchUserNames_'s signature (it is called from all three).
+ */
+var TEMPO_USER_PROFILES_ = {};
+
 function fetchUserNames_(userIds, email, token) {
   const userMap = {};
   const auth = Utilities.base64Encode(`${email}:${token}`);
@@ -1645,10 +1667,18 @@ function fetchUserNames_(userIds, email, token) {
     responses.forEach((res, i) => {
       const userId = userIds[b + i];
       try {
-        userMap[userId] =
-          res.getResponseCode() === 200
-            ? JSON.parse(res.getContentText()).displayName || userId
-            : userId;
+        const body = res.getResponseCode() === 200 ? JSON.parse(res.getContentText()) : null;
+        userMap[userId] = (body && body.displayName) || userId;
+        // The same profile call carries the email (Jira returns emailAddress for
+        // the site's managed accounts; blank when a profile hides it) — kept for
+        // the Tempo Users identity tab, never used as a name.
+        if (body) {
+          TEMPO_USER_PROFILES_[userId] = {
+            name: String(body.displayName || ""),
+            email: String(body.emailAddress || "").trim().toLowerCase(),
+            active: body.active !== false,
+          };
+        }
       } catch (e) {
         userMap[userId] = userId;
       }
@@ -1656,6 +1686,72 @@ function fetchUserNames_(userIds, email, token) {
   }
 
   return userMap;
+}
+
+// ── SECTION: TEMPO USERS — THE IDENTITY TAB ──────────────────
+
+/**
+ * Rows of the "Tempo Users" tab, one per account id, sorted by the mapped
+ * name. Pure: profiles = TEMPO_USER_PROFILES_, teamInfoById = { id: { teams } },
+ * nameMap = NAME_MAPST.TEMPO, mergeMap = MERGE_MAP.
+ * @returns {Array<Array>} [Account ID, Tempo Name, Name, Email, Active, Teams, Merged Into]
+ */
+function tempoUsersRows_(profiles, teamInfoById, nameMap, mergeMap) {
+  const map = nameMap || {}, merge = mergeMap || {}, teams = teamInfoById || {};
+  return Object.keys(profiles || {})
+    .map((id) => {
+      const p = profiles[id] || {};
+      const tempoName = String(p.name || "").trim();
+      const mapped = map[tempoName] !== undefined && String(map[tempoName]).trim() ? String(map[tempoName]).trim() : tempoName;
+      const t = teams[id] && Array.isArray(teams[id].teams) ? teams[id].teams.join(" | ") : "";
+      return [id, tempoName, mapped, String(p.email || ""), p.active === false ? "No" : "Yes", t, merge[id] || ""];
+    })
+    .sort((a, b) => a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]));
+}
+
+/**
+ * Writes the "Tempo Users" identity tab from this run's Jira profiles. Never
+ * throws: a failure here is logged and leaves the grids untouched, because the
+ * tab is a join aid for dashboards, not the hours themselves.
+ * @param {Spreadsheet} ss
+ * @param {Object} teamInfoById - from fetchAllTeamMembers_
+ * @param {string} label - calling exporter, for the log line
+ * @returns {number} rows written
+ */
+function writeTempoUsersSheet_(ss, teamInfoById, label) {
+  try {
+    const ids = Object.keys(TEMPO_USER_PROFILES_);
+    if (!ids.length) {
+      Logger.log(`ℹ️ [${label}] No Jira profiles this run — "${CONFIGPlan.TEMPO_USERS_SHEET}" left as it was.`);
+      return 0;
+    }
+    const nameMap = typeof NAME_MAPST !== "undefined" && NAME_MAPST ? NAME_MAPST.TEMPO || {} : {};
+    const rows = tempoUsersRows_(TEMPO_USER_PROFILES_, teamInfoById, nameMap, MERGE_MAP);
+    const hdr = ["Account ID", "Tempo Name", "Name", "Email", "Active", "Teams", "Merged Into"];
+    let sheet = ss.getSheetByName(CONFIGPlan.TEMPO_USERS_SHEET);
+    if (!sheet) sheet = ss.insertSheet(CONFIGPlan.TEMPO_USERS_SHEET);
+    sheet.clear();
+    const headerRange = sheet.getRange(1, 1, 1, hdr.length);
+    headerRange.setValues([hdr]);
+    headerRange.setFontWeight("bold");
+    headerRange.setBackground(CONFIGPlan.HEADER_BG);
+    headerRange.setFontColor(CONFIGPlan.HEADER_FONT);
+    sheet.setFrozenRows(1);
+    sheet.getRange(2, 1, rows.length, hdr.length).setValues(rows);
+    // Same footer convention as the three grids: "Last Export:" + a stamp.
+    const stampRow = rows.length + 3;
+    sheet.getRange(stampRow, 1).setValue("Last Export:");
+    sheet.getRange(stampRow, 2).setValue(new Date());
+    const withEmail = rows.filter((r) => r[3]).length;
+    Logger.log(
+      `ℹ️ [${label}] "${CONFIGPlan.TEMPO_USERS_SHEET}": ${rows.length} account(s), ${withEmail} with an email, ` +
+        `${rows.length - withEmail} without (profile hides it, or the Jira call failed).`,
+    );
+    return rows.length;
+  } catch (e) {
+    Logger.log(`⚠️ [${label}] "${CONFIGPlan.TEMPO_USERS_SHEET}" not written (${e.message}) — the hour grids are unaffected.`);
+    return 0;
+  }
 }
 
 // ── SECTION: HOUR DISTRIBUTION LOGIC ─────────────────────────

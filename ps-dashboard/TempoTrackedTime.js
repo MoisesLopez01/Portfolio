@@ -32,7 +32,13 @@ const CONFIGLogged = {
       : "2026-05-25"; // standalone fallback — TempoPlanExport.js not loaded
   },
   get TO_DATE()   { return fmtDate_(new Date()); }, // always today, evaluated on every access
-  DIAG_PER_WORKLOG: true,
+  // OFF since 2026-10-28 (2026.W44): one Logger line per worklog and then one
+  // per grouped row (~25,000 lines a run) was the whole difference between a
+  // 28-minute run and the 30-minute trigger ceiling — the export timed out on
+  // Oct 24, 27 and 28 inside that loop (Apps Script "Exceeded maximum
+  // execution time"), leaving the Tempo Tracked Time tab stale for every
+  // dashboard. Flip to true only for a one-off manual run from the editor.
+  DIAG_PER_WORKLOG: false,
   API_BATCH_SIZE:   50,
   // Classic Epic Link custom field (matches CONFIGJ.EPIC_LINK_FIELD in
   // "Jira Backlog.js"). Team-managed projects link via parent instead.

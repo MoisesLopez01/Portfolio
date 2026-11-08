@@ -127,6 +127,13 @@ function fetchTempoCapacity() {
       Logger.log(`⚠️ Name normalization skipped (${e.message}) — run normalizeAllNames() manually.`);
     }
 
+    // The identity tab (TempoPlanExport.js, 2026-10-28): account id, Tempo
+    // name, mapped name and Jira email per team member — the weekly refresh
+    // alongside the daily one from the plan export.
+    if (typeof writeTempoUsersSheet_ === "function") {
+      writeTempoUsersSheet_(SpreadsheetApp.getActiveSpreadsheet(), teamInfoById, "fetchTempoCapacity");
+    }
+
     Logger.log(
       `✅ [fetchTempoCapacity] Done. ${grid.rows.length} rocketeers × ${grid.isoWeeks.length} weeks.`,
     );
