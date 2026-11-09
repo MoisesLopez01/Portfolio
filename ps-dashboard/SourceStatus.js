@@ -367,3 +367,60 @@ function withSourceStatus_(key, fn) {
   });
   return result;
 }
+
+// ── Edit handler (installable on-edit, Goals + PTO workbooks) ─
+
+// Public because installable triggers cannot call private (_) functions.
+// Deliberately NOT gated with requireMaintainer_: it runs for whichever colleague
+// edited the sheet. It acts only on a genuine edit event — google.script.run can
+// pass JSON only, never a live Range with methods — and the most it can do is
+// stamp "now" on the goals or pto ledger row. Allow-listed in
+// tests/callable-surface-checks.js for that reason.
+function onWatchedEdit(e) {
+  if (!e || !e.range || typeof e.range.getRow !== "function" ||
+      !e.source || typeof e.source.getId !== "function") return;
+  try {
+    var ids = getExternalSSIds_();
+    var srcId = e.source.getId();
+    var sheet = e.range.getSheet();
+    var sheetName = sheet.getName();
+    var edit = { row: e.range.getRow(), numRows: e.range.getNumRows(),
+                 col: e.range.getColumn(), numCols: e.range.getNumColumns() };
+    var now = new Date();
+    var lastRow = edit.row + edit.numRows - 1;
+
+    if (srcId === ids.ptoAccum && sheetName === SOURCE_STATUS.PTO_SHEET) {
+      var watch = { firstRow: SOURCE_STATUS.PTO_FIRST_ROW, firstCol: SOURCE_STATUS.PTO_FIRST_COL,
+                    lastCol: SOURCE_STATUS.PTO_LAST_COL };
+      if (!editTouchesRange_SS_(edit, watch)) return;
+      recordSourceStatus_("pto", {
+        status: "ok", lastUpdated: now, coversPeriod: SOURCE_STATUS.PTO_SHEET + "!A2:N",
+        detail: "Edited rows " + Math.max(edit.row, 2) + "–" + lastRow,
+      });
+      return;
+    }
+
+    if (srcId === ids.goals && sheetName === CONFIG_PS.SHEET_GOALS) {
+      var first = Math.max(edit.row, 2);
+      if (lastRow < first) return;
+      var hdr = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
+        .map(function (h) { return String(h).trim().toLowerCase(); });
+      var qCol = hdr.indexOf(SOURCE_STATUS.GOALS_QUARTER_HEADER);
+      if (qCol === -1) {
+        recordSourceStatus_("goals", { status: "failed",
+          detail: "Cannot read: RD column missing: Fiscal Quarter. Headers found: " + hdr.join(", ") });
+        return;
+      }
+      var quarters = sheet.getRange(first, qCol + 1, lastRow - first + 1, 1).getValues()
+        .map(function (r) { return r[0]; });
+      var ctx = computeFiscalContext_(now);
+      if (!goalsEditQualifies_SS_(quarters, ctx)) return;
+      recordSourceStatus_("goals", {
+        status: "ok", lastUpdated: now, coversPeriod: ctx.goalsQuarter,
+        detail: "Edit touched " + (lastRow - first + 1) + " row(s) incl. " + ctx.goalsQuarter,
+      });
+    }
+  } catch (err) {
+    Logger.log("⚠️ [onWatchedEdit] " + err.message);
+  }
+}

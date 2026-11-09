@@ -283,6 +283,44 @@ eq('blocked run returns result', withSourceStatus_('kudos', () => ({ ok: false }
 eq('blocked run records nothing', CALLS.length, before);
 recordSourceStatus_ = realRecord;
 
+// ── Task 5: edit handler ─────────────────────────────────────────────────────
+const EDITS = [];
+recordSourceStatus_ = function (k, f) { EDITS.push([k, f]); return true; };
+function evt(ssId, sheet, row, numRows, col, numCols) {
+  return {
+    source: { getId: () => ssId },
+    range: { getRow: () => row, getNumRows: () => numRows, getColumn: () => col, getNumColumns: () => numCols,
+             getSheet: () => sheet },
+  };
+}
+const ptoSheet = { getName: () => '2023 RD' };
+onWatchedEdit(evt(CONFIG_PS.PTO_ACCUM_SS_ID, ptoSheet, 5, 10, 1, 14));
+eq('PTO paste stamps pto', [EDITS[0][0], EDITS[0][1].status, EDITS[0][1].lastUpdated instanceof Date], ['pto', 'ok', true]);
+onWatchedEdit(evt(CONFIG_PS.PTO_ACCUM_SS_ID, ptoSheet, 1, 1, 1, 3));
+eq('PTO header-only edit ignored', EDITS.length, 1);
+onWatchedEdit(evt(CONFIG_PS.PTO_ACCUM_SS_ID, { getName: () => 'Accumulation Cost' }, 5, 1, 1, 1));
+eq('PTO other tab ignored', EDITS.length, 1);
+onWatchedEdit({ range: {}, source: {} });
+onWatchedEdit({ range: { getRow: 5 }, source: { getId: 'x' } });
+onWatchedEdit(undefined);
+eq('JSON-only (google.script.run) calls ignored', EDITS.length, 1);
+
+const curQ = computeFiscalContext_(new Date()).goalsQuarter;
+const goalsSheet = Object.assign(fakeSheet([
+  ['Rocketeer', 'Goal ID', 'Fiscal Quarter'], ['Ana', 'G1', curQ], ['Luis', 'G2', 'FY20Q1'],
+]), { getName: () => 'RD' });
+onWatchedEdit(evt(CONFIG_PS.GOALS_SS_ID, goalsSheet, 3, 1, 1, 3));
+eq('goals edit on old quarter ignored', EDITS.length, 1);
+onWatchedEdit(evt(CONFIG_PS.GOALS_SS_ID, goalsSheet, 1, 3, 1, 3));
+eq('goals paste incl. current quarter stamps', [EDITS[1][0], EDITS[1][1].status, EDITS[1][1].coversPeriod], ['goals', 'ok', curQ]);
+const noFq = Object.assign(fakeSheet([['Rocketeer', 'Goal ID'], ['Ana', 'G1']]), { getName: () => 'RD' });
+onWatchedEdit(evt(CONFIG_PS.GOALS_SS_ID, noFq, 2, 1, 1, 2));
+eq('goals missing Fiscal Quarter → failed', [EDITS[2][0], EDITS[2][1].status], ['goals', 'failed']);
+ck('goals failure lists headers', /Headers found: rocketeer, goal id/.test(EDITS[2][1].detail));
+recordSourceStatus_ = realRecord;
+global.SpreadsheetApp = realSpreadsheetApp;
+global.LockService = realLockService;
+
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 console.log('source-status-checks: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

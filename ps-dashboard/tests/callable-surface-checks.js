@@ -30,6 +30,11 @@ const ALLOWED_UNGATED = new Set([
   'doGet',
   // Reports only on the caller's own session; leaks nothing about anyone else.
   'whoAmI',
+  // Installable on-edit handler for the Goals/PTO workbooks (SourceStatus.js). Runs as
+  // whichever colleague edited, so it cannot require an admin. It returns at once unless
+  // given a live Range (impossible over google.script.run, which carries JSON only), and
+  // its only effect is stamping "now" on one Source Status row.
+  'onWatchedEdit',
 ]);
 
 // A gate is any of these appearing inside the function body.
