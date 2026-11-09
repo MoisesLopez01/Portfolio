@@ -436,6 +436,148 @@ runSourceChecks_ = realRunChecks; evaluatedRows_SS_ = realEvalRows; recordSource
 global.PropertiesService = realProps;
 delete global.MailApp; delete global.Session; delete global.ScriptApp;
 
+// ── Review fixes: checks harness (fake services) ─────────────────────────────
+const realScriptApp8 = global.ScriptApp, realSession8 = global.Session, realMail8 = global.MailApp,
+      realLogger8 = global.Logger, realSA8 = global.SpreadsheetApp, realProps8 = global.PropertiesService;
+function trig(handler, src) { return { handler: handler, sourceId: src || null }; }
+function allTriggers8() {
+  return [trig('fetchTempoLoggedTime'), trig('fetchTempoPlannedTime'), trig('fetchTempoCapacity'),
+          trig('onWatchedEdit', CONFIG_PS.GOALS_SS_ID), trig('onWatchedEdit', CONFIG_PS.PTO_ACCUM_SS_ID),
+          trig('checkSourcesDaily'), trig('sendSourceHealthDigest')];
+}
+function ledgerRow8(h, key) { return h.ledger.v.filter(r => r[0] === key)[0]; }
+function harness8(o) {
+  o = o || {};
+  const h = { props: Object.assign({ SOURCE_LEDGER_SS_ID: 'DASH' }, o.props), created: [], deleted: 0,
+              mails: [], logs: [], triggers: o.triggers || allTriggers8(), triggersThrow: !!o.triggersThrow };
+  h.ledger = fakeSheet([]); seedLedger_SS_(h.ledger);
+  Object.keys(o.rows || {}).forEach(k => {
+    const r = ledgerRow8(h, k), f = o.rows[k];
+    if (f.status) r[5] = f.status;
+    if (f.detail != null) r[6] = f.detail;
+    if (f.lastUpdated) r[3] = f.lastUpdated;
+  });
+  const sheets = {
+    DASH: { 'Source Status': h.ledger, '3. RCR': fakeSheet([['Employee Name', 'Oct 26'], ['A', 1.2]]) },
+  };
+  sheets[CONFIG_PS.GOALS_SS_ID] = { RD: fakeSheet([['Rocketeer', 'Fiscal Quarter'], ['Ana', 'FY27Q2']]) };
+  sheets[CONFIG_PS.PTO_ACCUM_SS_ID] = { '2023 RD': fakeSheet([['a', 'b']]) };
+  sheets[CONFIG_PS.ROSTER_SS_ID] = { Data: fakeSheet(o.rosterVals || [['Employee Number', 'Name'], [1, 'Ana']]) };
+  const wb = id => ({ getId: () => id, getSheetByName: n => (sheets[id] || {})[n] || null,
+                      insertSheet: () => h.ledger });
+  global.SpreadsheetApp = { getActiveSpreadsheet: () => wb('DASH'), openById: id => wb(id) };
+  global.PropertiesService = { getScriptProperties: () => ({
+    getProperty: k => (h.props[k] == null ? null : h.props[k]), getProperties: () => Object.assign({}, h.props),
+    setProperty: (k, v) => { h.props[k] = v; } }) };
+  global.Session = { getEffectiveUser: () => ({ getEmail: () => o.user || 'me@x.com' }) };
+  global.MailApp = { sendEmail: m => h.mails.push(m) };
+  global.Logger = { log: m => h.logs.push(String(m)) };
+  const mk = (handler, src) => ({ getHandlerFunction: () => handler, getTriggerSourceId: () => src || null });
+  const chain = (handler, src) => {
+    const c = { onEdit: () => c, everyDays: () => c, atHour: () => c, onWeekDay: () => c, timeBased: () => c,
+      forSpreadsheet: id => { src = id; return c; },
+      create: () => { h.triggers.push(trig(handler, src)); h.created.push(handler); } };
+    return c;
+  };
+  global.ScriptApp = {
+    WeekDay: { MONDAY: 'MON' },
+    getProjectTriggers: () => {
+      if (h.triggersThrow) throw new Error('triggers unavailable');
+      return h.triggers.map(t => mk(t.handler, t.sourceId));
+    },
+    deleteTrigger: t => { h.deleted++; h.triggers = h.triggers.filter(x => x.handler !== t.getHandlerFunction()); },
+    newTrigger: handler => chain(handler),
+  };
+  return h;
+}
+function restore8() {
+  global.ScriptApp = realScriptApp8; global.Session = realSession8; global.MailApp = realMail8;
+  global.Logger = realLogger8; global.SpreadsheetApp = realSA8; global.PropertiesService = realProps8;
+}
+const ME = 'me@x.com';
+
+// 1a. stale snapshot: a trigger flag written this run must survive the later probe
+let h8 = harness8({ props: { SOURCE_TRIGGER_OWNER: ME },
+  triggers: allTriggers8().filter(t => !(t.handler === 'onWatchedEdit' && t.sourceId === CONFIG_PS.GOALS_SS_ID)),
+  rows: { goals: { status: 'failed', detail: 'Cannot read: x' } } });
+runSourceChecks_();
+let g8 = ledgerRow8(h8, 'goals');
+eq('1a goals keeps the Trigger missing flag', [g8[5], /^Trigger missing:/.test(g8[6])], ['failed', true]);
+restore8();
+
+// 1b. roster change while its trigger is missing keeps the failure, updates lastUpdated
+h8 = harness8({ props: { SOURCE_TRIGGER_OWNER: ME, SOURCE_ROSTER_FP: '9:old' },
+  triggers: allTriggers8().filter(t => t.handler !== 'checkSourcesDaily'),
+  rows: { roster: { status: 'ok' } } });
+runSourceChecks_();
+let r8 = ledgerRow8(h8, 'roster');
+eq('1b roster stays failed with trigger reason', [r8[5], /^Trigger missing:/.test(r8[6])], ['failed', true]);
+ck('1b roster lastUpdated refreshed', r8[3] instanceof Date);
+restore8();
+
+// 2. partial failure: triggers step throws, the rest still runs and the email still sends
+h8 = harness8({ props: { SOURCE_TRIGGER_OWNER: ME }, triggersThrow: true,
+  rows: { tempo_plan: { status: 'ok', lastUpdated: new Date(Date.now() - 10 * D) } } });
+const errs8 = runSourceChecks_();
+ck('2 errors returned', Array.isArray(errs8) && errs8.length === 1 && /triggers unavailable/.test(errs8[0]));
+ck('2 SI and RCR still recorded', ledgerRow8(h8, 'si')[6] !== 'awaiting first update' &&
+   ledgerRow8(h8, 'rcr')[6] !== 'awaiting first update');
+const sent8 = sendSourceHealthDigest();
+eq('2 digest still sends', sent8.sent, true);
+ck('2 body names the checks that could not run', /Checks that could not run: .*triggers unavailable/.test(h8.mails[0].body));
+restore8();
+h8 = harness8({ props: { SOURCE_TRIGGER_OWNER: ME }, triggersThrow: true });
+eq('2 nothing to report', sendSourceHealthDigest(), { sent: false });
+ck('2 digest row notes partial failure', /^Nothing to report \(checks partly failed: .*triggers unavailable/.test(ledgerRow8(h8, 'digest')[6]));
+restore8();
+h8 = harness8({ props: { SOURCE_TRIGGER_OWNER: ME }, triggersThrow: true });
+previewSourceHealthDigest();
+ck('2 preview body names the failed checks', /Checks that could not run/.test(h8.mails[0].body));
+restore8();
+
+// 3. single trigger owner
+h8 = harness8({ props: { SOURCE_TRIGGER_OWNER: 'other@x.com' }, triggers: [] });
+let own8 = null;
+try { installSourceStatusTriggers(); } catch (e) { own8 = e.message; }
+eq('3 installer refuses a different owner',
+   own8, 'Source Status triggers belong to other@x.com; run installSourceStatusTriggers as that account, or clear SOURCE_TRIGGER_OWNER');
+eq('3 refused installer created nothing', h8.created.length, 0);
+restore8();
+h8 = harness8({ triggers: [] });
+installSourceStatusTriggers();
+eq('3 installer records the owner', h8.props.SOURCE_TRIGGER_OWNER, ME);
+ck('3 installer created its triggers', h8.created.indexOf('checkSourcesDaily') !== -1 && h8.created.indexOf('sendSourceHealthDigest') !== -1);
+ck('3 installer warns when Tempo triggers are not visible', h8.logs.some(l => /Tempo triggers are not owned by this account/.test(l)));
+restore8();
+h8 = harness8({ props: { SOURCE_TRIGGER_OWNER: 'other@x.com' }, triggers: [] });
+runSourceChecks_();
+ck('3 non-owner skips the trigger check', !h8.ledger.v.some(r => /^Trigger missing/.test(String(r[6]))));
+restore8();
+h8 = harness8({ triggers: [] });
+runSourceChecks_();
+ck('3 unset owner skips the trigger check', !h8.ledger.v.some(r => /^Trigger missing/.test(String(r[6]))));
+restore8();
+
+// 4. rule rows go stale when their writer stops
+const chk = (key, ms, status) => evaluateSourceStatus_(def(key), { status: status || 'ok', lastChecked: at(ms) }, NOW);
+eq('4 digest checked 9 days ago → stale', chk('digest', 9 * D).status, 'stale');
+ck('4 digest stale detail names its trigger', /^Not checked for 9 days — is sendSourceHealthDigest running\?$/.test(chk('digest', 9 * D).detail));
+eq('4 digest checked 7 days ago → ok', chk('digest', 7 * D).status, 'ok');
+eq('4 si checked 3 days ago → stale', chk('si', 3 * D).status, 'stale');
+ck('4 si stale detail names checkSourcesDaily', /is checkSourcesDaily running\?/.test(chk('si', 3 * D).detail));
+eq('4 rcr pending checked 3 days ago → stale', chk('rcr', 3 * D, 'pending').status, 'stale');
+eq('4 roster checked 3 days ago → stale', evaluateSourceStatus_(def('roster'), { lastUpdated: at(H), lastChecked: at(3 * D) }, NOW).status, 'stale');
+eq('4 no lastChecked → unchanged', evaluateSourceStatus_(def('digest'), { status: 'ok' }, NOW).status, 'ok');
+eq('4 failed stays failed', chk('si', 3 * D, 'failed').status, 'failed');
+
+// 5. an install-failure reason is not rewritten by the daily check
+h8 = harness8({ props: { SOURCE_TRIGGER_OWNER: ME },
+  triggers: allTriggers8().filter(t => !(t.handler === 'onWatchedEdit' && t.sourceId === CONFIG_PS.GOALS_SS_ID)),
+  rows: { goals: { status: 'failed', detail: 'Trigger missing: install failed — no edit access' } } });
+runSourceChecks_();
+eq('5 install failure reason kept', ledgerRow8(h8, 'goals')[6], 'Trigger missing: install failed — no edit access');
+restore8();
+
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 console.log('source-status-checks: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

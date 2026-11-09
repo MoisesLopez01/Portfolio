@@ -16,6 +16,7 @@ var SOURCE_STATUS = {
   SI_LAG_DAYS: 14,
   ROSTER_FP_PROP: "SOURCE_ROSTER_FP",
   LEDGER_SS_PROP: "SOURCE_LEDGER_SS_ID",
+  TRIGGER_OWNER_PROP: "SOURCE_TRIGGER_OWNER",
   DIGEST_RECIPIENTS_PROP: "SOURCE_DIGEST_RECIPIENTS",
   DASHBOARD_URL_PROP: "SOURCE_DASHBOARD_URL",
   // staleHours: null = never stale. cadenceHours: used for "Next expected".
@@ -37,13 +38,13 @@ var SOURCE_STATUS = {
     { key: "pto",            label: "PTO (2023 RD)",  staleHours: 360, cadenceHours: null, digest: false,
       trigger: "onWatchedEdit", watch: "ptoAccum", installer: "installSourceStatusTriggers",
       action: "Paste the latest PTO export into the 2023 RD tab." },
-    { key: "roster",         label: "Roster",         staleHours: null, cadenceHours: null, digest: false,
+    { key: "roster",         label: "Roster",         staleHours: null, checkStaleHours: 50, cadenceHours: null, digest: false,
       trigger: "checkSourcesDaily", installer: "installSourceStatusTriggers", action: "" },
     { key: "kudos",          label: "Kudos",          staleHours: null, cadenceHours: null, digest: false,
       trigger: null, action: "Run runKudosNormalizer." },
-    { key: "si",             label: "Small Improvements", rule: true, digest: false, trigger: null, action: "" },
-    { key: "rcr",            label: "RCR · revenue ÷ compensation (TCC)", rule: true, digest: false, trigger: null, action: "" },
-    { key: "digest",         label: "Monday digest",  rule: true, digest: false,
+    { key: "si",             label: "Small Improvements", rule: true, checkStaleHours: 50, digest: false, trigger: null, action: "" },
+    { key: "rcr",            label: "RCR · revenue ÷ compensation (TCC)", rule: true, checkStaleHours: 50, digest: false, trigger: null, action: "" },
+    { key: "digest",         label: "Monday digest",  rule: true, checkStaleHours: 192, digest: false,
       trigger: "sendSourceHealthDigest", installer: "installSourceStatusTriggers", action: "" },
   ],
 };
@@ -108,6 +109,15 @@ function evaluateSourceStatus_(def, row, now) {
              " (limit " + limitText_SS_(def.staleHours) + ")";
   } else {
     status = "ok";
+  }
+
+  // A row whose writer (daily check / digest) stopped must show it, not stay green.
+  var chk = isDate_SS_(row.lastChecked) ? row.lastChecked : null;
+  if (def.checkStaleHours && chk && (status === "ok" || status === "pending") &&
+      now.getTime() - chk.getTime() > def.checkStaleHours * 3600000) {
+    status = "stale";
+    detail = "Not checked for " + ageText_SS_(now.getTime() - chk.getTime()) + " — is " +
+             (def.trigger || "checkSourcesDaily") + " running?";
   }
 
   return {
@@ -504,67 +514,123 @@ function recordIf_SS_(key, fields) {
   if (fields) recordSourceStatus_(key, fields);
 }
 
+// Keeps the in-memory snapshot in step with what was just written, so a later step
+// never judges a row by its state from before this run.
+function noteWrite_SS_(rows, key, fields) {
+  rows[key] = Object.assign({}, rows[key] || {}, fields);
+}
+
+function writeTracked_SS_(rows, key, fields) {
+  if (!fields) return;
+  recordSourceStatus_(key, fields);
+  noteWrite_SS_(rows, key, fields);
+}
+
+function isTriggerFlag_SS_(row) {
+  return !!row && row.status === "failed" && String(row.detail || "").indexOf("Trigger missing:") === 0;
+}
+
+// getProjectTriggers() only lists the CURRENT user's triggers, so the trigger check is
+// meaningful only for the account that owns them (SOURCE_TRIGGER_OWNER, set by the installer).
+function isTriggerOwner_SS_(props) {
+  var owner = props.getProperty(SOURCE_STATUS.TRIGGER_OWNER_PROP);
+  return !!owner && owner === Session.getEffectiveUser().getEmail();
+}
+
 // Order matters: trigger flags → probes → roster → SI → RCR, so the rule rows written
-// last carry today's computed state.
+// last carry today's computed state. Each step is isolated: one failing step is logged
+// and reported in the returned array of messages, and the others still run.
 function runSourceChecks_() {
   var now = new Date();
   var props = PropertiesService.getScriptProperties();
   var ids = getExternalSSIds_();
   var rows = readLedgerRows_SS_(ledgerSheet_SS_()).rows;
   var defs = sourceDefs_(props.getProperties());
+  var errors = [];
+  function step(name, fn) {
+    try { fn(); } catch (e) {
+      Logger.log("⚠️ [runSourceChecks_] " + name + ": " + e.message);
+      errors.push(name + ": " + e.message);
+    }
+  }
 
   // 1. Missing triggers (catches the 2026.W39 silent stop at its cause)
-  var actual = ScriptApp.getProjectTriggers().map(function (t) {
-    var sid = null;
-    try { sid = t.getTriggerSourceId(); } catch (e) {}
-    return { handler: t.getHandlerFunction(), sourceId: sid };
-  });
-  var missing = missingTriggers_SS_(expectedTriggers_SS_(defs, ids), actual);
-  expectedTriggers_SS_(defs, ids).forEach(function (exp) {
-    var miss = missing.filter(function (m) { return m.key === exp.key; })[0];
-    recordIf_SS_(exp.key, flagOutcome_SS_(rows[exp.key], miss ? "run " + miss.installer : null, "Trigger missing"));
+  step("triggers", function () {
+    if (!isTriggerOwner_SS_(props)) {
+      Logger.log("ℹ️ [runSourceChecks_] trigger check skipped: SOURCE_TRIGGER_OWNER is unset or another account");
+      return;
+    }
+    var actual = ScriptApp.getProjectTriggers().map(function (t) {
+      var sid = null;
+      try { sid = t.getTriggerSourceId(); } catch (e) {}
+      return { handler: t.getHandlerFunction(), sourceId: sid };
+    });
+    var expected = expectedTriggers_SS_(defs, ids);
+    var missing = missingTriggers_SS_(expected, actual);
+    expected.forEach(function (exp) {
+      var miss = missing.filter(function (m) { return m.key === exp.key; })[0];
+      // Keep an install-failure reason the installer already wrote.
+      if (miss && isTriggerFlag_SS_(rows[exp.key])) return;
+      writeTracked_SS_(rows, exp.key,
+        flagOutcome_SS_(rows[exp.key], miss ? "run " + miss.installer : null, "Trigger missing"));
+    });
   });
 
   // 2. Probes: Goals RD + Fiscal Quarter, PTO 2023 RD
-  [["goals", ids.goals, CONFIG_PS.SHEET_GOALS, SOURCE_STATUS.GOALS_QUARTER_HEADER],
-   ["pto", ids.ptoAccum, SOURCE_STATUS.PTO_SHEET, null]].forEach(function (p) {
-    var problem;
-    try { problem = probeSheet_SS_(p[1], p[2], p[3]); } catch (e) { problem = e.message; }
-    recordIf_SS_(p[0], flagOutcome_SS_(rows[p[0]], problem, "Cannot read"));
+  step("probes", function () {
+    [["goals", ids.goals, CONFIG_PS.SHEET_GOALS, SOURCE_STATUS.GOALS_QUARTER_HEADER],
+     ["pto", ids.ptoAccum, SOURCE_STATUS.PTO_SHEET, null]].forEach(function (p) {
+      var problem;
+      try { problem = probeSheet_SS_(p[1], p[2], p[3]); } catch (e) { problem = e.message; }
+      writeTracked_SS_(rows, p[0], flagOutcome_SS_(rows[p[0]], problem, "Cannot read"));
+    });
   });
 
   // 3. Roster fingerprint
-  try {
-    var rsh = SpreadsheetApp.openById(ids.roster).getSheetByName(CONFIG_PS.SHEET_ROSTER);
-    if (!rsh) throw new Error('tab "' + CONFIG_PS.SHEET_ROSTER + '" not found');
-    var vals = rsh.getDataRange().getValues();
-    var fp = fingerprint_SS_(vals);
-    var change = rosterCheck_SS_(props.getProperty(SOURCE_STATUS.ROSTER_FP_PROP), fp, vals.length - 1, now);
-    props.setProperty(SOURCE_STATUS.ROSTER_FP_PROP, fp);
-    var restore = flagOutcome_SS_(rows.roster, null, "Cannot read");
-    recordSourceStatus_("roster", Object.assign({}, restore || {}, change || {}));
-  } catch (e) {
-    recordSourceStatus_("roster", flagOutcome_SS_(rows.roster, e.message, "Cannot read"));
-  }
+  step("roster", function () {
+    try {
+      var rsh = SpreadsheetApp.openById(ids.roster).getSheetByName(CONFIG_PS.SHEET_ROSTER);
+      if (!rsh) throw new Error('tab "' + CONFIG_PS.SHEET_ROSTER + '" not found');
+      var vals = rsh.getDataRange().getValues();
+      var fp = fingerprint_SS_(vals);
+      var change = rosterCheck_SS_(props.getProperty(SOURCE_STATUS.ROSTER_FP_PROP), fp, vals.length - 1, now);
+      props.setProperty(SOURCE_STATUS.ROSTER_FP_PROP, fp);
+      var cur = rows.roster || {};
+      if (cur.status === "failed" && String(cur.detail || "").indexOf("Cannot read:") !== 0) {
+        // Failed for another reason (e.g. Trigger missing): keep it, only record the change time.
+        writeTracked_SS_(rows, "roster", change && change.lastUpdated ? { lastUpdated: change.lastUpdated } : null);
+      } else {
+        var restore = flagOutcome_SS_(cur, null, "Cannot read");
+        writeTracked_SS_(rows, "roster", Object.assign({}, restore || {}, change || {}));
+      }
+    } catch (e) {
+      writeTracked_SS_(rows, "roster", flagOutcome_SS_(rows.roster, e.message, "Cannot read"));
+    }
+  });
 
   // 4. Small Improvements (fixed date rule)
-  recordSourceStatus_("si", siStatus_SS_(now));
+  step("small improvements", function () { writeTracked_SS_(rows, "si", siStatus_SS_(now)); });
 
   // 5. RCR (bound spreadsheet, "3. RCR")
-  try {
-    var rcr = ledgerSpreadsheet_SS_().getSheetByName(CONFIG_PS.SHEET_RCR);
-    if (!rcr) throw new Error('tab "' + CONFIG_PS.SHEET_RCR + '" not found');
-    var rv = rcr.getDataRange().getValues();
-    recordSourceStatus_("rcr", rcrStatus_SS_(rv[0].map(String), rv.slice(1), now));
-  } catch (e) {
-    recordSourceStatus_("rcr", { status: "failed", detail: "Cannot read: " + e.message });
-  }
+  step("rcr", function () {
+    try {
+      var rcr = ledgerSpreadsheet_SS_().getSheetByName(CONFIG_PS.SHEET_RCR);
+      if (!rcr) throw new Error('tab "' + CONFIG_PS.SHEET_RCR + '" not found');
+      var rv = rcr.getDataRange().getValues();
+      writeTracked_SS_(rows, "rcr", rcrStatus_SS_(rv[0].map(String), rv.slice(1), now));
+    } catch (e) {
+      writeTracked_SS_(rows, "rcr", { status: "failed", detail: "Cannot read: " + e.message });
+    }
+  });
+
+  return errors;
 }
 
 // Daily 05:00 trigger handler.
 function checkSourcesDaily() {
   requireMaintainer_("checkSourcesDaily");
-  runSourceChecks_();
+  var errs = runSourceChecks_();
+  if (errs.length) Logger.log("⚠️ [checkSourcesDaily] checks that could not run: " + errs.join("; "));
 }
 
 // ── Installer (run once from the editor; safe to re-run) ────
@@ -572,6 +638,14 @@ function checkSourcesDaily() {
 function installSourceStatusTriggers() {
   requireMaintainer_("installSourceStatusTriggers");
   var props = PropertiesService.getScriptProperties();
+  // getProjectTriggers() only sees the running account's triggers: keep one owner.
+  var me = Session.getEffectiveUser().getEmail();
+  var owner = props.getProperty(SOURCE_STATUS.TRIGGER_OWNER_PROP);
+  if (owner && owner !== me) {
+    throw new Error("Source Status triggers belong to " + owner +
+      "; run installSourceStatusTriggers as that account, or clear " + SOURCE_STATUS.TRIGGER_OWNER_PROP);
+  }
+  props.setProperty(SOURCE_STATUS.TRIGGER_OWNER_PROP, me);
   props.setProperty(SOURCE_STATUS.LEDGER_SS_PROP, SpreadsheetApp.getActiveSpreadsheet().getId());
   var ids = getExternalSSIds_();
 
@@ -579,6 +653,11 @@ function installSourceStatusTriggers() {
   ScriptApp.getProjectTriggers()
     .filter(function (t) { return mine.indexOf(t.getHandlerFunction()) !== -1; })
     .forEach(function (t) { ScriptApp.deleteTrigger(t); });
+
+  var tempoHandlers = ["fetchTempoLoggedTime", "fetchTempoPlannedTime", "fetchTempoCapacity"];
+  if (!ScriptApp.getProjectTriggers().some(function (t) { return tempoHandlers.indexOf(t.getHandlerFunction()) !== -1; })) {
+    Logger.log("⚠️ Tempo triggers are not owned by this account — trigger checks would report them missing");
+  }
 
   // ledgerSheet_SS_() creates and seeds the tab (one pending row per source). Only keys
   // missing from an older, pre-seeding tab are added here, so a re-run never overwrites state.
