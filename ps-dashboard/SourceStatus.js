@@ -453,3 +453,162 @@ function onWatchedEdit(e) {
     Logger.log("⚠️ [onWatchedEdit] " + err.message);
   }
 }
+
+// ── Reading the ledger ──────────────────────────────────────
+
+// Evaluated rows (with Date fields) for every defined source, in config order.
+// A source with no row evaluates to pending.
+function evaluatedRows_SS_(now) {
+  now = now || new Date();
+  var sh = ledgerSpreadsheet_SS_().getSheetByName(SOURCE_STATUS.SHEET);
+  var rows = sh ? readLedgerRows_SS_(sh).rows : {};
+  var props = PropertiesService.getScriptProperties().getProperties();
+  return sourceDefs_(props).map(function (d) { return evaluateSourceStatus_(d, rows[d.key], now); });
+}
+
+// google.script.run cannot carry Date objects: labels only.
+function toClientSource_SS_(r) {
+  return {
+    key: r.key, label: r.label, digest: r.digest, status: r.status, detail: r.detail || "",
+    coversPeriod: isDate_SS_(r.coversPeriod) ? stampLabel_SS_(r.coversPeriod) : String(r.coversPeriod || ""),
+    lastUpdatedLabel: stampLabel_SS_(r.lastUpdated),
+    nextExpectedLabel: stampLabel_SS_(r.nextExpected),
+  };
+}
+
+// For the report payload (meta.sources). Never throws; [] when there is no ledger yet.
+function readSourceStatus_() {
+  try {
+    var sh = ledgerSpreadsheet_SS_().getSheetByName(SOURCE_STATUS.SHEET);
+    if (!sh) return [];
+    return evaluatedRows_SS_(new Date()).map(toClientSource_SS_);
+  } catch (e) {
+    Logger.log("⚠️ [readSourceStatus_] " + e.message);
+    return [];
+  }
+}
+
+// ── Daily checks ────────────────────────────────────────────
+
+// Returns a problem string, or null when the tab (and optional header) is readable.
+function probeSheet_SS_(ssId, tabName, requiredHeaderLc) {
+  var sh = SpreadsheetApp.openById(ssId).getSheetByName(tabName);
+  if (!sh) return 'tab "' + tabName + '" not found';
+  if (!requiredHeaderLc) return null;
+  var hdr = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0]
+    .map(function (h) { return String(h).trim().toLowerCase(); });
+  return hdr.indexOf(requiredHeaderLc) === -1 ? 'column "' + requiredHeaderLc + '" not found in ' + tabName : null;
+}
+
+function recordIf_SS_(key, fields) {
+  if (fields) recordSourceStatus_(key, fields);
+}
+
+// Order matters: trigger flags → probes → roster → SI → RCR, so the rule rows written
+// last carry today's computed state.
+function runSourceChecks_() {
+  var now = new Date();
+  var props = PropertiesService.getScriptProperties();
+  var ids = getExternalSSIds_();
+  var rows = readLedgerRows_SS_(ledgerSheet_SS_()).rows;
+  var defs = sourceDefs_(props.getProperties());
+
+  // 1. Missing triggers (catches the 2026.W39 silent stop at its cause)
+  var actual = ScriptApp.getProjectTriggers().map(function (t) {
+    var sid = null;
+    try { sid = t.getTriggerSourceId(); } catch (e) {}
+    return { handler: t.getHandlerFunction(), sourceId: sid };
+  });
+  var missing = missingTriggers_SS_(expectedTriggers_SS_(defs, ids), actual);
+  expectedTriggers_SS_(defs, ids).forEach(function (exp) {
+    var miss = missing.filter(function (m) { return m.key === exp.key; })[0];
+    recordIf_SS_(exp.key, flagOutcome_SS_(rows[exp.key], miss ? "run " + miss.installer : null, "Trigger missing"));
+  });
+
+  // 2. Probes: Goals RD + Fiscal Quarter, PTO 2023 RD
+  [["goals", ids.goals, CONFIG_PS.SHEET_GOALS, SOURCE_STATUS.GOALS_QUARTER_HEADER],
+   ["pto", ids.ptoAccum, SOURCE_STATUS.PTO_SHEET, null]].forEach(function (p) {
+    var problem;
+    try { problem = probeSheet_SS_(p[1], p[2], p[3]); } catch (e) { problem = e.message; }
+    recordIf_SS_(p[0], flagOutcome_SS_(rows[p[0]], problem, "Cannot read"));
+  });
+
+  // 3. Roster fingerprint
+  try {
+    var rsh = SpreadsheetApp.openById(ids.roster).getSheetByName(CONFIG_PS.SHEET_ROSTER);
+    if (!rsh) throw new Error('tab "' + CONFIG_PS.SHEET_ROSTER + '" not found');
+    var vals = rsh.getDataRange().getValues();
+    var fp = fingerprint_SS_(vals);
+    var change = rosterCheck_SS_(props.getProperty(SOURCE_STATUS.ROSTER_FP_PROP), fp, vals.length - 1, now);
+    props.setProperty(SOURCE_STATUS.ROSTER_FP_PROP, fp);
+    var restore = flagOutcome_SS_(rows.roster, null, "Cannot read");
+    recordSourceStatus_("roster", Object.assign({}, restore || {}, change || {}));
+  } catch (e) {
+    recordSourceStatus_("roster", flagOutcome_SS_(rows.roster, e.message, "Cannot read"));
+  }
+
+  // 4. Small Improvements (fixed date rule)
+  recordSourceStatus_("si", siStatus_SS_(now));
+
+  // 5. RCR (bound spreadsheet, "3. RCR")
+  try {
+    var rcr = ledgerSpreadsheet_SS_().getSheetByName(CONFIG_PS.SHEET_RCR);
+    if (!rcr) throw new Error('tab "' + CONFIG_PS.SHEET_RCR + '" not found');
+    var rv = rcr.getDataRange().getValues();
+    recordSourceStatus_("rcr", rcrStatus_SS_(rv[0].map(String), rv.slice(1), now));
+  } catch (e) {
+    recordSourceStatus_("rcr", { status: "failed", detail: "Cannot read: " + e.message });
+  }
+}
+
+// Daily 05:00 trigger handler.
+function checkSourcesDaily() {
+  requireMaintainer_("checkSourcesDaily");
+  runSourceChecks_();
+}
+
+// ── Installer (run once from the editor; safe to re-run) ────
+
+function installSourceStatusTriggers() {
+  requireMaintainer_("installSourceStatusTriggers");
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty(SOURCE_STATUS.LEDGER_SS_PROP, SpreadsheetApp.getActiveSpreadsheet().getId());
+  var ids = getExternalSSIds_();
+
+  var mine = ["onWatchedEdit", "checkSourcesDaily", "sendSourceHealthDigest"];
+  ScriptApp.getProjectTriggers()
+    .filter(function (t) { return mine.indexOf(t.getHandlerFunction()) !== -1; })
+    .forEach(function (t) { ScriptApp.deleteTrigger(t); });
+
+  // ledgerSheet_SS_() creates and seeds the tab (one pending row per source). Only keys
+  // missing from an older, pre-seeding tab are added here, so a re-run never overwrites state.
+  var rows = readLedgerRows_SS_(ledgerSheet_SS_()).rows;
+  sourceDefs_().forEach(function (d) {
+    if (!rows[d.key]) recordSourceStatus_(d.key, { status: "pending", detail: "awaiting first update" });
+  });
+
+  // Edit triggers need EDIT access to each workbook for the account running this.
+  [["goals", ids.goals], ["pto", ids.ptoAccum]].forEach(function (w) {
+    try {
+      ScriptApp.newTrigger("onWatchedEdit").forSpreadsheet(w[1]).onEdit().create();
+      Logger.log("⚙️ on-edit trigger installed for " + w[0] + " (" + w[1] + ")");
+    } catch (e) {
+      recordSourceStatus_(w[0], { status: "failed", detail: "Trigger missing: install failed — " + e.message });
+      Logger.log("❌ on-edit trigger for " + w[0] + " failed: " + e.message);
+    }
+  });
+  ScriptApp.newTrigger("checkSourcesDaily").timeBased().everyDays(1).atHour(5).create();
+  ScriptApp.newTrigger("sendSourceHealthDigest").timeBased()
+    .onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(10).create();
+  Logger.log("⚙️ checkSourcesDaily daily 05:00 · sendSourceHealthDigest Monday 10:00");
+
+  // Spec §11: confirm the PTO tab and range once, in the log.
+  try {
+    var pto = SpreadsheetApp.openById(ids.ptoAccum).getSheetByName(SOURCE_STATUS.PTO_SHEET);
+    Logger.log(pto
+      ? "ℹ️ " + SOURCE_STATUS.PTO_SHEET + " headers A1:N1: " + pto.getRange(1, 1, 1, 14).getValues()[0].join(" | ")
+      : "⚠️ " + SOURCE_STATUS.PTO_SHEET + " not found in the PTO workbook");
+  } catch (e) { Logger.log("⚠️ PTO probe: " + e.message); }
+
+  runSourceChecks_();
+}

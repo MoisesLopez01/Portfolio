@@ -351,6 +351,37 @@ recordSourceStatus_ = realRecord;
 global.SpreadsheetApp = realSpreadsheetApp;
 global.PropertiesService = realProps;
 
+// ── Task 6: payload reader ───────────────────────────────────────────────────
+global.PropertiesService = { getScriptProperties: () => ({
+  getProperty: () => null, getProperties: () => ({}), setProperty() {} }) };
+global.SpreadsheetApp = {
+  getActiveSpreadsheet: () => ({
+    getId: () => 'DASH',
+    getSheetByName: n => (n === 'Source Status' ? LEDGER : null),
+    insertSheet: () => { LEDGER = fakeSheet([]); return LEDGER; },
+  }),
+  openById: () => global.SpreadsheetApp.getActiveSpreadsheet(),
+};
+LEDGER = fakeSheet([SOURCE_STATUS.HEADERS.slice(),
+  ['tempo_tracked', 'Tempo Tracked', '2026.W46', at(2 * H), NOW, 'ok', 'Run ok in 40 s', ''],
+  ['rcr', 'RCR', 'Oct 26', new Date(2026, 9, 31), NOW, 'ok', 'Oct 26 filled by Finance', ''],
+]);
+const client = readSourceStatus_();
+eq('reader returns every source', client.length, 10);
+const trc = client.filter(s => s.key === 'tempo_tracked')[0];
+eq('reader client shape', Object.keys(trc).sort(),
+   ['coversPeriod', 'detail', 'digest', 'key', 'label', 'lastUpdatedLabel', 'nextExpectedLabel', 'status']);
+eq('reader labels with ISO week', trc.lastUpdatedLabel, stampLabel_SS_(at(2 * H)));
+ck('reader output is JSON-safe (no Date objects)', JSON.stringify(client) === JSON.stringify(JSON.parse(JSON.stringify(client))) &&
+   !client.some(s => Object.values(s).some(v => v instanceof Date)));
+eq('unstamped source → pending in reader', client.filter(s => s.key === 'tempo_capacity')[0].status, 'pending');
+eq('client covers period from a Date cell is labelled', toClientSource_SS_(
+   Object.assign(evaluateSourceStatus_(def('rcr'), { coversPeriod: new Date(2026, 9, 26) }, NOW))).coversPeriod, '2026-10-26 (2026.W44)');
+LEDGER = null;
+eq('reader with no ledger tab → []', readSourceStatus_(), []);
+global.SpreadsheetApp = realSpreadsheetApp;
+global.PropertiesService = realProps;
+
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 console.log('source-status-checks: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
