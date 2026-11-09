@@ -150,6 +150,31 @@ const actual = [
 eq('missing triggers detected', missingTriggers_SS_(exp, actual).map(m => m.key + '>' + m.installer),
    ['tempo_capacity>createCapacityWeeklyTrigger', 'pto>installSourceStatusTriggers']);
 
+// ── Task 3: digest builder ───────────────────────────────────────────────────
+function evRow(key, row) { return evaluateSourceStatus_(def(key), row, NOW); }
+const allOk = sourceDefs_({}).map(d => evRow(d.key, { lastUpdated: at(H), status: d.rule ? 'ok' : '' }));
+eq('all ok → no digest', buildDigest_SS_(allOk, NOW, 'https://x'), null);
+
+const onlyInfo = allOk.map(r => (r.key === 'roster' || r.key === 'pto')
+  ? Object.assign({}, r, { status: 'stale' }) : r);
+eq('roster/pto problems never email', buildDigest_SS_(onlyInfo, NOW, ''), null);
+
+const twoBad = allOk.map(r => r.key === 'tempo_capacity' ? evRow('tempo_capacity', { lastUpdated: at(9 * D) })
+  : r.key === 'goals' ? evRow('goals', { lastUpdated: at(2 * D), status: 'failed', detail: 'Cannot read: tab "RD" not found' }) : r);
+const dg = buildDigest_SS_(twoBad, NOW, 'https://dash');
+eq('subject', dg.subject, 'PS Dashboard sources: 2 need attention (2026.W46)');
+ck('body names capacity stale', /Tempo Capacity — STALE/.test(dg.body));
+ck('body names goals failed + detail', /Goals \(RD\) — FAILED/.test(dg.body) && /tab "RD" not found/.test(dg.body));
+ck('body carries action', /Run fetchTempoCapacity/.test(dg.body));
+ck('body carries last good update with ISO week', /Last good update: 2026-10-31 \(2026\.W44\)/.test(dg.body));
+ck('body links Data Reference', /Data Reference: https:\/\/dash/.test(dg.body));
+const oneBad = allOk.map(r => r.key === 'tempo_plan' ? evRow('tempo_plan', { lastUpdated: at(10 * D) }) : r);
+eq('singular subject', buildDigest_SS_(oneBad, NOW, '').subject, 'PS Dashboard sources: 1 needs attention (2026.W46)');
+
+const sum = buildStatusSummary_SS_(twoBad);
+eq('summary lists every source', sum.split('\n').length, 10);
+ck('summary line format', /^Tempo Capacity: stale · last 2026-10-31 \(2026\.W44\)/m.test(sum));
+
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 console.log('source-status-checks: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
