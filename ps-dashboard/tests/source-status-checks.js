@@ -95,9 +95,9 @@ eq('SI on due day → ok', siStatus_SS_(new Date(2026, 9, 14, 8)).status, 'ok');
 const siJul = siStatus_SS_(new Date(2026, 6, 10, 10));
 eq('SI across FY rollover', [siJul.status, siJul.coversPeriod, ymd(siJul.nextExpected)], ['pending', 'FY26Q4', '2026-07-14']);
 
-const RH = ['Employee Name', 'Employee ID', 'Sep 26', 'Oct-26'];
+const RH = ['Employee Name', 'Employee ID', 'Sep 26', 'Oct 26'];
 const rFull = rcrStatus_SS_(RH, [['A', 1, 1.2, 1.4], ['B', 2, 0.9, '']], new Date(2026, 10, 9));
-eq('RCR Oct filled → ok', [rFull.status, rFull.coversPeriod], ['ok', 'Oct-26']);
+eq('RCR Oct filled → ok', [rFull.status, rFull.coversPeriod], ['ok', 'Oct 26']);
 eq('RCR covers through month end', ymd(rFull.lastUpdated), '2026-10-31');
 const rPend = rcrStatus_SS_(RH, [['A', 1, 1.2, ''], ['B', 2, 0.9, 'N/A']], new Date(2026, 10, 9));
 eq('RCR Oct empty → pending on Sep', [rPend.status, rPend.coversPeriod], ['pending', 'Sep 26']);
@@ -174,6 +174,25 @@ eq('singular subject', buildDigest_SS_(oneBad, NOW, '').subject, 'PS Dashboard s
 const sum = buildStatusSummary_SS_(twoBad);
 eq('summary lists every source', sum.split('\n').length, 10);
 ck('summary line format', /^Tempo Capacity: stale · last 2026-10-31 \(2026\.W44\)/m.test(sum));
+
+// ── Review fixes ─────────────────────────────────────────────────────────────
+const rFut = rcrStatus_SS_(['Employee Name', 'Employee ID', 'Oct 26', 'Nov 26', 'Dec 26'], [['A', 1, 1, 0, 0]], new Date(2026, 10, 9));
+eq('RCR ignores future/zero months', [rFut.status, rFut.coversPeriod], ['ok', 'Oct 26']);
+const rZero = rcrStatus_SS_(['Employee Name', 'Employee ID', 'Sep 26', 'Oct 26'], [['A', 1, 1.1, 0], ['B', 2, 0.9, '0']], new Date(2026, 10, 9));
+eq('RCR all-zero Oct is a placeholder', [rZero.status, rZero.coversPeriod], ['pending', 'Sep 26']);
+const rDash = rcrStatus_SS_(['Employee Name', 'Sep 26', 'Oct-26'], [['A', 1.1, 1.4]], new Date(2026, 10, 9));
+eq('RCR ignores Oct-26 header', [rDash.status, rDash.coversPeriod], ['pending', 'Sep 26']);
+eq('stale override 0 ignored', sourceDefs_({ SOURCE_STALE_HOURS_TEMPO_CAPACITY: '0' }).filter(d => d.key === 'tempo_capacity')[0].staleHours, 192);
+eq('stale override -5 ignored', sourceDefs_({ SOURCE_STALE_HOURS_TEMPO_CAPACITY: '-5' }).filter(d => d.key === 'tempo_capacity')[0].staleHours, 192);
+eq('plan 8 d - 1 h → ok', evaluateSourceStatus_(def('tempo_plan'), { lastUpdated: at(8 * D - H) }, NOW).status, 'ok');
+eq('capacity 8 d - 1 h → ok', evaluateSourceStatus_(def('tempo_capacity'), { lastUpdated: at(8 * D - H) }, NOW).status, 'ok');
+eq('goals 7 d - 1 h → ok', evaluateSourceStatus_(def('goals'), { lastUpdated: at(7 * D - H) }, NOW).status, 'ok');
+eq('pto 15 d - 1 h → ok', evaluateSourceStatus_(def('pto'), { lastUpdated: at(15 * D - H) }, NOW).status, 'ok');
+const infoBad = allOk.map(r => (r.key === 'kudos' || r.key === 'si') ? Object.assign({}, r, { status: 'failed' })
+  : r.key === 'rcr' ? Object.assign({}, r, { status: 'stale' }) : r);
+eq('kudos/si/rcr problems never email', buildDigest_SS_(infoBad, NOW, ''), null);
+[0, '0', '1,234.5', '85%'].forEach(v => ck('filled number: ' + JSON.stringify(v), isFilledNumber_SS_(v) === true));
+['', '-', '#N/A', 'N/A', '(1.2)', '1.2x', null].forEach(v => ck('not a filled number: ' + JSON.stringify(v), isFilledNumber_SS_(v) === false));
 
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 console.log('source-status-checks: ' + pass + ' passed, ' + fail + ' failed');

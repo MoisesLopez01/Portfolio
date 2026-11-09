@@ -57,7 +57,7 @@ function sourceDefs_(props) {
     var o = {};
     for (var k in d) o[k] = d[k];
     var v = props["SOURCE_STALE_HOURS_" + d.key.toUpperCase()];
-    if (v != null && String(v).trim() !== "" && !isNaN(Number(v))) o.staleHours = Number(v);
+    if (v != null && String(v).trim() !== "" && !isNaN(Number(v)) && Number(v) > 0) o.staleHours = Number(v);
     return o;
   });
 }
@@ -155,7 +155,8 @@ function siStatus_SS_(now) {
   };
 }
 
-var RCR_MONTH_RE_SS = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*[-\s]?\s*(\d{2})$/i;
+// Must match readRCR_PS_ exactly: "Oct 26" only.
+var RCR_MONTH_RE_SS = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{2})$/i;
 var MONTHS_SS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 var MONTH_ABBR_SS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -165,9 +166,10 @@ function isFilledNumber_SS_(v) {
   return s !== "" && !isNaN(parseFloat(s)) && isFinite(Number(s));
 }
 
-// Newest month column ("Oct 26" / "Oct-26") holding at least one numeric value.
+// Newest month column ("Oct 26") at or before maxSortKey that holds Finance data: at least
+// one filled number, not all of them 0 (an all-zero column is a formula placeholder).
 // Scans every fiscal year present, like readRCR_PS_ does.
-function latestRcrMonth_SS_(headers, rows) {
+function latestRcrMonth_SS_(headers, rows, maxSortKey) {
   var cols = [];
   headers.forEach(function (h, i) {
     var m = RCR_MONTH_RE_SS.exec(String(h).trim());
@@ -179,7 +181,12 @@ function latestRcrMonth_SS_(headers, rows) {
   cols.sort(function (a, b) { return b.sortKey - a.sortKey; });
   for (var k = 0; k < cols.length; k++) {
     var c = cols[k];
-    if (rows.some(function (r) { return isFilledNumber_SS_(r[c.col]); })) return c;
+    if (maxSortKey != null && c.sortKey > maxSortKey) continue;
+    var filled = [];
+    rows.forEach(function (r) {
+      if (isFilledNumber_SS_(r[c.col])) filled.push(parseFloat(String(r[c.col]).replace(/[,%\s]/g, "")));
+    });
+    if (filled.some(function (n) { return n !== 0; })) return c;
   }
   return null;
 }
@@ -187,9 +194,9 @@ function latestRcrMonth_SS_(headers, rows) {
 // RCR covers through the month end; the last closed month is pending until Finance
 // fills its column. Never stale — timing belongs to Finance.
 function rcrStatus_SS_(headers, rows, now) {
-  var latest = latestRcrMonth_SS_(headers, rows);
   var lastClosed = new Date(now.getFullYear(), now.getMonth(), 0);
   var wantKey = lastClosed.getFullYear() * 12 + lastClosed.getMonth();
+  var latest = latestRcrMonth_SS_(headers, rows, wantKey);
   var wantName = MONTH_ABBR_SS[lastClosed.getMonth()] + " " + String(lastClosed.getFullYear()).slice(-2);
   if (!latest) {
     return { status: "pending", coversPeriod: "", lastUpdated: null, nextExpected: null,
