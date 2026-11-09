@@ -467,10 +467,11 @@ function onWatchedEdit(e) {
 // ── Reading the ledger ──────────────────────────────────────
 
 // Evaluated rows (with Date fields) for every defined source, in config order.
+// Optional `sh`: a ledger sheet the caller already resolved (saves a second open).
 // A source with no row evaluates to pending.
-function evaluatedRows_SS_(now) {
+function evaluatedRows_SS_(now, sh) {
   now = now || new Date();
-  var sh = ledgerSpreadsheet_SS_().getSheetByName(SOURCE_STATUS.SHEET);
+  if (!sh) sh = ledgerSpreadsheet_SS_().getSheetByName(SOURCE_STATUS.SHEET);
   var rows = sh ? readLedgerRows_SS_(sh).rows : {};
   var props = PropertiesService.getScriptProperties().getProperties();
   return sourceDefs_(props).map(function (d) { return evaluateSourceStatus_(d, rows[d.key], now); });
@@ -491,7 +492,7 @@ function readSourceStatus_() {
   try {
     var sh = ledgerSpreadsheet_SS_().getSheetByName(SOURCE_STATUS.SHEET);
     if (!sh) return [];
-    return evaluatedRows_SS_(new Date()).map(toClientSource_SS_);
+    return evaluatedRows_SS_(new Date(), sh).map(toClientSource_SS_);
   } catch (e) {
     Logger.log("⚠️ [readSourceStatus_] " + e.message);
     return [];

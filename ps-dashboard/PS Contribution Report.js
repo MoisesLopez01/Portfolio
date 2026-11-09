@@ -4493,15 +4493,6 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
     return { label: w.label, good: d.goodCount, atRisk: d.atRiskCount, total: d.total, pct: d.score, isCurrent: w.isCurrentWeek, byEmp };
   });
 
-  // Reflect when the source spreadsheet was last modified (data last entered), not when
-  // this script ran. The file's Drive last-updated timestamp is the reliable signal —
-  // a fixed cell would just hold a static header. Falls back to now if Drive is unavailable.
-  let lastSheetEdit;
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    lastSheetEdit = DriveApp.getFileById(ss.getId()).getLastUpdated().toISOString();
-  } catch(e) { lastSheetEdit = new Date().toISOString(); }
-
   return {
     ok: true,
     userRole:         access.role,
@@ -4524,8 +4515,6 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
       generatedAt:      new Date().toISOString(),
       team:           { key: team.key, label: team.label, metrics: team.metrics },
       availableTeams: availableTeams || [],
-      lastSheetEdit,
-      trackedTimeLastExport: trackedAll._lastExport || null,
       // Source Status ledger (SourceStatus.js) — one evaluated row per data source.
       sources:          readSourceStatus_(),
       currentWeekLabel: curWeek.label,

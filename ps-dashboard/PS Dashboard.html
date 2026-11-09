@@ -1630,7 +1630,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   </div>
   <div class="team-toggle" id="teamToggle" style="display:none" role="tablist" aria-label="Org team"></div>
   <span class="week-badge" id="weekBadge">Loading…</span>
-  <span id="dataFreshnessNote" style="font-size:10px;color:var(--slate);font-weight:600;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:3px 10px;white-space:nowrap;display:none"></span>
+  <span id="dataFreshnessNote" style="font-size:10px;color:var(--slate);font-weight:600;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:3px 10px;white-space:nowrap;max-width:min(60vw,520px);overflow:hidden;text-overflow:ellipsis;display:none"></span>
   <span class="role-badge role-badge-admin" id="userRoleBadge" style="display:none"></span>
   <button class="header-btn" id="darkToggleBtn" onclick="toggleDarkMode()" title="Toggle dark mode" aria-label="Toggle dark mode">
     <svg id="darkModeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4527,7 +4527,10 @@ function sourcePillText(sources) {
     return s.label + ": " + s.status + (s.lastUpdatedLabel ? " · " + s.lastUpdatedLabel : "");
   }).join("\n");
   var bad = shown.filter(function (s) { return s.status === "stale" || s.status === "failed"; });
-  if (!bad.length) return { text: "✓ All sources current", title: title };
+  if (!bad.length) {
+    var allPending = shown.every(function (s) { return s.status === "pending"; });
+    return { text: allPending ? "↻ Data freshness: pending" : "✓ All sources current", title: title };
+  }
   return { text: "⚠ " + bad.map(function (s) { return s.label + " " + s.status; }).join(" · "), title: title };
 }
 /* SOURCE-STATUS-UI:END */

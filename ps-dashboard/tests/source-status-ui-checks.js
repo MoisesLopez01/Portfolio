@@ -38,8 +38,10 @@ ck('pill names stale source', pillBad.text === '⚠ Tempo Capacity stale');
 ck('pill tooltip lists sources', /Tempo Tracked: ok · 2026-11-09 \(2026\.W46\)/.test(pillBad.title));
 ck('pill ignores digest + pending', !/digest|RCR/.test(pillBad.text));
 ck('pill all current', sourcePillText([S[0], S[2]]).text === '✓ All sources current');
+ck('pill all pending is not "current"', sourcePillText([S[2]]).text === '↻ Data freshness: pending' && /RCR <TCC>: pending/.test(sourcePillText([S[2]]).title));
 ck('pill empty', sourcePillText([]).text === '↻ Data freshness: pending');
 
+ck('pill has ellipsis overflow style', /id="dataFreshnessNote"[^>]*text-overflow:ellipsis/.test(html));
 ck('table body placeholder present', html.indexOf('id="drSourcesBody"') !== -1);
 ck('old static Netsuite Kudos row removed', html.indexOf('<td>Kudos given</td><td>Netsuite Export</td>') === -1);
 

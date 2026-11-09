@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-09 (2026.W46)
 - **Project:** `ps-dashboard` (container-bound Apps Script, timezone America/Guatemala)
-- **Status:** design approved in brainstorming; awaiting spec review
+- **Status:** implemented on branch docs/source-status-ledger (2026.W46); pending deploy and live validation
 
 ## 1. Problem
 
@@ -44,7 +44,8 @@ Rules:
 - Columns are found by header name; rows by `Source` key. If the tab is missing, the helper recreates it with headers. The tab is created with one pending row per source.
 - On first install every row is `pending` with detail `awaiting first update`. No row is seeded from older stamps.
 - `Status` is stored at write time **and** recomputed at read time from `Last updated` and the thresholds in §4, so a source that stops updating becomes `stale` without anything running.
-- Thresholds and the digest recipient list live in a `SOURCE_STATUS` config object, each value overridable by a Script Property.
+- Thresholds and the digest recipient list live in a `SOURCE_STATUS` config object, each value overridable by a Script Property (see "Script Properties" below).
+- Rule-row freshness (`checkStaleHours`): Roster, Small Improvements and RCR rows are stale after 50 h without a check, and the digest row after 192 h (not overridable). A rule row that `checkSourcesDaily` stops refreshing therefore turns stale by itself.
 
 ## 4. Per-source rules
 
@@ -58,7 +59,7 @@ Rules:
 | Roster | `checkSourcesDaily` | the fingerprint (row count + hash of all values) of `Data` in the Roster workbook changes | informational: `ok` once stamped; `failed` if unreadable | no |
 | Kudos | `runKudosNormalizer` wrapped | each successful run | informational: `ok` once stamped; `failed` if it throws | no |
 | Small Improvements | `checkSourcesDaily` (rule) | n/a — fixed date | `ok` from quarter end + 14 days (FY27Q1 → 2026-10-14, 2026.W42; FY27Q2 → 2027-01-14, 2027.W02); `pending` before | no |
-| RCR | `checkSourcesDaily` (rule + read of `3. RCR`) | the newest month column gains values | covers through the month end; `pending` until Finance fills the month's column; never `stale` | no |
+| RCR | `checkSourcesDaily` (rule + read of `3. RCR`) | the newest month column gains values | covers through the month end; `pending` until Finance fills the month's column; never `stale` on data age (only the 50 h check-freshness rule applies). Month headers must be "Mon YY" (same as `readRCR_PS_`); months after the last closed month and all-zero columns are ignored | no |
 | Digest | `sendSourceHealthDigest` | each send or deliberate silence | `failed` if `MailApp` throws | n/a |
 
 ### Evaluated quarter for Goals
@@ -70,10 +71,10 @@ Use `computeFiscalContext_` (`PS Contribution Report.js:1551-1645`): `goalsQuart
 | Unit | File | Responsibility |
 |---|---|---|
 | `SOURCE_STATUS` config + `recordSourceStatus_(key, fields)` | new `SourceStatus.js` | find or create the row, write fields (no script lock) |
-| `withSourceStatus_(key, fn)` | `SourceStatus.js` | run `fn`; on success write `ok` + time + row count; on throw write `failed` + message, then rethrow |
-| `evaluateSourceStatus_(row, now)` | `SourceStatus.js` | pure: apply §4 thresholds, return status + next expected |
-| `onWatchedEdit_(e)` | `SourceStatus.js` | shared edit handler for Goals and PTO, configured per workbook as tab + range + key (+ quarter test for Goals) |
-| `checkSourcesDaily()` | `SourceStatus.js` | Roster fingerprint, RCR month check, SI rule date |
+| `withSourceStatus_(key, fn)` | `SourceStatus.js` | run `fn`; on success write `ok` + time + run duration (not row count); on throw write `failed` + message, then rethrow |
+| `evaluateSourceStatus_(def, row, now)` | `SourceStatus.js` | pure: apply §4 thresholds, return status + next expected |
+| `onWatchedEdit(e)` | `SourceStatus.js` | shared edit handler for Goals and PTO, configured per workbook as tab + range + key (+ quarter test for Goals). It is public because installable triggers cannot call private (trailing-underscore) functions; it acts only on a live `Range` and is allow-listed in `tests/callable-surface-checks.js` |
+| `checkSourcesDaily()` | `SourceStatus.js` | runs `runSourceChecks_`: trigger check, Goals/PTO probes, Roster fingerprint, SI, RCR. Each step is isolated, so one failing step does not stop the others. The digest and the preview re-run `runSourceChecks_` and still send if checks partly fail, adding "Checks that could not run: …" |
 | `readSourceStatus_()` | `SourceStatus.js` | read the ledger once, recompute status, return `meta.sources` |
 | `sendSourceHealthDigest()` / `previewSourceHealthDigest()` | new `SourceDigest.js` | build and send the Monday email; preview sends to the owner regardless of state |
 | `installSourceStatusTriggers()` | `SourceStatus.js` | create the four triggers in §7; idempotent (removes duplicates by handler name) |
@@ -83,8 +84,8 @@ Use `computeFiscalContext_` (`PS Contribution Report.js:1551-1645`): `goalsQuart
 ## 6. Dashboard changes
 
 - The payload build calls `readSourceStatus_()` once and caches `meta.sources` with the report.
-- Data Reference: the static Metric / Source / Cadence table becomes a live table — source · period covered · last updated · status lozenge · next expected. Compensation is added; Planned shows its real weekly cadence.
-- Header pill: "All sources current", or the names of the sources that are not, e.g. "Capacity stale · Goals stale". It no longer borrows the Tracked stamp for Planned.
+- Data Reference: the static Metric / Source / Cadence table becomes a live table — source · period covered · last updated · status lozenge · next expected. Compensation is shown through the RCR label "RCR · revenue ÷ compensation (TCC)"; Planned shows its real weekly cadence.
+- Header pill: "All sources current" (or "↻ Data freshness: pending" when nothing has been stamped yet, i.e. every shown source is pending), or the names of the sources that are not, e.g. "Capacity stale · Goals stale". It no longer borrows the Tracked stamp for Planned.
 - Dates are shown with ISO weeks: `2026-11-02 (2026.W45)`.
 - Status lozenges follow the brand skill: `ok` success, `pending` neutral, `stale` warning, `failed` danger.
 
@@ -92,8 +93,8 @@ Use `computeFiscalContext_` (`PS Contribution Report.js:1551-1645`): `goalsQuart
 
 | Handler | Type | Schedule |
 |---|---|---|
-| `onWatchedEdit_` | installable on-edit, Goals workbook | on user edit |
-| `onWatchedEdit_` | installable on-edit, PTO workbook | on user edit |
+| `onWatchedEdit` | installable on-edit, Goals workbook | on user edit |
+| `onWatchedEdit` | installable on-edit, PTO workbook | on user edit |
 | `checkSourcesDaily` | time-based | daily 05:00 |
 | `sendSourceHealthDigest` | time-based | Monday 10:00 (after Plan's 08:00 run) |
 
@@ -104,15 +105,24 @@ The existing Tempo triggers are unchanged; only their entry functions are wrappe
 - Sends only when Goals or any Tempo row is `failed` or `stale` after re-evaluation at send time. A clean week sends nothing and stamps the `digest` row `ok · nothing to report`.
 - Recipients: the script owner by default; Script Property `SOURCE_DIGEST_RECIPIENTS` (comma-separated) overrides.
 - Subject: `PS Dashboard sources: <n> need attention (<ISO week>)`.
-- Body: one line per problem source — status, last good update with ISO week, detail, and the action (e.g. "Run `fetchTempoCapacity` from the editor"; "Goals RD has no FY27Q2 edits since 2026-10-30 (2026.W44)"), then a link to the dashboard's Data Reference tab.
+- Body: one line per problem source — status, last good update with ISO week, detail, and the action (e.g. "Run `fetchTempoCapacity` from the editor"; "Goals RD has no FY27Q2 edits since 2026-10-30 (2026.W44)"), then a link to the dashboard: Script Property `SOURCE_DASHBOARD_URL`, else the web-app URL (no deep link to the Data Reference tab).
 
 ## 9. Failure handling
 
 - A ledger write never breaks a producer: errors writing `Source Status` are logged and swallowed. Producer errors are recorded and rethrown, so Apps Script's own failure notice still fires.
 - No script lock: the project's script lock is held for minutes by the hourly Jira tracker. The tab is seeded with one row per source at creation, so each writer overwrites only its own row; a rare duplicate from a concurrent first write is resolved last-row-wins.
 - The edit handler exits immediately when the edit is outside the watched tab or range. For Goals it reads `Fiscal Quarter` only for the edited rows. A full-tab paste is one edit event.
-- The digest compares `ScriptApp.getProjectTriggers()` against the expected handlers. A missing trigger marks its source `failed · trigger missing, run installSourceStatusTriggers` — this catches the 2026.W39 silent-stop pattern at its cause.
+- The daily check compares `ScriptApp.getProjectTriggers()` against the expected handlers. A missing trigger marks its source `failed` with detail "Trigger missing: run <installer>", where the installer is `createLoggedDailyTrigger`, `createWeeklyTrigger`, `createCapacityWeeklyTrigger` or `installSourceStatusTriggers` — this catches the 2026.W39 silent-stop pattern at its cause. `getProjectTriggers()` only sees the current user's triggers, so the check runs only for the account stored in `SOURCE_TRIGGER_OWNER`; the installer sets it and refuses to run under another account.
 - A digest send failure is written to the `digest` row so it is visible on the dashboard.
+
+## Script Properties
+
+- `SOURCE_LEDGER_SS_ID` — spreadsheet holding the `Source Status` tab, when it is not the bound workbook.
+- `SOURCE_TRIGGER_OWNER` — account whose triggers the missing-trigger check can see; set by the installer.
+- `SOURCE_ROSTER_FP` — last Roster fingerprint (row count + hash).
+- `SOURCE_DIGEST_RECIPIENTS` — comma-separated digest recipients.
+- `SOURCE_DASHBOARD_URL` — link used in the digest.
+- `SOURCE_STALE_HOURS_<KEY>` — per-source stale threshold override; used only when > 0.
 
 ## 10. Validation
 
@@ -144,6 +154,12 @@ Every row starts `pending · awaiting first update` and counts as validated only
 | Digest | first scheduled send, or correct silence | 2026-11-16 (2026.W47) |
 
 `previewSourceHealthDigest()` lets the owner see the email format on day one.
+
+## Known follow-ups
+
+- (a) A broken ledger (missing column) renders the same as "not installed".
+- (b) A Tempo run that returns zero rows is stamped ok.
+- (c) The dashboard's `readRCR_PS_` still counts an all-zero month column as populated, unlike the ledger.
 
 ## 11. Open items for planning
 

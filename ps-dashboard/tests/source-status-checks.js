@@ -377,6 +377,17 @@ ck('reader output is JSON-safe (no Date objects)', JSON.stringify(client) === JS
 eq('unstamped source → pending in reader', client.filter(s => s.key === 'tempo_capacity')[0].status, 'pending');
 eq('client covers period from a Date cell is labelled', toClientSource_SS_(
    Object.assign(evaluateSourceStatus_(def('rcr'), { coversPeriod: new Date(2026, 9, 26) }, NOW))).coversPeriod, '2026-10-26 (2026.W44)');
+// the reader opens the ledger spreadsheet only once
+let OPENS = 0;
+const realGetActive = global.SpreadsheetApp.getActiveSpreadsheet;
+global.SpreadsheetApp.getActiveSpreadsheet = function () { OPENS++; return realGetActive(); };
+readSourceStatus_();
+eq('reader opens the ledger spreadsheet once', OPENS, 1);
+global.SpreadsheetApp.getActiveSpreadsheet = realGetActive;
+// evaluatedRows_SS_ uses a given sheet instead of resolving its own
+const givenSheet = LEDGER; LEDGER = null;
+eq('evaluatedRows_SS_(now, sheet) uses the given sheet',
+   evaluatedRows_SS_(NOW, givenSheet).filter(r => r.key === 'tempo_tracked')[0].status, 'ok');
 LEDGER = null;
 eq('reader with no ledger tab → []', readSourceStatus_(), []);
 global.SpreadsheetApp = realSpreadsheetApp;
