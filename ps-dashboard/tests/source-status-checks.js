@@ -197,7 +197,7 @@ eq('kudos/si/rcr problems never email', buildDigest_SS_(infoBad, NOW, ''), null)
 // ── Task 4: ledger I/O + wrapper ─────────────────────────────────────────────
 function fakeSheet(values) {
   const sh = {
-    v: values,
+    v: values, fmt: [],
     getDataRange() { return { getValues: () => sh.v.map(r => r.slice()) }; },
     getLastRow() { return sh.v.length; },
     getLastColumn() { return sh.v[0] ? sh.v[0].length : 0; },
@@ -220,7 +220,7 @@ function fakeSheet(values) {
           }
           return this;
         },
-        setNumberFormat() { return this; }, setFontWeight() { return this; },
+        setNumberFormat(f) { sh.fmt.push([r, c, f]); return this; }, setFontWeight() { return this; },
       };
     },
     setFrozenRows() {},
@@ -230,42 +230,68 @@ function fakeSheet(values) {
 }
 let LEDGER = null;
 const realSpreadsheetApp = global.SpreadsheetApp;
-const realLockService = global.LockService;
+let ACTIVE_ID = 'DASH', OPENED = null, INSERTS = 0, PROP_ID = null;
+const realProps = global.PropertiesService;
+global.PropertiesService = { getScriptProperties: () => ({
+  getProperty: k => (k === SOURCE_STATUS.LEDGER_SS_PROP ? PROP_ID : null), getProperties: () => ({}), setProperty() {} }) };
 global.SpreadsheetApp = {
   getActiveSpreadsheet: () => ({
-    getId: () => 'DASH',
+    getId: () => ACTIVE_ID,
     getSheetByName: n => (n === 'Source Status' ? LEDGER : null),
-    insertSheet: () => { LEDGER = fakeSheet([]); return LEDGER; },
+    insertSheet: () => { INSERTS++; LEDGER = fakeSheet([]); return LEDGER; },
   }),
-  openById: () => global.SpreadsheetApp.getActiveSpreadsheet(),
+  openById: id => { OPENED = id; return global.SpreadsheetApp.getActiveSpreadsheet(); },
 };
-global.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
 
 // creates the tab with headers on first write
 LEDGER = null;
 ck('first record succeeds', recordSourceStatus_('tempo_capacity', { status: 'ok', lastUpdated: NOW, detail: 'Run ok in 3 s' }) === true);
 eq('headers written', LEDGER.v[0], SOURCE_STATUS.HEADERS);
-eq('row written by header name', [LEDGER.v[1][0], LEDGER.v[1][1], LEDGER.v[1][5]], ['tempo_capacity', 'Tempo Capacity', 'ok']);
-ck('last checked stamped', LEDGER.v[1][4] instanceof Date);
+eq('seeded: 10 data rows in config order', LEDGER.v.slice(1).map(r => r[0]), SOURCE_STATUS.SOURCES.map(d => d.key));
+ck('seeded rows pending + awaiting first update', LEDGER.v.slice(1).every((r, i) => i === 2 || (r[5] === 'pending' && r[6] === 'awaiting first update')));
+eq('seeded labels', LEDGER.v[1][1], 'Tempo Tracked');
+eq('write hit only its own row', [LEDGER.v[3][0], LEDGER.v[3][1], LEDGER.v[3][5]], ['tempo_capacity', 'Tempo Capacity', 'ok']);
+ck('last checked stamped', LEDGER.v[3][4] instanceof Date);
+ck('Covers period formatted as text', LEDGER.fmt.some(x => x[1] === 3 && x[2] === '@' && x[0] === 4));
+ck('Covers period column seeded as text', LEDGER.fmt.some(x => x[0] === 2 && x[1] === 3 && x[2] === '@'));
+eq('other rows untouched', LEDGER.v[2].slice(2), ['', '', '', 'pending', 'awaiting first update', '']);
 
 // overwrites in place, keeps fields not passed
 recordSourceStatus_('tempo_capacity', { status: 'failed', detail: 'HTTP 500' });
-eq('still one data row', LEDGER.v.length, 2);
-eq('status replaced, last updated kept', [LEDGER.v[1][5], LEDGER.v[1][3] === NOW, LEDGER.v[1][6]], ['failed', true, 'HTTP 500']);
+eq('row count stays 11 incl. header', LEDGER.v.length, 11);
+eq('status replaced, last updated kept', [LEDGER.v[3][5], LEDGER.v[3][3] === NOW, LEDGER.v[3][6]], ['failed', true, 'HTTP 500']);
 
 // columns found by name even when reordered
 LEDGER = fakeSheet([['Status', 'Source', 'Label', 'Detail', 'Covers period', 'Last updated', 'Last checked', 'Next expected']]);
 recordSourceStatus_('kudos', { status: 'ok', detail: 'x' });
 eq('reordered columns', [LEDGER.v[1][0], LEDGER.v[1][1]], ['ok', 'kudos']);
 
+// missing key on an older tab appends
+LEDGER = fakeSheet([SOURCE_STATUS.HEADERS.slice(), ['kudos', 'Kudos', '', '', '', 'ok', '', '']]);
+recordSourceStatus_('pto', { status: 'ok' });
+eq('missing key appended', [LEDGER.v.length, LEDGER.v[2][0], LEDGER.v[2][5]], [3, 'pto', 'ok']);
+
+// cleared tab (row 1 empty) is re-seeded
+LEDGER = fakeSheet([]);
+recordSourceStatus_('kudos', { status: 'ok' });
+eq('cleared tab re-seeded', [LEDGER.v[0], LEDGER.v.length], [SOURCE_STATUS.HEADERS, 11]);
+LEDGER = fakeSheet([['', '', ''], ['x', 'y', 'z']]);
+recordSourceStatus_('kudos', { status: 'ok' });
+eq('blank header cells re-seeded', LEDGER.v[0], SOURCE_STATUS.HEADERS);
+
+// ledger spreadsheet selection
+LEDGER = fakeSheet([SOURCE_STATUS.HEADERS.slice()]);
+PROP_ID = 'LEDGER123'; OPENED = null;
+recordSourceStatus_('kudos', { status: 'ok' });
+eq('property set → openById with that id', OPENED, 'LEDGER123');
+PROP_ID = null; ACTIVE_ID = CONFIG_PS.GOALS_SS_ID; LEDGER = null; INSERTS = 0;
+eq('external active workbook refused', recordSourceStatus_('kudos', { status: 'ok' }), false);
+eq('nothing inserted in external workbook', INSERTS, 0);
+ACTIVE_ID = 'DASH';
+
 // a missing column is swallowed (logged), never thrown
 LEDGER = fakeSheet([['Source', 'Label']]);
 eq('missing column → false, no throw', recordSourceStatus_('kudos', { status: 'ok' }), false);
-
-// lock failure is swallowed
-global.LockService = { getScriptLock: () => { throw new Error('lock down'); } };
-eq('lock failure → false, no throw', recordSourceStatus_('kudos', { status: 'ok' }), false);
-global.LockService = realLockService;
 
 // wrapper
 const realRecord = recordSourceStatus_;
@@ -298,6 +324,10 @@ onWatchedEdit(evt(CONFIG_PS.PTO_ACCUM_SS_ID, ptoSheet, 5, 10, 1, 14));
 eq('PTO paste stamps pto', [EDITS[0][0], EDITS[0][1].status, EDITS[0][1].lastUpdated instanceof Date], ['pto', 'ok', true]);
 onWatchedEdit(evt(CONFIG_PS.PTO_ACCUM_SS_ID, ptoSheet, 1, 1, 1, 3));
 eq('PTO header-only edit ignored', EDITS.length, 1);
+onWatchedEdit(evt(CONFIG_PS.PTO_ACCUM_SS_ID, ptoSheet, 5, 3, 15, 1));
+eq('PTO column O only ignored', EDITS.length, 1);
+// Goals grace-window pass-through of the computed ctx is not tested here: it would need a faked clock;
+// goalsEditQualifies_SS_ covers the grace logic directly.
 onWatchedEdit(evt(CONFIG_PS.PTO_ACCUM_SS_ID, { getName: () => 'Accumulation Cost' }, 5, 1, 1, 1));
 eq('PTO other tab ignored', EDITS.length, 1);
 onWatchedEdit({ range: {}, source: {} });
@@ -319,7 +349,7 @@ eq('goals missing Fiscal Quarter → failed', [EDITS[2][0], EDITS[2][1].status],
 ck('goals failure lists headers', /Headers found: rocketeer, goal id/.test(EDITS[2][1].detail));
 recordSourceStatus_ = realRecord;
 global.SpreadsheetApp = realSpreadsheetApp;
-global.LockService = realLockService;
+global.PropertiesService = realProps;
 
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 console.log('source-status-checks: ' + pass + ' passed, ' + fail + ' failed');

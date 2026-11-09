@@ -41,7 +41,7 @@ A tab named `Source Status` in the bound dashboard spreadsheet. One row per sour
 
 Rules:
 
-- Columns are found by header name; rows by `Source` key. If the tab is missing, the helper recreates it with headers.
+- Columns are found by header name; rows by `Source` key. If the tab is missing, the helper recreates it with headers. The tab is created with one pending row per source.
 - On first install every row is `pending` with detail `awaiting first update`. No row is seeded from older stamps.
 - `Status` is stored at write time **and** recomputed at read time from `Last updated` and the thresholds in §4, so a source that stops updating becomes `stale` without anything running.
 - Thresholds and the digest recipient list live in a `SOURCE_STATUS` config object, each value overridable by a Script Property.
@@ -69,7 +69,7 @@ Use `computeFiscalContext_` (`PS Contribution Report.js:1551-1645`): `goalsQuart
 
 | Unit | File | Responsibility |
 |---|---|---|
-| `SOURCE_STATUS` config + `recordSourceStatus_(key, fields)` | new `SourceStatus.js` | find or create the row, write fields under a script lock |
+| `SOURCE_STATUS` config + `recordSourceStatus_(key, fields)` | new `SourceStatus.js` | find or create the row, write fields (no script lock) |
 | `withSourceStatus_(key, fn)` | `SourceStatus.js` | run `fn`; on success write `ok` + time + row count; on throw write `failed` + message, then rethrow |
 | `evaluateSourceStatus_(row, now)` | `SourceStatus.js` | pure: apply §4 thresholds, return status + next expected |
 | `onWatchedEdit_(e)` | `SourceStatus.js` | shared edit handler for Goals and PTO, configured per workbook as tab + range + key (+ quarter test for Goals) |
@@ -109,7 +109,7 @@ The existing Tempo triggers are unchanged; only their entry functions are wrappe
 ## 9. Failure handling
 
 - A ledger write never breaks a producer: errors writing `Source Status` are logged and swallowed. Producer errors are recorded and rethrown, so Apps Script's own failure notice still fires.
-- `LockService.getScriptLock()` with a short wait guards each ledger write.
+- No script lock: the project's script lock is held for minutes by the hourly Jira tracker. The tab is seeded with one row per source at creation, so each writer overwrites only its own row; a rare duplicate from a concurrent first write is resolved last-row-wins.
 - The edit handler exits immediately when the edit is outside the watched tab or range. For Goals it reads `Fiscal Quarter` only for the edited rows. A full-tab paste is one edit event.
 - The digest compares `ScriptApp.getProjectTriggers()` against the expected handlers. A missing trigger marks its source `failed · trigger missing, run installSourceStatusTriggers` — this catches the 2026.W39 silent-stop pattern at its cause.
 - A digest send failure is written to the `digest` row so it is visible on the dashboard.

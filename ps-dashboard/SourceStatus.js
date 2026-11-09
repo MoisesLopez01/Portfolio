@@ -280,17 +280,48 @@ var FIELD_HEADERS_SS = {
 // PTO) run without an active container, so the id is saved at install time.
 function ledgerSpreadsheet_SS_() {
   var id = PropertiesService.getScriptProperties().getProperty(SOURCE_STATUS.LEDGER_SS_PROP);
-  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  if (id) return SpreadsheetApp.openById(id);
+  // Never fall back to an external (read-only system of record) workbook.
+  var active = SpreadsheetApp.getActiveSpreadsheet();
+  var ext = getExternalSSIds_();
+  var isExternal = active && [ext.roster, ext.goals, ext.ptoAccum].indexOf(active.getId()) !== -1;
+  if (!active || isExternal) {
+    throw new Error("Source Status ledger not configured — run installSourceStatusTriggers from the dashboard spreadsheet");
+  }
+  return active;
 }
 
+// Writes headers plus one pending row per source, so every writer only ever
+// overwrites its own existing row.
+function seedLedger_SS_(sh) {
+  var n = SOURCE_STATUS.SOURCES.length, w = SOURCE_STATUS.HEADERS.length;
+  sh.getRange(1, 1, 1, w).setValues([SOURCE_STATUS.HEADERS]).setFontWeight("bold");
+  var rows = SOURCE_STATUS.SOURCES.map(function (d) {
+    var row = new Array(w).fill("");
+    row[SOURCE_STATUS.HEADERS.indexOf("Source")] = d.key;
+    row[SOURCE_STATUS.HEADERS.indexOf("Label")] = d.label;
+    row[SOURCE_STATUS.HEADERS.indexOf("Status")] = "pending";
+    row[SOURCE_STATUS.HEADERS.indexOf("Detail")] = "awaiting first update";
+    return row;
+  });
+  // Plain text so "Oct 26" or "2026.W46" are never auto-parsed into dates.
+  sh.getRange(2, SOURCE_STATUS.HEADERS.indexOf("Covers period") + 1, n, 1).setNumberFormat("@");
+  sh.getRange(2, 1, n, w).setValues(rows);
+  sh.setFrozenRows(1);
+}
+
+// Creates the tab, or re-seeds it when row 1 was cleared.
 function ledgerSheet_SS_() {
   var ss = ledgerSpreadsheet_SS_();
   var sh = ss.getSheetByName(SOURCE_STATUS.SHEET);
   if (!sh) {
     sh = ss.insertSheet(SOURCE_STATUS.SHEET);
-    sh.getRange(1, 1, 1, SOURCE_STATUS.HEADERS.length).setValues([SOURCE_STATUS.HEADERS]).setFontWeight("bold");
-    sh.setFrozenRows(1);
+    seedLedger_SS_(sh);
+    return sh;
   }
+  var empty = sh.getLastRow() === 0 || sh.getLastColumn() === 0 ||
+    sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].every(function (h) { return String(h).trim() === ""; });
+  if (empty) seedLedger_SS_(sh);
   return sh;
 }
 
@@ -316,14 +347,14 @@ function readLedgerRows_SS_(sh) {
   return { idx: idx, rows: rows, width: hdr.length };
 }
 
-// Writes the given fields onto the source's row (created if missing) and stamps
-// "Last checked". Never throws: a ledger problem must not break a producer.
+// Writes the given fields onto the source's row and stamps "Last checked".
+// Never throws: a ledger problem must not break a producer.
+// No script lock: the project's script lock is held for minutes by the hourly Jira
+// tracker. The tab is seeded with one row per source, so each writer overwrites only
+// its own row. If a key's row is missing (older tab) it is appended; a rare duplicate
+// from a concurrent first write is harmless because readLedgerRows_SS_ is last-row-wins.
 function recordSourceStatus_(key, fields) {
-  var lock = null, locked = false;
   try {
-    lock = LockService.getScriptLock();
-    locked = lock.tryLock(10000);
-    if (!locked) { Logger.log("⚠️ [SourceStatus] lock busy — " + key + " not recorded"); return false; }
     var sh = ledgerSheet_SS_();
     var led = readLedgerRows_SS_(sh);
     var def = sourceDefs_().filter(function (d) { return d.key === key; })[0];
@@ -343,8 +374,6 @@ function recordSourceStatus_(key, fields) {
   } catch (e) {
     Logger.log("⚠️ [SourceStatus] could not record " + key + ": " + e.message);
     return false;
-  } finally {
-    if (lock && locked) { try { lock.releaseLock(); } catch (e2) {} }
   }
 }
 
@@ -371,11 +400,11 @@ function withSourceStatus_(key, fn) {
 // ── Edit handler (installable on-edit, Goals + PTO workbooks) ─
 
 // Public because installable triggers cannot call private (_) functions.
-// Deliberately NOT gated with requireMaintainer_: it runs for whichever colleague
-// edited the sheet. It acts only on a genuine edit event — google.script.run can
-// pass JSON only, never a live Range with methods — and the most it can do is
-// stamp "now" on the goals or pto ledger row. Allow-listed in
-// tests/callable-surface-checks.js for that reason.
+// Deliberately NOT gated with requireMaintainer_: in an edit trigger
+// Session.getActiveUser() is the editing colleague, not necessarily an admin, so the
+// gate would block legitimate pastes. It returns at once unless given a live Range
+// (impossible over google.script.run, which carries JSON only), and its only effect is
+// stamping "now" on one ledger row. Allow-listed in tests/callable-surface-checks.js.
 function onWatchedEdit(e) {
   if (!e || !e.range || typeof e.range.getRow !== "function" ||
       !e.source || typeof e.source.getId !== "function") return;

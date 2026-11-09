@@ -30,10 +30,11 @@ const ALLOWED_UNGATED = new Set([
   'doGet',
   // Reports only on the caller's own session; leaks nothing about anyone else.
   'whoAmI',
-  // Installable on-edit handler for the Goals/PTO workbooks (SourceStatus.js). Runs as
-  // whichever colleague edited, so it cannot require an admin. It returns at once unless
-  // given a live Range (impossible over google.script.run, which carries JSON only), and
-  // its only effect is stamping "now" on one Source Status row.
+  // Installable on-edit handler for the Goals/PTO workbooks (SourceStatus.js). Not gated:
+  // Session.getActiveUser() in an edit trigger is the editing colleague (not necessarily an
+  // admin), so a gate would block legitimate pastes. It returns at once unless given a live
+  // Range (impossible over google.script.run, JSON only); its only effect is stamping
+  // "now" on one ledger row.
   'onWatchedEdit',
 ]);
 
