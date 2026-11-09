@@ -4526,6 +4526,8 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
       availableTeams: availableTeams || [],
       lastSheetEdit,
       trackedTimeLastExport: trackedAll._lastExport || null,
+      // Source Status ledger (SourceStatus.js) — one evaluated row per data source.
+      sources:          readSourceStatus_(),
       currentWeekLabel: curWeek.label,
       rcrLastMonth:     rcrAll.lastMonth,
       rcrTeamRCR:       rcrAll.teamRCR,

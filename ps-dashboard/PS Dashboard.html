@@ -934,6 +934,16 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .dr-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
 .dr-tbl th { padding: 8px 14px; background: var(--surface); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 2px solid var(--border); text-align: left; }
 .dr-tbl td { padding: 8px 14px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
+.src-loz { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+.src-loz-ok      { background: #DCFFF1; color: #216E4E; }
+.src-loz-pending { background: #F1F2F4; color: #44546F; }
+.src-loz-stale   { background: #FFF7D6; color: #7F5F01; }
+.src-loz-failed  { background: #FFECEB; color: #AE2E24; }
+body.dark-mode .src-loz-ok      { background: #052e16; color: #86EFAC; }
+body.dark-mode .src-loz-pending { background: #263244; color: #A9BACE; }
+body.dark-mode .src-loz-stale   { background: #3b2f05; color: #FDE68A; }
+body.dark-mode .src-loz-failed  { background: #450a0a; color: #FCA5A5; }
+.src-detail { font-size: 11px; color: var(--slate); margin-top: 3px; }
 .dr-tbl tbody tr:last-child td { border-bottom: none; }
 .dr-tbl tbody tr:hover td { background: var(--surface); }
 .dr-tbl td:first-child { font-weight: 700; color: var(--void); white-space: nowrap; }
@@ -1900,18 +1910,10 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         <div class="dr-section">
           <div class="dr-section-title">Data Sources</div>
           <table class="dr-tbl">
-            <thead><tr><th>Metric</th><th>Source</th><th>Cadence</th></tr></thead>
-            <tbody>
-              <tr><td>Headcount / Roster</td><td>Netsuite Export</td><td>Weekly export</td></tr>
-              <tr data-metric="rcr"><td>RCR</td><td>Finance — revenue vs. compensation</td><td>Monthly (last closed month)</td></tr>
-              <tr><td>SI Score</td><td>Small Improvements platform</td><td>Quarterly</td></tr>
-              <tr><td>Goals Commented</td><td>Goals platform (<span class="drGoalsQ">current quarter</span>)</td><td>Weekly export</td></tr>
-              <tr data-metric="planned"><td>Time planned</td><td>Tempo API</td><td>Daily export</td></tr>
-              <tr data-metric="tracked"><td>Time tracked</td><td>Tempo API</td><td>Daily export</td></tr>
-              <tr><td>Kudos given</td><td>Netsuite Export</td><td>Weekly export</td></tr>
-              <tr><td>PTO</td><td>PTO accumulation tracking</td><td>Weekly export</td></tr>
-            </tbody>
+            <thead><tr><th>Source</th><th>Covers</th><th>Last updated</th><th>Status</th><th>Next expected</th></tr></thead>
+            <tbody id="drSourcesBody"><tr><td colspan="5">Loading source status…</td></tr></tbody>
           </table>
+          <p class="dr-p" style="margin-top:8px">Each source stamps its own row in the <em>Source Status</em> tab when it updates: Tempo exports when they run, Goals and PTO when someone pastes new data, Roster when the HRIS export changes. Small Improvements is available 14 days after quarter end; RCR covers through the month end once Finance fills it.</p>
         </div>
 
         <div class="dr-section">
@@ -3321,34 +3323,13 @@ function onDataLoaded(payload, wasRefresh) {
 
   var _fn = document.getElementById("dataFreshnessNote");
   if (_fn) {
-    var srcAt = DATA.meta && DATA.meta.lastSheetEdit ? DATA.meta.lastSheetEdit : null;
-    var trackedAt = DATA.meta && DATA.meta.trackedTimeLastExport ? DATA.meta.trackedTimeLastExport : null;
-
-    // Two data cadences: Tracked & Planned import automatically every day; Goals,
-    // PTO and Kudos change only when the source spreadsheet is edited. Show both at
-    // a glance, with exact timestamps in the tooltip.
-    var _fmtTs = function(iso) {
-      var d = new Date(iso);
-      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-             " " + d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-    };
-
-    if (trackedAt || srcAt) {
-      var dailyTs = _fmtTs(trackedAt || srcAt);
-      if (hasMetric_('tracked')) {
-        _fn.textContent = "↻ Tracked & Planned: " + dailyTs + " (daily)  ·  Goals · PTO · Kudos: manual";
-        _fn.title = "Tracked & Planned import automatically every day (last: " + dailyTs + ")." +
-                    (srcAt ? "\nGoals, PTO and Kudos refresh when the spreadsheet is edited (last change: " + _fmtTs(srcAt) + ")." : "");
-      } else {
-        _fn.textContent = "↻ Goals · PTO · Kudos: manual";
-        _fn.title = srcAt ? "Goals, PTO and Kudos refresh when the spreadsheet is edited (last change: " + _fmtTs(srcAt) + ")." : "";
-      }
-    } else {
-      _fn.textContent = "↻ Data freshness: pending";
-      _fn.title = "Source timestamps unavailable.";
-    }
+    var _pill = sourcePillText(DATA.meta && DATA.meta.sources);
+    _fn.textContent = _pill.text;
+    _fn.title = _pill.title;
     _fn.style.display = "";
   }
+  var _srcBody = document.getElementById("drSourcesBody");
+  if (_srcBody) _srcBody.innerHTML = renderSourceStatusRows(DATA.meta && DATA.meta.sources);
 
   var dateRange = DATA.weeks[0].dateRange + " – " + DATA.weeks[DATA.weeks.length-1].dateRange;
   document.getElementById("tableDateRange").textContent = dateRange;
@@ -4509,6 +4490,47 @@ function fmtHrs(n) {
   if (n == null || isNaN(n)) return "—";
   return _numFmt.format(Math.round(+n)) + "h";
 }
+/* SOURCE-STATUS-UI:START */
+// Spec 2026-11-09 §6 — renders DATA.meta.sources (from the Source Status ledger).
+var SRC_LOZ = {
+  ok:      ["Current", "src-loz-ok"],
+  pending: ["Pending", "src-loz-pending"],
+  stale:   ["Stale",   "src-loz-stale"],
+  failed:  ["Failed",  "src-loz-failed"]
+};
+// Ledger keys tied to a team metric: hidden for teams that do not carry the metric.
+var SRC_METRIC = { rcr: "rcr", tempo_plan: "planned", tempo_tracked: "tracked" };
+function srcVisible_(s) {
+  var m = SRC_METRIC[s.key];
+  return !m || typeof hasMetric_ !== "function" || hasMetric_(m);
+}
+function renderSourceStatusRows(sources) {
+  if (!sources || !sources.length) {
+    return "<tr><td colspan='5'>Source status not recorded yet — an admin runs <code>installSourceStatusTriggers</code> once.</td></tr>";
+  }
+  return sources.filter(srcVisible_).map(function (s) {
+    var loz = SRC_LOZ[s.status] || SRC_LOZ.pending;
+    return "<tr>" +
+      "<td>" + esc(s.label) + "</td>" +
+      "<td>" + esc(s.coversPeriod || "—") + "</td>" +
+      "<td>" + esc(s.lastUpdatedLabel || "—") + "</td>" +
+      "<td><span class='src-loz " + loz[1] + "'>" + loz[0] + "</span>" +
+        (s.detail ? "<div class='src-detail'>" + esc(s.detail) + "</div>" : "") + "</td>" +
+      "<td>" + esc(s.nextExpectedLabel || "—") + "</td>" +
+    "</tr>";
+  }).join("");
+}
+function sourcePillText(sources) {
+  var shown = (sources || []).filter(function (s) { return s.key !== "digest" && srcVisible_(s); });
+  if (!shown.length) return { text: "↻ Data freshness: pending", title: "Source Status not recorded yet." };
+  var title = shown.map(function (s) {
+    return s.label + ": " + s.status + (s.lastUpdatedLabel ? " · " + s.lastUpdatedLabel : "");
+  }).join("\n");
+  var bad = shown.filter(function (s) { return s.status === "stale" || s.status === "failed"; });
+  if (!bad.length) return { text: "✓ All sources current", title: title };
+  return { text: "⚠ " + bad.map(function (s) { return s.label + " " + s.status; }).join(" · "), title: title };
+}
+/* SOURCE-STATUS-UI:END */
 function esc(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
