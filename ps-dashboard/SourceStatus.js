@@ -268,3 +268,102 @@ function missingTriggers_SS_(expected, actual) {
     });
   });
 }
+
+// ── Ledger I/O (Apps Script) ────────────────────────────────
+
+var FIELD_HEADERS_SS = {
+  key: "Source", label: "Label", coversPeriod: "Covers period", lastUpdated: "Last updated",
+  lastChecked: "Last checked", status: "Status", detail: "Detail", nextExpected: "Next expected",
+};
+
+// The bound dashboard spreadsheet. Installable triggers on OTHER workbooks (Goals,
+// PTO) run without an active container, so the id is saved at install time.
+function ledgerSpreadsheet_SS_() {
+  var id = PropertiesService.getScriptProperties().getProperty(SOURCE_STATUS.LEDGER_SS_PROP);
+  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+}
+
+function ledgerSheet_SS_() {
+  var ss = ledgerSpreadsheet_SS_();
+  var sh = ss.getSheetByName(SOURCE_STATUS.SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(SOURCE_STATUS.SHEET);
+    sh.getRange(1, 1, 1, SOURCE_STATUS.HEADERS.length).setValues([SOURCE_STATUS.HEADERS]).setFontWeight("bold");
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// → { idx: {field: colIndex}, rows: {key: rowObject}, width }
+// Throws listing the headers found when a column is missing.
+function readLedgerRows_SS_(sh) {
+  var values = sh.getDataRange().getValues();
+  var hdr = (values[0] || []).map(function (h) { return String(h).trim(); });
+  var idx = {};
+  for (var f in FIELD_HEADERS_SS) {
+    var i = hdr.indexOf(FIELD_HEADERS_SS[f]);
+    if (i === -1) throw new Error("Source Status column missing: " + FIELD_HEADERS_SS[f] + ". Headers found: " + hdr.join(", "));
+    idx[f] = i;
+  }
+  var rows = {};
+  for (var r = 1; r < values.length; r++) {
+    var key = String(values[r][idx.key] || "").trim();
+    if (!key) continue;
+    var o = { _row: r + 1 };
+    for (var g in idx) o[g] = values[r][idx[g]];
+    rows[key] = o;
+  }
+  return { idx: idx, rows: rows, width: hdr.length };
+}
+
+// Writes the given fields onto the source's row (created if missing) and stamps
+// "Last checked". Never throws: a ledger problem must not break a producer.
+function recordSourceStatus_(key, fields) {
+  var lock = null, locked = false;
+  try {
+    lock = LockService.getScriptLock();
+    locked = lock.tryLock(10000);
+    if (!locked) { Logger.log("⚠️ [SourceStatus] lock busy — " + key + " not recorded"); return false; }
+    var sh = ledgerSheet_SS_();
+    var led = readLedgerRows_SS_(sh);
+    var def = sourceDefs_().filter(function (d) { return d.key === key; })[0];
+    var existing = led.rows[key];
+    var rowNum = existing ? existing._row : sh.getLastRow() + 1;
+    var current = existing ? sh.getRange(rowNum, 1, 1, led.width).getValues()[0] : new Array(led.width).fill("");
+    var merged = Object.assign({ key: key, label: def ? def.label : key }, fields || {}, { lastChecked: new Date() });
+    if (merged.detail != null) merged.detail = String(merged.detail).slice(0, 500);
+    for (var f in merged) {
+      if (led.idx[f] === undefined || merged[f] === undefined) continue;
+      current[led.idx[f]] = merged[f] === null ? "" : merged[f];
+    }
+    // Plain text so "Oct 26" or "2026.W46" are never auto-parsed into dates.
+    sh.getRange(rowNum, led.idx.coversPeriod + 1).setNumberFormat("@");
+    sh.getRange(rowNum, 1, 1, led.width).setValues([current]);
+    return true;
+  } catch (e) {
+    Logger.log("⚠️ [SourceStatus] could not record " + key + ": " + e.message);
+    return false;
+  } finally {
+    if (lock && locked) { try { lock.releaseLock(); } catch (e2) {} }
+  }
+}
+
+// Runs a producer body and stamps its row. Success → ok + time + duration.
+// Throw → failed + message, then rethrow so Apps Script's own failure notice fires.
+// A body that returns {ok:false} (blocked by its own gate) is not an update.
+function withSourceStatus_(key, fn) {
+  var t0 = Date.now(), result;
+  try {
+    result = fn();
+  } catch (e) {
+    recordSourceStatus_(key, { status: "failed", detail: String((e && e.message) || e) });
+    throw e;
+  }
+  if (result && result.ok === false) return result;
+  var now = new Date();
+  recordSourceStatus_(key, {
+    status: "ok", lastUpdated: now, coversPeriod: isoLabel_SS_(now), nextExpected: "",
+    detail: "Run ok in " + Math.round((Date.now() - t0) / 1000) + " s",
+  });
+  return result;
+}

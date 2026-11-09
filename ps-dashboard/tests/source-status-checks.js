@@ -194,6 +194,95 @@ eq('kudos/si/rcr problems never email', buildDigest_SS_(infoBad, NOW, ''), null)
 [0, '0', '1,234.5', '85%'].forEach(v => ck('filled number: ' + JSON.stringify(v), isFilledNumber_SS_(v) === true));
 ['', '-', '#N/A', 'N/A', '(1.2)', '1.2x', null].forEach(v => ck('not a filled number: ' + JSON.stringify(v), isFilledNumber_SS_(v) === false));
 
+// ── Task 4: ledger I/O + wrapper ─────────────────────────────────────────────
+function fakeSheet(values) {
+  const sh = {
+    v: values,
+    getDataRange() { return { getValues: () => sh.v.map(r => r.slice()) }; },
+    getLastRow() { return sh.v.length; },
+    getLastColumn() { return sh.v[0] ? sh.v[0].length : 0; },
+    getRange(r, c, nr, nc) {
+      nr = nr || 1; nc = nc || 1;
+      return {
+        getValues() {
+          const out = [];
+          for (let i = 0; i < nr; i++) {
+            const row = [];
+            for (let j = 0; j < nc; j++) { const x = (sh.v[r - 1 + i] || [])[c - 1 + j]; row.push(x === undefined ? '' : x); }
+            out.push(row);
+          }
+          return out;
+        },
+        setValues(vals) {
+          for (let i = 0; i < nr; i++) {
+            sh.v[r - 1 + i] = sh.v[r - 1 + i] || [];
+            for (let j = 0; j < nc; j++) sh.v[r - 1 + i][c - 1 + j] = vals[i][j];
+          }
+          return this;
+        },
+        setNumberFormat() { return this; }, setFontWeight() { return this; },
+      };
+    },
+    setFrozenRows() {},
+    getName() { return 'Source Status'; },
+  };
+  return sh;
+}
+let LEDGER = null;
+const realSpreadsheetApp = global.SpreadsheetApp;
+const realLockService = global.LockService;
+global.SpreadsheetApp = {
+  getActiveSpreadsheet: () => ({
+    getId: () => 'DASH',
+    getSheetByName: n => (n === 'Source Status' ? LEDGER : null),
+    insertSheet: () => { LEDGER = fakeSheet([]); return LEDGER; },
+  }),
+  openById: () => global.SpreadsheetApp.getActiveSpreadsheet(),
+};
+global.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
+
+// creates the tab with headers on first write
+LEDGER = null;
+ck('first record succeeds', recordSourceStatus_('tempo_capacity', { status: 'ok', lastUpdated: NOW, detail: 'Run ok in 3 s' }) === true);
+eq('headers written', LEDGER.v[0], SOURCE_STATUS.HEADERS);
+eq('row written by header name', [LEDGER.v[1][0], LEDGER.v[1][1], LEDGER.v[1][5]], ['tempo_capacity', 'Tempo Capacity', 'ok']);
+ck('last checked stamped', LEDGER.v[1][4] instanceof Date);
+
+// overwrites in place, keeps fields not passed
+recordSourceStatus_('tempo_capacity', { status: 'failed', detail: 'HTTP 500' });
+eq('still one data row', LEDGER.v.length, 2);
+eq('status replaced, last updated kept', [LEDGER.v[1][5], LEDGER.v[1][3] === NOW, LEDGER.v[1][6]], ['failed', true, 'HTTP 500']);
+
+// columns found by name even when reordered
+LEDGER = fakeSheet([['Status', 'Source', 'Label', 'Detail', 'Covers period', 'Last updated', 'Last checked', 'Next expected']]);
+recordSourceStatus_('kudos', { status: 'ok', detail: 'x' });
+eq('reordered columns', [LEDGER.v[1][0], LEDGER.v[1][1]], ['ok', 'kudos']);
+
+// a missing column is swallowed (logged), never thrown
+LEDGER = fakeSheet([['Source', 'Label']]);
+eq('missing column → false, no throw', recordSourceStatus_('kudos', { status: 'ok' }), false);
+
+// lock failure is swallowed
+global.LockService = { getScriptLock: () => { throw new Error('lock down'); } };
+eq('lock failure → false, no throw', recordSourceStatus_('kudos', { status: 'ok' }), false);
+global.LockService = realLockService;
+
+// wrapper
+const realRecord = recordSourceStatus_;
+const CALLS = [];
+recordSourceStatus_ = function (k, f) { CALLS.push([k, f]); return true; };
+withSourceStatus_('tempo_plan', () => undefined);
+eq('wrapper ok key/status', [CALLS[0][0], CALLS[0][1].status], ['tempo_plan', 'ok']);
+ck('wrapper ok stamps time + duration', CALLS[0][1].lastUpdated instanceof Date && /^Run ok in \d+ s$/.test(CALLS[0][1].detail));
+let threw = null;
+try { withSourceStatus_('tempo_plan', () => { throw new Error('Tempo 429'); }); } catch (e) { threw = e.message; }
+eq('wrapper rethrows', threw, 'Tempo 429');
+eq('wrapper records failure', [CALLS[1][1].status, CALLS[1][1].detail], ['failed', 'Tempo 429']);
+const before = CALLS.length;
+eq('blocked run returns result', withSourceStatus_('kudos', () => ({ ok: false })).ok, false);
+eq('blocked run records nothing', CALLS.length, before);
+recordSourceStatus_ = realRecord;
+
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 console.log('source-status-checks: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
