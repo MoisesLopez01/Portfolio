@@ -395,11 +395,24 @@ function writeLastWeekSheet_(data) {
 // ── SECTION: ENTRY POINTS ─────────────────────────────────────
 
 /**
+ * Entry point (editor / button). Gate first so a blocked caller never stamps the
+ * ledger; the body keeps its own check and its toast-on-error behaviour.
+ */
+function runKudosNormalizer() {
+  const access = checkDashboardAccess();
+  if (!hasAdminPower_(access)) {
+    Logger.log(`⚠️ [Kudos] runKudosNormalizer blocked for ${access.email} (${access.role}).`);
+    return { ok: false, error: "Admin access required" };
+  }
+  return withSourceStatus_("kudos", runKudosNormalizerBody_);
+}
+
+/**
  * MAIN — Reads Kudos, expands multi-recipient rows, writes Kudos_Normalized.
  * Also writes Kudos_LastWeek — last week's recognition summary (one row per post).
  * Run this from the Apps Script editor or attach to a button.
  */
-function runKudosNormalizer() {
+function runKudosNormalizerBody_() {
   try {
     // Rewrites the normalised Kudos output sheet, and every non-underscore
     // global is callable via google.script.run by anyone who can load the

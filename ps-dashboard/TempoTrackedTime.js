@@ -115,11 +115,20 @@ const UNATTRIBUTED_LABEL = "⚠️ Unattributed (no human author)";
 
 // ── SECTION: MAIN ENTRY POINT ────────────────────────────────
 
+// Entry point for the daily trigger and manual runs. The gate runs first so an
+// unauthorized google.script.run call never stamps the ledger as "failed".
+// typeof guards: this file can live in its own Apps Script project.
+function fetchTempoLoggedTime() {
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('fetchTempoLoggedTime');
+  if (typeof withSourceStatus_ !== 'function') return fetchTempoLoggedTimeBody_();
+  return withSourceStatus_("tempo_tracked", fetchTempoLoggedTimeBody_);
+}
+
 /**
  * Main function: fetches all Tempo logged (actual) time for the configured
  * date range and writes a weekly breakdown table to the output sheet.
  */
-function fetchTempoLoggedTime() {
+function fetchTempoLoggedTimeBody_() {
   // Web-reachable via google.script.run by anyone the deployment admits, so it is
   // gated. The typeof test is not defensive noise: if this file lives in its OWN
   // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)

@@ -598,6 +598,17 @@ runSourceChecks_();
 eq('5 install failure reason kept', ledgerRow8(h8, 'goals')[6], 'Trigger missing: install failed — no edit access');
 restore8();
 
+// ── Task 8: producers are wrapped ────────────────────────────────────────────
+[['TempoTrackedTime.js', 'fetchTempoLoggedTime', 'tempo_tracked'],
+ ['TempoPlanExport.js', 'fetchTempoPlannedTime', 'tempo_plan'],
+ ['TempoCapacityTime.js', 'fetchTempoCapacity', 'tempo_capacity'],
+ ['Kudos.js', 'runKudosNormalizer', 'kudos']].forEach(function (p) {
+  const src = read(p[0]);
+  const re = new RegExp('function ' + p[1] + '\\(\\)\\s*\\{[\\s\\S]*?withSourceStatus_\\("' + p[2] + '", ' + p[1] + 'Body_\\)');
+  ck(p[0] + ': public ' + p[1] + ' wraps its body', re.test(src));
+  ck(p[0] + ': body is private', new RegExp('function ' + p[1] + 'Body_\\(\\)').test(src));
+});
+
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 console.log('source-status-checks: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

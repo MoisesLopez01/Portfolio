@@ -41,6 +41,13 @@ const CONFIGCap = {
 
 // ── SECTION: MAIN ENTRY POINT ────────────────────────────────
 
+// Entry point for the Friday trigger and manual runs. See fetchTempoLoggedTime.
+function fetchTempoCapacity() {
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('fetchTempoCapacity');
+  if (typeof withSourceStatus_ !== 'function') return fetchTempoCapacityBody_();
+  return withSourceStatus_("tempo_capacity", fetchTempoCapacityBody_);
+}
+
 /**
  * Maintains the "Capacity Tempo" sheet. Safe to re-run any time (idempotent
  * for the same window). Reads the stored grid, fetches only the refresh
@@ -49,7 +56,7 @@ const CONFIGCap = {
  * Any fetch-stage failure throws BEFORE the sheet is touched.
  * Install the Friday trigger once via createCapacityWeeklyTrigger().
  */
-function fetchTempoCapacity() {
+function fetchTempoCapacityBody_() {
   // Web-reachable via google.script.run by anyone the deployment admits, so it is
   // gated. The typeof test is not defensive noise: if this file lives in its OWN
   // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
