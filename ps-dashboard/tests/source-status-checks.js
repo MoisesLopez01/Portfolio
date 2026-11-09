@@ -382,6 +382,60 @@ eq('reader with no ledger tab → []', readSourceStatus_(), []);
 global.SpreadsheetApp = realSpreadsheetApp;
 global.PropertiesService = realProps;
 
+// ── Task 7: digest send + preview (Apps Script glue, stubbed) ────────────────
+if (typeof requireMaintainer_ === 'undefined') global.requireMaintainer_ = () => 'me@x.com';
+const realRunChecks = runSourceChecks_, realEvalRows = evaluatedRows_SS_, realRec7 = recordSourceStatus_;
+let MAILS = [], RECS = [], PROPS7 = {}, MAIL_FAIL = false, RUNS = 0;
+global.MailApp = { sendEmail: m => { if (MAIL_FAIL) throw new Error('quota'); MAILS.push(m); } };
+global.Session = { getEffectiveUser: () => ({ getEmail: () => 'owner@x.com' }) };
+global.ScriptApp = { getService: () => ({ getUrl: () => 'https://exec' }) };
+global.PropertiesService = { getScriptProperties: () => ({
+  getProperty: k => (PROPS7[k] == null ? null : PROPS7[k]), getProperties: () => ({}), setProperty() {} }) };
+runSourceChecks_ = function () { RUNS++; };
+recordSourceStatus_ = function (k, f) { RECS.push([k, f]); return true; };
+let ROWS7 = allOk;
+evaluatedRows_SS_ = function () { return ROWS7; };
+
+eq('recipients default to the owner', digestRecipients_SS_(), 'owner@x.com');
+PROPS7[SOURCE_STATUS.DIGEST_RECIPIENTS_PROP] = ' a@x.com, b@x.com ';
+eq('recipients from Script Property (trimmed)', digestRecipients_SS_(), 'a@x.com, b@x.com');
+eq('dashboard url falls back to the web app url', dashboardUrl_SS_(), 'https://exec');
+PROPS7[SOURCE_STATUS.DASHBOARD_URL_PROP] = 'https://dash2';
+eq('dashboard url property wins', dashboardUrl_SS_(), 'https://dash2');
+
+ROWS7 = allOk;
+eq('nothing wrong → no email', sendSourceHealthDigest(), { sent: false });
+eq('no email sent', MAILS.length, 0);
+eq('checks run before sending', RUNS, 1);
+eq('digest row ok "Nothing to report"', [RECS[0][0], RECS[0][1].status, RECS[0][1].detail], ['digest', 'ok', 'Nothing to report']);
+
+ROWS7 = twoBad;
+const sent = sendSourceHealthDigest();
+eq('problems → sent with count', sent, { sent: true, count: 2 });
+eq('mail to recipients', [MAILS[0].to, /need attention/.test(MAILS[0].subject)], ['a@x.com, b@x.com', true]);
+ck('mail body links the dashboard url', /https:\/\/dash2/.test(MAILS[0].body));
+eq('digest row records the send', [RECS[1][1].status, RECS[1][1].detail], ['ok', 'Sent: 2 source(s) need attention']);
+
+MAIL_FAIL = true;
+let sendErr = null;
+try { sendSourceHealthDigest(); } catch (e) { sendErr = e.message; }
+eq('send failure rethrown', sendErr, 'quota');
+eq('send failure recorded', [RECS[2][1].status, RECS[2][1].detail], ['failed', 'Send failed: quota']);
+MAIL_FAIL = false;
+
+MAILS = []; ROWS7 = allOk;
+eq('preview returns the caller', previewSourceHealthDigest(), { previewedTo: 'me@x.com' });
+eq('preview goes only to the caller', [MAILS.length, MAILS[0].to], [1, 'me@x.com']);
+ck('preview says nothing to report yet lists all sources', /^\[Preview\]/.test(MAILS[0].subject) &&
+   /nothing to report/.test(MAILS[0].subject) && /All sources:/.test(MAILS[0].body) && /Tempo Capacity: ok/.test(MAILS[0].body));
+MAILS = []; ROWS7 = twoBad;
+previewSourceHealthDigest();
+ck('preview of a real digest keeps the digest body', /Tempo Capacity — STALE/.test(MAILS[0].body) && /All sources:/.test(MAILS[0].body));
+
+runSourceChecks_ = realRunChecks; evaluatedRows_SS_ = realEvalRows; recordSourceStatus_ = realRec7;
+global.PropertiesService = realProps;
+delete global.MailApp; delete global.Session; delete global.ScriptApp;
+
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 console.log('source-status-checks: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

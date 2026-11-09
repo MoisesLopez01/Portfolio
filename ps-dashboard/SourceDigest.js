@@ -32,3 +32,51 @@ function buildStatusSummary_SS_(rows) {
            (r.detail ? " · " + r.detail : "");
   }).join("\n");
 }
+
+// ── Apps Script glue ────────────────────────────────────────
+
+function digestRecipients_SS_() {
+  var p = PropertiesService.getScriptProperties().getProperty(SOURCE_STATUS.DIGEST_RECIPIENTS_PROP);
+  return (p && p.trim()) ? p.trim() : Session.getEffectiveUser().getEmail();
+}
+
+function dashboardUrl_SS_() {
+  var p = PropertiesService.getScriptProperties().getProperty(SOURCE_STATUS.DASHBOARD_URL_PROP);
+  if (p) return p;
+  try { return ScriptApp.getService().getUrl() || ""; } catch (e) { return ""; }
+}
+
+// Monday 10:00 trigger handler. Re-evaluates everything at send time.
+function sendSourceHealthDigest() {
+  requireMaintainer_("sendSourceHealthDigest");
+  var now = new Date(), wk = isoLabel_SS_(now);
+  runSourceChecks_();
+  var d = buildDigest_SS_(evaluatedRows_SS_(now), now, dashboardUrl_SS_());
+  if (!d) {
+    recordSourceStatus_("digest", { status: "ok", lastUpdated: now, coversPeriod: wk, detail: "Nothing to report" });
+    return { sent: false };
+  }
+  try {
+    MailApp.sendEmail({ to: digestRecipients_SS_(), subject: d.subject, body: d.body });
+    recordSourceStatus_("digest", { status: "ok", lastUpdated: now, coversPeriod: wk,
+                                    detail: "Sent: " + d.count + " source(s) need attention" });
+    return { sent: true, count: d.count };
+  } catch (e) {
+    recordSourceStatus_("digest", { status: "failed", detail: "Send failed: " + e.message });
+    throw e;
+  }
+}
+
+// Run from the editor: emails ONLY the caller, whatever the state, with every row listed.
+function previewSourceHealthDigest() {
+  var me = requireMaintainer_("previewSourceHealthDigest");
+  var now = new Date(), wk = isoLabel_SS_(now);
+  runSourceChecks_();
+  var rows = evaluatedRows_SS_(now);
+  var d = buildDigest_SS_(rows, now, dashboardUrl_SS_()) ||
+          { subject: "PS Dashboard sources: nothing to report (" + wk + ")",
+            body: "No Goals or Tempo source needs attention — the scheduled digest would send nothing this week." };
+  MailApp.sendEmail({ to: me, subject: "[Preview] " + d.subject,
+                      body: d.body + "\n\nAll sources:\n" + buildStatusSummary_SS_(rows) });
+  return { previewedTo: me };
+}
