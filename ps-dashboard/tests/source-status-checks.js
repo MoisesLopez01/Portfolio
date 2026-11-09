@@ -535,6 +535,26 @@ previewSourceHealthDigest();
 ck('2 preview body names the failed checks', /Checks that could not run/.test(h8.mails[0].body));
 restore8();
 
+// 2b. the checks throw outright (before any step): the digest still goes out
+{
+  const realRun2b = runSourceChecks_, realEval2b = evaluatedRows_SS_, realRec2b = recordSourceStatus_;
+  const mails2b = [];
+  global.MailApp = { sendEmail: m => mails2b.push(m) };
+  global.Session = { getEffectiveUser: () => ({ getEmail: () => 'me@x.com' }) };
+  global.ScriptApp = { getService: () => ({ getUrl: () => 'https://exec' }) };
+  global.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null, getProperties: () => ({}), setProperty() {} }) };
+  runSourceChecks_ = function () { throw new Error('ledger down'); };
+  evaluatedRows_SS_ = function () { return allOk.map(r => r.key === 'tempo_plan' ? evRow('tempo_plan', { lastUpdated: at(10 * D) }) : r); };
+  recordSourceStatus_ = function () { return true; };
+  let res2b = null, err2b = null;
+  try { res2b = sendSourceHealthDigest(); } catch (e) { err2b = e.message; }
+  eq('2b no throw when the checks throw', err2b, null);
+  eq('2b digest still sends', res2b, { sent: true, count: 1 });
+  ck('2b body names the failure', mails2b.length === 1 && /Checks that could not run/.test(mails2b[0].body) && /ledger down/.test(mails2b[0].body));
+  runSourceChecks_ = realRun2b; evaluatedRows_SS_ = realEval2b; recordSourceStatus_ = realRec2b;
+  restore8();
+}
+
 // 3. single trigger owner
 h8 = harness8({ props: { SOURCE_TRIGGER_OWNER: 'other@x.com' }, triggers: [] });
 let own8 = null;
