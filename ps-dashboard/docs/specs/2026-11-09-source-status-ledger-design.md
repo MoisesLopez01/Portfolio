@@ -174,6 +174,26 @@ Every row starts `pending · awaiting first update` and counts as validated only
 - Confirm the `2023 RD` tab name and `A2:N` range at install time (headers read once and logged).
 - Decide whether the FY27 "New RCR" tab gap (`Contribution.js:22, 561-617` reads it; the dashboard does not) gets its own spec.
 
+## 12. Validation log
+
+Deployed 2026-11-09 (2026.W46) as web-app version @309 from `feat/source-status-ledger-ht2` @ 72d7465. Live was verified identical to the branch after the push.
+
+`installSourceStatusTriggers` ran 2026-11-09 19:46. It installed the on-edit triggers for Goals and PTO, the daily 05:00 `checkSourcesDaily` and the Monday 10:00 `sendSourceHealthDigest`. No "Tempo triggers not owned" warning appeared.
+
+PTO `2023 RD` headers A1:N1 at install: Employee Number | Name | Job Title | Department: Name | Supervisor | Hire Date | Location: City | Subsidiary: Name | Time-Off Type | Date | Adjustment Type | Amount | Balance | LOB.
+
+| Source | Validating event | Stamped at | Result |
+|---|---|---|---|
+| Tempo Tracked | daily run | | |
+| Tempo Plan | daily run | | |
+| SI / RCR | `checkSourcesDaily` 05:00 on 2026-11-10 | | |
+| Tempo Capacity | Friday run on 2026-11-13 | | |
+| Monday digest | 10:00 on 2026-11-16 (2026.W47) | | |
+| Goals | next paste touching FY27Q2 rows | | |
+| PTO | next paste into `2023 RD`!A2:N | | |
+| Roster | next HRIS export that changes `Data` | | |
+| Kudos | next `runKudosNormalizer` run | | |
+
 ## 13. Integration with the live freshness view (2026.W46)
 
 The ledger backend was ported unchanged from `docs/source-status-ledger` (ce518f8) onto the codebase that is live in Apps Script (364d897). That codebase already showed per-source freshness, so the ledger feeds that view instead of adding a second one.
