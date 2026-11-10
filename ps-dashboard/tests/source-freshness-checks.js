@@ -167,6 +167,13 @@ sig = collectFreshnessSignals_(0, {}, { lastMonth: null }, { teamAvg: null, quar
 const nd = buildSourceFreshness_(sig, new Date(T('2026-10-19T13:00:00')));
 ck('wiring: failures degrade to nodata, never throw', ['roster', 'rcr', 'si', 'kudos', 'goals', 'pto'].every(k => nd.find(s => s.key === k).state === 'nodata'),
    JSON.stringify(nd.map(s => s.key + ':' + s.state)));
+// Static Data Reference text must agree with the chip: Planned runs daily.
+const plannedRef = (html.match(/<tr data-metric="planned">.*?<\/tr>/) || [])[0] || '';
+ck('Data Reference: Planned row found', !!plannedRef);
+ck('Data Reference: Planned cadence is "Daily export"', /<td>Daily export<\/td>/.test(plannedRef), plannedRef);
+ck('page never calls the Planned export weekly / Mondays',
+   !/(planned|plan export)[^<]{0,80}(weekly export|mondays?\s+0?8)|(weekly export|mondays?\s+0?8)[^<]{0,80}planned/i.test(html) &&
+   !/Weekly export \(Mondays/i.test(html));
 ck('meta ships sourceFreshness', /sourceFreshness:\s+buildSourceFreshness_\(collectFreshnessSignals_\(/.test(fs.readFileSync(path.join(dir, 'PS Contribution Report.js'), 'utf8')));
 ck('plan export writes its run stamp', /setNote\("Last Export: " \+ new Date\(\)\.toISOString\(\)\)/.test(fs.readFileSync(path.join(dir, 'TempoPlanExport.js'), 'utf8')));
 
@@ -196,6 +203,14 @@ ck('failed: panel row uses the overdue styling', flRow.includes('data-state="ove
 ck('failed: panel row shows the reason, escaped', flRow.includes('Last run failed — Tempo 401 &lt;token&gt;'), flRow);
 FE.renderSourceFreshness_({ sourceFreshness: flList, generatedAt: T('2026-11-09T12:00:00') });
 ck('failed: chip turns red', els.dataFreshnessNote.className.includes('fresh-bad'), els.dataFreshnessNote.className);
+// A failure found by the daily check (not a run) is worded neutrally.
+const trg = one('goals', { failedReason: 'Trigger missing: run installSourceStatusTriggers' }, T('2026-11-09T12:00:00'));
+ck('check failure: "Trigger missing:" → Problem prefix', trg.state === 'overdue' && trg.reason === 'Problem — Trigger missing: run installSourceStatusTriggers', JSON.stringify(trg));
+const unr = one('pto', { failedReason: 'Cannot read: 2023 RD tab not found', loadedAt: T('2026-11-02T10:00:00') }, T('2026-11-09T12:00:00'));
+ck('check failure: "Cannot read:" → Problem prefix, cut-off kept', unr.state === 'overdue' && unr.reason === 'Problem — Cannot read: 2023 RD tab not found' &&
+   unr.cutoff === new Date(T('2026-11-02T10:00:00')).toISOString(), JSON.stringify(unr));
+ck('run failure mentioning a trigger mid-text stays "Last run failed"',
+   one('tracked', { failedReason: 'Tempo 500 (Trigger missing: no)' }, T('2026-11-09T12:00:00')).reason === 'Last run failed — Tempo 500 (Trigger missing: no)');
 
 // ── The ledger feeds the freshness view ──────────────────────────────────────
 let ledgerReads = 0, ledgerOpens = 0;

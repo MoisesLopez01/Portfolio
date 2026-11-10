@@ -199,7 +199,7 @@ It never throws and returns `{}` when the ledger spreadsheet is unreachable, the
 
 `collectFreshnessSignals_` builds today's signals (Drive stamps, the Tracked "Last Export", the Planned A1 note, the Kudos G1 run stamp), then merges the ledger signals over them. A ledger key replaces that source's signal. Until `installSourceStatusTriggers` has run and a source has been stamped, the view behaves exactly as before.
 
-`buildSourceFreshness_` treats `failedReason` as `state: "overdue"`, `reason: "Last run failed — <detail>"`, and keeps `cutoff` from `loadedAt` when present. The panel shows the reason with the existing overdue lozenge, and the chip turns red.
+`buildSourceFreshness_` treats `failedReason` as `state: "overdue"`, `reason: "Last run failed — <detail>"`, and keeps `cutoff` from `loadedAt` when present. A detail that starts with "Trigger missing:" or "Cannot read:" comes from the daily check rather than a run, so its reason is "Problem — <detail>" instead. The panel shows the reason with the existing overdue lozenge, and the chip turns red.
 
 ### One set of limits
 

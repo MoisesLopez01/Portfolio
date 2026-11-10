@@ -4380,12 +4380,15 @@ function buildSourceFreshness_(signals, asOf) {
                   cutoff: null, cutoffLabel: null, state: "nodata", reason: "" };
     if (s.missing) { out.reason = s.missing; return out; }
 
-    // The ledger recorded a failed run: overdue whatever the age of the last good
+    // The ledger recorded a failure: overdue whatever the age of the last good
     // load, whose time stays as the cut-off (the data shown is still that load).
+    // Failures found by the daily check ("Trigger missing:", "Cannot read:") are not
+    // runs, so they get a neutral prefix.
     if (s.failedReason) {
       const t = s.loadedAt ? new Date(s.loadedAt) : null;
       if (t && !isNaN(t.getTime())) out.cutoff = t.toISOString();
-      out.state = "overdue"; out.reason = "Last run failed — " + s.failedReason;
+      const fromCheck = /^(Trigger missing:|Cannot read:)/.test(String(s.failedReason));
+      out.state = "overdue"; out.reason = (fromCheck ? "Problem — " : "Last run failed — ") + s.failedReason;
       return out;
     }
 
