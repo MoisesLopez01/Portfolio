@@ -4474,11 +4474,35 @@ function collectFreshnessSignals_(rosterSize, trackedAll, rcrAll, siAll) {
     kudos:   load(ss ? sheetRow1Stamp_(ss, CONFIG_PS.SHEET_KUDOS) : null, ss && !ss.getSheetByName(CONFIG_PS.SHEET_KUDOS) ? "Kudos sheet not found" : null),
     pto:     { loadedAt: driveLastUpdated_(ids.ptoAccum) },
   };
-  // The Source Status ledger (SourceStatus.js) replaces the signal of each source it
-  // has stamped; sources it has not stamped yet keep the signal above.
+  // The Source Status ledger (SourceStatus.js) feeds each source it has stamped;
+  // sources it has not stamped yet keep the signal above. See mergeFreshnessSignal_.
   const ledger = typeof ledgerFreshnessSignals_ === "function" ? ledgerFreshnessSignals_() : {};
-  Object.keys(ledger).forEach(k => { signals[k] = ledger[k]; });
+  Object.keys(ledger).forEach(k => { signals[k] = mergeFreshnessSignal_(k, signals[k], ledger[k]); });
   return signals;
+}
+
+// One source's signal from the live read and the ledger:
+//  - live {missing} wins: a sheet that is gone must not show as current.
+//  - tracked / planned / kudos (the export writes its own stamp too): the newer
+//    loadedAt wins, and a ledger failure is dropped when the live stamp is newer
+//    than the failure (failedAt) — fresh data landed after it.
+//  - goals / pto: the ledger wins; their Drive stamp moves on any edit, which is
+//    the false freshness the ledger filters out.
+function mergeFreshnessSignal_(key, live, led) {
+  live = live || {};
+  if (!led) return live;
+  if (live.missing) return live;
+  if (key !== "tracked" && key !== "planned" && key !== "kudos") return led;
+  const ms = v => { const t = v ? new Date(v).getTime() : NaN; return isNaN(t) ? null : t; };
+  const liveT = ms(live.loadedAt), ledT = ms(led.loadedAt), failT = ms(led.failedAt);
+  const out = {};
+  const newest = liveT === null ? ledT : (ledT === null ? liveT : Math.max(liveT, ledT));
+  if (newest !== null) out.loadedAt = new Date(newest).toISOString();
+  if (led.failedReason && !(liveT !== null && failT !== null && liveT > failT)) {
+    out.failedReason = led.failedReason;
+    if (led.failedAt) out.failedAt = led.failedAt;
+  }
+  return out;
 }
 
 // True for the roles that see the WHOLE roster — superadmin, admin, viewer.

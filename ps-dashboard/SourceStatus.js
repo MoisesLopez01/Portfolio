@@ -509,7 +509,8 @@ function readSourceStatus_() {
 var LEDGER_FRESHNESS_KEYS_SS = { tempo_tracked: "tracked", tempo_plan: "planned", goals: "goals", pto: "pto", kudos: "kudos" };
 
 // Signals for collectFreshnessSignals_, from the ledger's stored rows:
-//   status "failed"      → { failedReason: detail, loadedAt?: last good update }
+//   status "failed"      → { failedReason: detail, loadedAt?: last good update,
+//                             failedAt?: "Last checked", i.e. when the failure was recorded }
 //   valid "Last updated" → { loadedAt: ISO }
 //   otherwise            → key omitted, so the view keeps its own signal.
 // Reads the ledger at most once. Never throws; {} when there is no ledger tab.
@@ -525,6 +526,7 @@ function ledgerFreshnessSignals_() {
       if (String(r.status || "").trim().toLowerCase() === "failed") {
         var sig = { failedReason: String(r.detail || "").trim() || "no detail recorded" };
         if (at) sig.loadedAt = at;
+        if (isDate_SS_(r.lastChecked)) sig.failedAt = r.lastChecked.toISOString();
         out[LEDGER_FRESHNESS_KEYS_SS[key]] = sig;
       } else if (at) {
         out[LEDGER_FRESHNESS_KEYS_SS[key]] = { loadedAt: at };

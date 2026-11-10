@@ -216,14 +216,15 @@ ck('run failure mentioning a trigger mid-text stays "Last run failed"',
 let ledgerReads = 0, ledgerOpens = 0;
 const ledgerTab = values => ({ getDataRange: () => { ledgerReads++; return { getValues: () => values }; } });
 const HDR = SOURCE_STATUS.HEADERS.slice();
-const lrow = (key, lastUpdated, status, detail) => {
+const lrow = (key, lastUpdated, status, detail, lastChecked) => {
   const r = HDR.map(() => '');
   r[HDR.indexOf('Source')] = key; r[HDR.indexOf('Last updated')] = lastUpdated;
-  r[HDR.indexOf('Status')] = status; r[HDR.indexOf('Detail')] = detail || ''; return r;
+  r[HDR.indexOf('Status')] = status; r[HDR.indexOf('Detail')] = detail || '';
+  r[HDR.indexOf('Last checked')] = lastChecked || ''; return r;
 };
 const LEDGER_ROWS = [HDR,
   lrow('tempo_tracked', new Date(T('2026-11-09T06:02:00')), 'ok', 'Run ok in 40 s'),
-  lrow('tempo_plan', new Date(T('2026-11-08T08:00:00')), 'failed', 'Tempo 429'),
+  lrow('tempo_plan', new Date(T('2026-11-08T08:00:00')), 'failed', 'Tempo 429', new Date(T('2026-11-09T08:00:00'))),
   lrow('tempo_capacity', new Date(T('2026-11-06T08:00:00')), 'ok'),
   lrow('goals', '', 'pending', 'awaiting first update'),
   lrow('pto', new Date(T('2026-11-02T10:00:00')), 'ok'),
@@ -240,6 +241,7 @@ let lf = ledgerFreshnessSignals_();
 ck('ledger: tracked ok → loadedAt', lf.tracked && lf.tracked.loadedAt === new Date(T('2026-11-09T06:02:00')).toISOString(), JSON.stringify(lf.tracked));
 ck('ledger: plan failed → failedReason', lf.planned && lf.planned.failedReason === 'Tempo 429', JSON.stringify(lf.planned));
 ck('ledger: failed keeps the last good load', lf.planned && lf.planned.loadedAt === new Date(T('2026-11-08T08:00:00')).toISOString());
+ck('ledger: failed carries failedAt from Last checked', lf.planned && lf.planned.failedAt === new Date(T('2026-11-09T08:00:00')).toISOString(), JSON.stringify(lf.planned));
 ck('ledger: pending goals without a stamp is omitted', !('goals' in lf), JSON.stringify(lf.goals));
 ck('ledger: PTO stamp → loadedAt', lf.pto && lf.pto.loadedAt === new Date(T('2026-11-02T10:00:00')).toISOString());
 ck('ledger: kudos with no valid date is omitted', !('kudos' in lf), JSON.stringify(lf.kudos));
@@ -261,7 +263,7 @@ ck('ledger: kudos failed → failedReason', lf.kudos && lf.kudos.failedReason ==
 global.DriveApp = { getFileById: () => ({ getLastUpdated: () => new Date('2026-11-09T11:00:00Z') }) };
 withLedger(ledgerTab(LEDGER_ROWS), { [CONFIG_PS.SHEET_PLANNED]: sheet('p'), [CONFIG_PS.SHEET_TEMPO_TRACKED]: sheet('t'), [CONFIG_PS.SHEET_KUDOS]: sheet('k') });
 sig = collectFreshnessSignals_(240, { _lastExport: '2026-10-15T17:51:00.000Z' }, { lastMonth: 'Oct 26' }, { teamAvg: 3.6, quarter: 'FY27Q1' });
-ck('merge: tracked replaced by the ledger stamp', sig.tracked.loadedAt === new Date(T('2026-11-09T06:02:00')).toISOString(), JSON.stringify(sig.tracked));
+ck('merge: older live tracked stamp loses to the newer ledger stamp', sig.tracked.loadedAt === new Date(T('2026-11-09T06:02:00')).toISOString(), JSON.stringify(sig.tracked));
 ck('merge: planned failure replaces the A1-note stamp', sig.planned.failedReason === 'Tempo 429', JSON.stringify(sig.planned));
 ck('merge: goals with no ledger stamp keeps its Drive stamp', sig.goals.loadedAt === '2026-11-09T11:00:00.000Z', JSON.stringify(sig.goals));
 ck('merge: roster keeps its Drive stamp', sig.roster.loadedAt === '2026-11-09T11:00:00.000Z', JSON.stringify(sig.roster));
@@ -273,6 +275,37 @@ withLedger(null, { [CONFIG_PS.SHEET_PLANNED]: sheet('p'), [CONFIG_PS.SHEET_TEMPO
 sig = collectFreshnessSignals_(240, { _lastExport: '2026-10-15T17:51:00.000Z' }, { lastMonth: 'Oct 26' }, { teamAvg: 3.6, quarter: 'FY27Q1' });
 ck('no ledger yet: tracked keeps Last Export', sig.tracked.loadedAt === '2026-10-15T17:51:00.000Z', JSON.stringify(sig.tracked));
 ck('no ledger yet: planned keeps the A1 note', sig.planned.loadedAt === '2026-10-19T14:05:00.000Z', JSON.stringify(sig.planned));
+
+// Merge rule per source (review 2026.W46).
+const ISO = s => new Date(T(s)).toISOString();
+const AT_ = '2026-11-09T12:00:00';
+const collectWith = (rows, tabs, lastExport) => {
+  withLedger(ledgerTab([HDR].concat(rows)), tabs);
+  return collectFreshnessSignals_(240, { _lastExport: lastExport }, { lastMonth: 'Oct 26' }, { teamAvg: 3.6, quarter: 'FY27Q1' });
+};
+const allTabs = () => ({ [CONFIG_PS.SHEET_PLANNED]: sheet('p'), [CONFIG_PS.SHEET_TEMPO_TRACKED]: sheet('t'), [CONFIG_PS.SHEET_KUDOS]: sheet('k') });
+// live missing beats a ledger stamp
+let mt = allTabs(); delete mt[CONFIG_PS.SHEET_TEMPO_TRACKED];
+sig = collectWith([lrow('tempo_tracked', new Date(T('2026-11-09T06:00:00')), 'ok')], mt, null);
+ck('merge rule: a missing live sheet beats a ledger stamp', sig.tracked.missing === 'Tracked Time sheet not found' && !sig.tracked.loadedAt, JSON.stringify(sig.tracked));
+ck('merge rule: missing sheet shows nodata, not current', buildSourceFreshness_(sig, new Date(T(AT_))).find(x => x.key === 'tracked').state === 'nodata');
+// newer live stamp beats an older ledger stamp (tracked)
+sig = collectWith([lrow('tempo_tracked', new Date(T('2026-11-07T06:00:00')), 'ok')], allTabs(), ISO('2026-11-09T07:00:00'));
+ck('merge rule: newer live tracked stamp beats the older ledger stamp', sig.tracked.loadedAt === ISO('2026-11-09T07:00:00') && !sig.tracked.failedReason, JSON.stringify(sig.tracked));
+// failed ledger row + live stamp newer than the failure → current, no failedReason
+sig = collectWith([lrow('tempo_tracked', new Date(T('2026-11-07T06:00:00')), 'failed', 'Tempo 500', new Date(T('2026-11-08T06:00:00')))], allTabs(), ISO('2026-11-09T07:00:00'));
+ck('merge rule: fresh live data after a failure drops failedReason', !sig.tracked.failedReason && sig.tracked.loadedAt === ISO('2026-11-09T07:00:00'), JSON.stringify(sig.tracked));
+ck('merge rule: fresh live data after a failure shows current', buildSourceFreshness_(sig, new Date(T(AT_))).find(x => x.key === 'tracked').state === 'current');
+// failed ledger row + live stamp older than the failure → overdue "Last run failed"
+sig = collectWith([lrow('tempo_tracked', new Date(T('2026-11-07T06:00:00')), 'failed', 'Tempo 500', new Date(T('2026-11-09T06:00:00')))], allTabs(), ISO('2026-11-08T06:00:00'));
+let mtr = buildSourceFreshness_(sig, new Date(T(AT_))).find(x => x.key === 'tracked');
+ck('merge rule: live data older than the failure keeps it', sig.tracked.failedReason === 'Tempo 500' && mtr.state === 'overdue' && mtr.reason === 'Last run failed — Tempo 500', JSON.stringify(mtr));
+ck('merge rule: kept failure still shows the newest load as cut-off', mtr.cutoff === ISO('2026-11-08T06:00:00'), mtr.cutoff);
+// goals: the ledger stamp beats a newer Drive stamp
+global.DriveApp = { getFileById: () => ({ getLastUpdated: () => new Date(T('2026-11-09T11:00:00')) }) };
+sig = collectWith([lrow('goals', new Date(T('2026-11-03T10:00:00')), 'ok'), lrow('pto', new Date(T('2026-10-20T10:00:00')), 'ok')], allTabs(), null);
+ck('merge rule: goals ledger stamp beats a newer Drive stamp', sig.goals.loadedAt === ISO('2026-11-03T10:00:00'), JSON.stringify(sig.goals));
+ck('merge rule: PTO ledger stamp beats a newer Drive stamp', sig.pto.loadedAt === ISO('2026-10-20T10:00:00'), JSON.stringify(sig.pto));
 
 // ── I2 ledger ──────────────────────────────────────────────────────────────
 if (process.argv.includes('--ledger')) {

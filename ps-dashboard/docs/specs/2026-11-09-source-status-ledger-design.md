@@ -164,6 +164,9 @@ Every row starts `pending · awaiting first update` and counts as validated only
 - (a) A broken ledger (missing column) renders the same as "not installed".
 - (b) A Tempo run that returns zero rows is stamped ok.
 - (c) The dashboard's `readRCR_PS_` still counts an all-zero month column as populated, unlike the ledger.
+- (d) An export that finds no data returns normally and is stamped `ok`, so both the ledger and the freshness view show it as current.
+- (e) `SOURCE_STALE_HOURS_<KEY>` overrides change the ledger and the Monday email, but not the dashboard chip. `SOURCE_FRESHNESS_.maxAgeH` is fixed in code, so an override makes the two disagree.
+- (f) `readSourceStatus_()` is unused in the integration with the live freshness view (§13). The payload uses `ledgerFreshnessSignals_()` instead.
 
 ## 11. Open items for planning
 
@@ -191,19 +194,25 @@ The ledger backend was ported unchanged from `docs/source-status-ledger` (ce518f
 
 `ledgerFreshnessSignals_()` (`SourceStatus.js`) reads the stored ledger rows once. For each mapped key:
 
-1. Stored status `failed` → `{ failedReason: <Detail>, loadedAt: <Last updated> }`. `loadedAt` is included only when `Last updated` is a valid date.
+1. Stored status `failed` → `{ failedReason: <Detail>, loadedAt: <Last updated>, failedAt: <Last checked> }`. `loadedAt` and `failedAt` are included only when the cell holds a valid date. `failedAt` is when the failure was recorded.
 2. Otherwise, a valid `Last updated` → `{ loadedAt: ISO }`.
 3. Otherwise the key is omitted.
 
 It never throws and returns `{}` when the ledger spreadsheet is unreachable, the tab is missing or a column is missing.
 
-`collectFreshnessSignals_` builds today's signals (Drive stamps, the Tracked "Last Export", the Planned A1 note, the Kudos G1 run stamp), then merges the ledger signals over them. A ledger key replaces that source's signal. Until `installSourceStatusTriggers` has run and a source has been stamped, the view behaves exactly as before.
+`collectFreshnessSignals_` builds today's signals (Drive stamps, the Tracked "Last Export", the Planned A1 note, the Kudos G1 run stamp), then merges each ledger signal with the live one (`mergeFreshnessSignal_`):
+
+- If the live signal is `{ missing }` (for example, the sheet is gone), the live signal wins. A missing sheet must not show as current.
+- For tracked, planned and kudos, each export also writes its own stamp. `loadedAt` is the newer of the ledger and live stamps. A ledger `failedReason` is dropped when the live stamp is newer than `failedAt`, because fresh data landed after the failure. Otherwise the failure is kept.
+- For goals and PTO, the ledger signal wins. Their Drive stamp moves on any edit to the workbook, which is the false freshness the ledger filters out.
+
+Until `installSourceStatusTriggers` has run and a source has been stamped, each source keeps its live signal.
 
 `buildSourceFreshness_` treats `failedReason` as `state: "overdue"`, `reason: "Last run failed — <detail>"`, and keeps `cutoff` from `loadedAt` when present. A detail that starts with "Trigger missing:" or "Cannot read:" comes from the daily check rather than a run, so its reason is "Problem — <detail>" instead. The panel shows the reason with the existing overdue lozenge, and the chip turns red.
 
 ### One set of limits
 
-`SOURCE_FRESHNESS_` now uses the ledger's `staleHours`, so the chip and the Monday email agree:
+`SOURCE_FRESHNESS_` now uses the ledger's `staleHours`, so the chip and the Monday email agree. These limits take effect as soon as the code is pushed, not when `installSourceStatusTriggers` runs: tracked and planned at 26 h, goals at 168 h, PTO at 360 h, and Planned shown as Daily. They then apply to today's live stamps. Only the ledger-fed stamps wait for the install.
 
 | Source | Cadence | maxAgeH = staleHours |
 |---|---|---|
