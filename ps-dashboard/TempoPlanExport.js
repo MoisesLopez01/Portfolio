@@ -404,7 +404,7 @@ function backfillPlanHistory() {
   }
 }
 
-// Entry point for the Monday trigger and manual runs. See fetchTempoLoggedTime.
+// Entry point for the daily trigger (added by hand on the Triggers page) and manual runs. See fetchTempoLoggedTime.
 function fetchTempoPlannedTime() {
   if (typeof requireMaintainer_ === 'function') requireMaintainer_('fetchTempoPlannedTime');
   if (typeof withSourceStatus_ !== 'function') return fetchTempoPlannedTimeBody_();

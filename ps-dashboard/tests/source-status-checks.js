@@ -55,7 +55,8 @@ eq('capacity 8 d → ok', evaluateSourceStatus_(def('tempo_capacity'), { lastUpd
 const cap = evaluateSourceStatus_(def('tempo_capacity'), { lastUpdated: at(8 * D + H) }, NOW);
 eq('capacity 8 d 1 h → stale', cap.status, 'stale');
 eq('capacity stale detail', cap.detail, 'No update for 8 days (limit 8 days)');
-eq('plan 8 d 1 h → stale', evaluateSourceStatus_(def('tempo_plan'), { lastUpdated: at(8 * D + H) }, NOW).status, 'stale');
+eq('plan (daily) 27 h → stale', evaluateSourceStatus_(def('tempo_plan'), { lastUpdated: at(27 * H) }, NOW).status, 'stale');
+eq('plan next expected = last + 24 h', ymd(evaluateSourceStatus_(def('tempo_plan'), { lastUpdated: new Date(2026, 10, 9, 8, 0) }, NOW).nextExpected), '2026-11-10');
 eq('goals 7 d → ok',     evaluateSourceStatus_(def('goals'), { lastUpdated: at(7 * D) }, NOW).status, 'ok');
 eq('goals 7 d 1 h → stale', evaluateSourceStatus_(def('goals'), { lastUpdated: at(7 * D + H) }, NOW).status, 'stale');
 eq('pto 15 d → ok',      evaluateSourceStatus_(def('pto'), { lastUpdated: at(15 * D) }, NOW).status, 'ok');
@@ -184,7 +185,9 @@ const rDash = rcrStatus_SS_(['Employee Name', 'Sep 26', 'Oct-26'], [['A', 1.1, 1
 eq('RCR ignores Oct-26 header', [rDash.status, rDash.coversPeriod], ['pending', 'Sep 26']);
 eq('stale override 0 ignored', sourceDefs_({ SOURCE_STALE_HOURS_TEMPO_CAPACITY: '0' }).filter(d => d.key === 'tempo_capacity')[0].staleHours, 192);
 eq('stale override -5 ignored', sourceDefs_({ SOURCE_STALE_HOURS_TEMPO_CAPACITY: '-5' }).filter(d => d.key === 'tempo_capacity')[0].staleHours, 192);
-eq('plan 8 d - 1 h → ok', evaluateSourceStatus_(def('tempo_plan'), { lastUpdated: at(8 * D - H) }, NOW).status, 'ok');
+eq('plan (daily) 25 h → ok', evaluateSourceStatus_(def('tempo_plan'), { lastUpdated: at(25 * H) }, NOW).status, 'ok');
+const planExp = expectedTriggers_SS_(sourceDefs_({}), { goals: 'G', ptoAccum: 'P' }).filter(e => e.key === 'tempo_plan')[0];
+ck('plan missing-trigger hint points to the Triggers page, not createWeeklyTrigger', /Triggers page/.test(planExp.installHint) && !/^createWeeklyTrigger$/.test(planExp.installer || ''));
 eq('capacity 8 d - 1 h → ok', evaluateSourceStatus_(def('tempo_capacity'), { lastUpdated: at(8 * D - H) }, NOW).status, 'ok');
 eq('goals 7 d - 1 h → ok', evaluateSourceStatus_(def('goals'), { lastUpdated: at(7 * D - H) }, NOW).status, 'ok');
 eq('pto 15 d - 1 h → ok', evaluateSourceStatus_(def('pto'), { lastUpdated: at(15 * D - H) }, NOW).status, 'ok');

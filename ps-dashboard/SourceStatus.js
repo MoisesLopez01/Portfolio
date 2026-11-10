@@ -22,12 +22,16 @@ var SOURCE_STATUS = {
   // staleHours: null = never stale. cadenceHours: used for "Next expected".
   // rule: true = status is computed by checkSourcesDaily / the digest, not by age.
   // trigger: handler that must exist (checked daily); installer: what to run if it is missing.
+  // installHint: replaces "run <installer>" when the trigger was made by hand (no creator function).
   SOURCES: [
     { key: "tempo_tracked",  label: "Tempo Tracked",  staleHours: 26,  cadenceHours: 24,  digest: true,
       trigger: "fetchTempoLoggedTime",  installer: "createLoggedDailyTrigger",
       action: "Run fetchTempoLoggedTime from the Apps Script editor and check its log." },
-    { key: "tempo_plan",     label: "Tempo Plan",     staleHours: 192, cadenceHours: 168, digest: true,
-      trigger: "fetchTempoPlannedTime", installer: "createWeeklyTrigger",
+    // Runs DAILY: the live trigger was added by hand on the Triggers page. createWeeklyTrigger()
+    // would replace it with a Monday-only one, so it is not offered as the fix.
+    { key: "tempo_plan",     label: "Tempo Plan",     staleHours: 26,  cadenceHours: 24,  digest: true,
+      trigger: "fetchTempoPlannedTime", installer: null,
+      installHint: "add a daily fetchTempoPlannedTime trigger on the Triggers page (not createWeeklyTrigger, which makes it weekly)",
       action: "Run fetchTempoPlannedTime from the Apps Script editor and check its log." },
     { key: "tempo_capacity", label: "Tempo Capacity", staleHours: 192, cadenceHours: 168, digest: true,
       trigger: "fetchTempoCapacity",    installer: "createCapacityWeeklyTrigger",
@@ -266,7 +270,7 @@ function flagOutcome_SS_(row, problem, prefix) {
 // ids: getExternalSSIds_() → { goals, ptoAccum, ... }
 function expectedTriggers_SS_(defs, ids) {
   return defs.filter(function (d) { return d.trigger; }).map(function (d) {
-    return { key: d.key, handler: d.trigger, sourceId: d.watch ? ids[d.watch] : null, installer: d.installer };
+    return { key: d.key, handler: d.trigger, sourceId: d.watch ? ids[d.watch] : null, installer: d.installer, installHint: d.installHint || "" };
   });
 }
 
@@ -573,7 +577,7 @@ function runSourceChecks_() {
       // Keep an install-failure reason the installer already wrote.
       if (miss && isTriggerFlag_SS_(rows[exp.key])) return;
       writeTracked_SS_(rows, exp.key,
-        flagOutcome_SS_(rows[exp.key], miss ? "run " + miss.installer : null, "Trigger missing"));
+        flagOutcome_SS_(rows[exp.key], miss ? (miss.installHint || "run " + miss.installer) : null, "Trigger missing"));
     });
   });
 

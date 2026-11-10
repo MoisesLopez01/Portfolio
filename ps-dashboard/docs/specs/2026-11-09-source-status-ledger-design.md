@@ -52,7 +52,7 @@ Rules:
 | Source | Writer | Stamped when | Status rule | In Monday email |
 |---|---|---|---|---|
 | Tempo Tracked | `fetchTempoLoggedTime` (daily 06:00) wrapped by `withSourceStatus_` | each successful run | `failed` if the run throws; `stale` after 26 h without success | yes |
-| Tempo Plan | `fetchTempoPlannedTime` (Mon 08:00) wrapped | each successful run | `failed` if it throws; `stale` after 8 days | yes |
+| Tempo Plan | `fetchTempoPlannedTime` (daily; the live trigger was added by hand on the Triggers page) wrapped | each successful run | `failed` if it throws; `stale` after 26 h without success | yes |
 | Tempo Capacity | `fetchTempoCapacity` (Fri 08:00) wrapped | each successful run | `failed` if it throws; `stale` after 8 days | yes |
 | Goals | installable on-edit trigger on the Goals workbook (`1v5s0Ogka8nrxfT8u71BwG9KidwhD32TjzV_miKad5HQ`), tab `RD` | a user edit touches rows whose `Fiscal Quarter` is the evaluated quarter | `stale` after 7 days without a qualifying edit; `failed` if the tab or `Fiscal Quarter` column cannot be read | yes |
 | PTO | installable on-edit trigger on the PTO workbook (`1J_5EhrQqMMjUFH1Zm_Wpcbd47OFDlcKsdoGm-haS8Yo`), tab `2023 RD` | a user edit intersects `A2:N` | `ok` while the last edit is ≤ 15 days old; `stale` after 15 days; `failed` if the tab cannot be read | no |
@@ -96,7 +96,7 @@ Use `computeFiscalContext_` (`PS Contribution Report.js:1551-1645`): `goalsQuart
 | `onWatchedEdit` | installable on-edit, Goals workbook | on user edit |
 | `onWatchedEdit` | installable on-edit, PTO workbook | on user edit |
 | `checkSourcesDaily` | time-based | daily 05:00 |
-| `sendSourceHealthDigest` | time-based | Monday 10:00 (after Plan's 08:00 run) |
+| `sendSourceHealthDigest` | time-based | Monday 10:00 |
 
 The existing Tempo triggers are unchanged; only their entry functions are wrapped. The owner who runs `installSourceStatusTriggers` must have **edit** access to the Goals and PTO workbooks — Apps Script requires it to install an edit trigger on a spreadsheet. Installable edit triggers fire only for edits a person makes in the Sheets UI; both workbooks are updated by manual paste, so this fits.
 
@@ -112,7 +112,7 @@ The existing Tempo triggers are unchanged; only their entry functions are wrappe
 - A ledger write never breaks a producer: errors writing `Source Status` are logged and swallowed. Producer errors are recorded and rethrown, so Apps Script's own failure notice still fires.
 - No script lock: the project's script lock is held for minutes by the hourly Jira tracker. The tab is seeded with one row per source at creation, so each writer overwrites only its own row; a rare duplicate from a concurrent first write is resolved last-row-wins.
 - The edit handler exits immediately when the edit is outside the watched tab or range. For Goals it reads `Fiscal Quarter` only for the edited rows. A full-tab paste is one edit event.
-- The daily check compares `ScriptApp.getProjectTriggers()` against the expected handlers. A missing trigger marks its source `failed` with detail "Trigger missing: run <installer>", where the installer is `createLoggedDailyTrigger`, `createWeeklyTrigger`, `createCapacityWeeklyTrigger` or `installSourceStatusTriggers` — this catches the 2026.W39 silent-stop pattern at its cause. `getProjectTriggers()` only sees the current user's triggers, so the check runs only for the account stored in `SOURCE_TRIGGER_OWNER`; the installer sets it and refuses to run under another account.
+- The daily check compares `ScriptApp.getProjectTriggers()` against the expected handlers. A missing trigger marks its source `failed` with detail "Trigger missing: run <installer>", where the installer is `createLoggedDailyTrigger`, `createCapacityWeeklyTrigger` or `installSourceStatusTriggers`; Tempo Plan instead says "add a daily fetchTempoPlannedTime trigger on the Triggers page", because its daily trigger was made by hand and `createWeeklyTrigger` would make it weekly — this catches the 2026.W39 silent-stop pattern at its cause. `getProjectTriggers()` only sees the current user's triggers, so the check runs only for the account stored in `SOURCE_TRIGGER_OWNER`; the installer sets it and refuses to run under another account.
 - A digest send failure is written to the `digest` row so it is visible on the dashboard.
 
 ## Script Properties
@@ -145,7 +145,7 @@ Every row starts `pending · awaiting first update` and counts as validated only
 |---|---|---|
 | Tempo Tracked | daily 06:00 run | 2026-11-10 (2026.W46) |
 | Tempo Capacity | Friday 08:00 run | 2026-11-13 (2026.W46) |
-| Tempo Plan | Monday 08:00 run | 2026-11-16 (2026.W47) |
+| Tempo Plan | daily run | 2026-11-10 (2026.W46) |
 | Goals | next manual paste into `RD` touching FY27Q2 rows | next paste |
 | PTO | next manual paste into `2023 RD`!A2:N | next paste |
 | Roster | next HRIS export that changes `Data` | next export |
