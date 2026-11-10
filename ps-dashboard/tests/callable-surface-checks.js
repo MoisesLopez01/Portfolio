@@ -33,6 +33,12 @@ const ALLOWED_UNGATED = new Set([
   // Simple trigger on the bound spreadsheet: only builds the Contributor Intelligence
   // menu. Reads nothing, writes nothing; the items it opens are gated themselves.
   'onOpen',
+  // Installable on-edit handler for the Goals/PTO workbooks (SourceStatus.js). Not gated:
+  // Session.getActiveUser() in an edit trigger is the editing colleague (not necessarily an
+  // admin), so a gate would block legitimate pastes. It returns at once unless given a live
+  // Range (impossible over google.script.run, JSON only); its only effect is stamping
+  // "now" on one ledger row.
+  'onWatchedEdit',
 ]);
 
 // A gate is any of these appearing inside the function body.
