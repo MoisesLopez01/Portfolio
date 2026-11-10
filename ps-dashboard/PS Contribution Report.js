@@ -4335,15 +4335,20 @@ function fullWeekHours_(x) {
 //   state   — "current" | "overdue" | "nodata", with the reason in plain words
 // An overdue source is not an error to hide: the point is that the reader can see
 // it. Pure function of (signals, asOf) so tests can freeze the clock at any cut.
+//
+// 2026.W46: tracked, planned, goals and PTO use the Source Status ledger's limits
+// (SOURCE_STATUS.SOURCES[].staleHours in SourceStatus.js), so the chip and the
+// Monday email agree on when a source is overdue. Kudos keeps its own rule: the
+// ledger never marks it stale. Roster keeps its Drive stamp (not fed by the ledger).
 const SOURCE_FRESHNESS_ = [
   { key: "roster",  label: "Roster (HRIS export)",            kind: "load",    cadence: "Daily",                          maxAgeH: 48 },
   { key: "rcr",     label: "RCR (Finance)",                    kind: "month",   cadence: "Monthly — last closed month",    graceDays: 10 },
   { key: "si",      label: "Manager rating (Small Improvements)", kind: "quarter", cadence: "Quarterly — last closed quarter", graceDays: 60 },
-  { key: "goals",   label: "Goals (RD sheet)",                 kind: "load",    cadence: "Weekly",                         maxAgeH: 8 * 24 },
-  { key: "planned", label: "Planned time (Tempo)",             kind: "load",    cadence: "Weekly — Mondays 08:00",         maxAgeH: 8 * 24 },
-  { key: "tracked", label: "Tracked time (Tempo)",             kind: "load",    cadence: "Daily — 06:00",                  maxAgeH: 48 },
+  { key: "goals",   label: "Goals (RD sheet)",                 kind: "load",    cadence: "Weekly — manual paste",          maxAgeH: 168 },
+  { key: "planned", label: "Planned time (Tempo)",             kind: "load",    cadence: "Daily",                          maxAgeH: 26 },
+  { key: "tracked", label: "Tracked time (Tempo)",             kind: "load",    cadence: "Daily — 06:00",                  maxAgeH: 26 },
   { key: "kudos",   label: "Kudos (recognition channel)",      kind: "load",    cadence: "Daily",                          maxAgeH: 48 },
-  { key: "pto",     label: "PTO (Accumulation Cost)",          kind: "load",    cadence: "Weekly",                         maxAgeH: 8 * 24 },
+  { key: "pto",     label: "PTO (Accumulation Cost)",          kind: "load",    cadence: "Manual paste — within 15 days",  maxAgeH: 360 },
 ];
 
 // "Aug 26" | "2026.08 RCR" → months since year 0 (y*12+m); null when unreadable.
@@ -4374,6 +4379,15 @@ function buildSourceFreshness_(signals, asOf) {
     const out = { key: src.key, label: src.label, cadence: src.cadence, kind: src.kind,
                   cutoff: null, cutoffLabel: null, state: "nodata", reason: "" };
     if (s.missing) { out.reason = s.missing; return out; }
+
+    // The ledger recorded a failed run: overdue whatever the age of the last good
+    // load, whose time stays as the cut-off (the data shown is still that load).
+    if (s.failedReason) {
+      const t = s.loadedAt ? new Date(s.loadedAt) : null;
+      if (t && !isNaN(t.getTime())) out.cutoff = t.toISOString();
+      out.state = "overdue"; out.reason = "Last run failed — " + s.failedReason;
+      return out;
+    }
 
     if (src.kind === "load") {
       const t = s.loadedAt ? new Date(s.loadedAt) : null;
@@ -4447,7 +4461,7 @@ function collectFreshnessSignals_(rosterSize, trackedAll, rcrAll, siAll) {
   let ss = null;
   try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) { /* no container */ }
   const load = (at, missing) => missing ? { missing } : { loadedAt: at };
-  return {
+  const signals = {
     roster:  rosterSize > 0 ? { loadedAt: driveLastUpdated_(ids.roster) } : { missing: "Roster returned no rows" },
     rcr:     rcrAll && rcrAll.lastMonth ? { period: rcrAll.lastMonth } : { missing: "No populated RCR month" },
     si:      siAll && siAll.teamAvg !== null && siAll.quarter ? { period: siAll.quarter } : { missing: "No SI ratings in the sheet" },
@@ -4457,6 +4471,11 @@ function collectFreshnessSignals_(rosterSize, trackedAll, rcrAll, siAll) {
     kudos:   load(ss ? sheetRow1Stamp_(ss, CONFIG_PS.SHEET_KUDOS) : null, ss && !ss.getSheetByName(CONFIG_PS.SHEET_KUDOS) ? "Kudos sheet not found" : null),
     pto:     { loadedAt: driveLastUpdated_(ids.ptoAccum) },
   };
+  // The Source Status ledger (SourceStatus.js) replaces the signal of each source it
+  // has stamped; sources it has not stamped yet keep the signal above.
+  const ledger = typeof ledgerFreshnessSignals_ === "function" ? ledgerFreshnessSignals_() : {};
+  Object.keys(ledger).forEach(k => { signals[k] = ledger[k]; });
+  return signals;
 }
 
 // True for the roles that see the WHOLE roster — superadmin, admin, viewer.

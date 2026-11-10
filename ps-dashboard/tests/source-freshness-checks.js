@@ -26,7 +26,9 @@ let pass = 0, fail = 0;
 const ck = (name, cond, detail) => { if (cond) pass++; else { fail++; console.error('  ❌ ' + name + (detail !== undefined ? '\n     ' + detail : '')); } };
 
 eval(fs.readFileSync(path.join(dir, 'PS Teams.js'), 'utf8'));
-eval(fs.readFileSync(path.join(dir, 'PS Contribution Report.js'), 'utf8'));
+// The completion value hands back SOURCE_FRESHNESS_ (a top-level const stays local to the eval).
+const SF = eval(fs.readFileSync(path.join(dir, 'PS Contribution Report.js'), 'utf8') + '\n;SOURCE_FRESHNESS_;');
+eval(fs.readFileSync(path.join(dir, 'SourceStatus.js'), 'utf8'));
 
 const T = s => s + '-06:00';                     // local Guatemala wall time → ISO
 
@@ -60,16 +62,18 @@ const CUTS = [
 // Order: roster rcr si goals planned tracked kudos pto
 const EXPECT = {
   '2026.W39': 'C C C C C C C C',   // every source inside its schedule
-  '2026.W40': 'C C C C C O N O',   // RCR: Sep not due until day 10; planned 7 d 4 h (≤ 8 d); tracked 3 d; kudos tab gone; PTO 13 d
+  '2026.W40': 'C C C C O O N C',   // RCR: Sep not due until day 10; planned 7 d 4 h (> 26 h); tracked 3 d; kudos tab gone; PTO 13 d (≤ 15 d)
   '2026.W41': 'C O C C O C C C',   // RCR still Aug after day 10 → Sep overdue; planned 14 d
   '2026.W42': 'C O C C N O C C',   // Anexo A: RCR Aug overdue, SI FY26Q4 current, planned no stamp, tracked 4 d old
 };
 const CODE = { C: 'current', O: 'overdue', N: 'nodata' };
 const KEYS = ['roster', 'rcr', 'si', 'goals', 'planned', 'tracked', 'kudos', 'pto'];
 // Cadence each source must declare (Tabla 2, corrected where Anexo B found the
-// label wrong: planned runs Mondays 08:00, not daily; RCR is monthly, not quarterly).
-const CADENCE = { roster: /^Daily/, rcr: /^Monthly/, si: /^Quarterly/, goals: /^Weekly/,
-                  planned: /^Weekly — Mondays 08:00/, tracked: /^Daily — 06:00/, kudos: /^Daily/, pto: /^Weekly/ };
+// label wrong: RCR is monthly, not quarterly). 2026.W46: tracked, planned, goals and
+// PTO now share the Source Status ledger's limits — planned runs daily (its live
+// trigger was added by hand), PTO is a manual paste due within 15 days.
+const CADENCE = { roster: /^Daily/, rcr: /^Monthly/, si: /^Quarterly/, goals: /^Weekly — manual paste/,
+                  planned: /^Daily$/, tracked: /^Daily — 06:00/, kudos: /^Daily/, pto: /^Manual paste — within 15 days/ };
 
 // ── Frontend: the panel and chip code, lifted from PS Dashboard.html ──────────
 const html = fs.readFileSync(path.join(dir, 'PS Dashboard.html'), 'utf8');
@@ -165,6 +169,95 @@ ck('wiring: failures degrade to nodata, never throw', ['roster', 'rcr', 'si', 'k
    JSON.stringify(nd.map(s => s.key + ':' + s.state)));
 ck('meta ships sourceFreshness', /sourceFreshness:\s+buildSourceFreshness_\(collectFreshnessSignals_\(/.test(fs.readFileSync(path.join(dir, 'PS Contribution Report.js'), 'utf8')));
 ck('plan export writes its run stamp', /setNote\("Last Export: " \+ new Date\(\)\.toISOString\(\)\)/.test(fs.readFileSync(path.join(dir, 'TempoPlanExport.js'), 'utf8')));
+
+// ── One set of limits: chip and Monday email (2026.W46) ──────────────────────
+const LEDGER_OF = { tracked: 'tempo_tracked', planned: 'tempo_plan', goals: 'goals', pto: 'pto' };
+Object.keys(LEDGER_OF).forEach(k => {
+  const f = SF.find(s => s.key === k), l = SOURCE_STATUS.SOURCES.find(s => s.key === LEDGER_OF[k]);
+  ck('limits: ' + k + ' maxAgeH = ledger ' + LEDGER_OF[k] + ' staleHours', !!f && !!l && f.maxAgeH === l.staleHours,
+     (f && f.maxAgeH) + ' vs ' + (l && l.staleHours));
+});
+ck('limits: planned 26 h is current', one('planned', { loadedAt: T('2026-11-08T10:00:00') }, T('2026-11-09T12:00:00')).state === 'current');
+ck('limits: planned 27 h is overdue', one('planned', { loadedAt: T('2026-11-08T09:00:00') }, T('2026-11-09T12:00:00')).state === 'overdue');
+ck('limits: PTO 15 d is current', one('pto', { loadedAt: T('2026-10-25T12:00:00') }, T('2026-11-09T12:00:00')).state === 'current');
+ck('limits: PTO 15 d 1 h is overdue', one('pto', { loadedAt: T('2026-10-25T11:00:00') }, T('2026-11-09T12:00:00')).state === 'overdue');
+
+// ── A failed ledger run turns the source overdue ─────────────────────────────
+const fl = one('tracked', { failedReason: 'Tempo 401', loadedAt: T('2026-11-09T06:01:00') }, T('2026-11-09T12:00:00'));
+ck('failed: state overdue even when the last load is recent', fl.state === 'overdue', JSON.stringify(fl));
+ck('failed: reason names the failure', fl.reason === 'Last run failed — Tempo 401', fl.reason);
+ck('failed: cut-off kept from the last good load', fl.cutoff === new Date(T('2026-11-09T06:01:00')).toISOString(), fl.cutoff);
+const fl2 = one('goals', { failedReason: 'RD tab not found' }, T('2026-11-09T12:00:00'));
+ck('failed without a load: overdue, no cut-off', fl2.state === 'overdue' && fl2.cutoff === null && fl2.reason === 'Last run failed — RD tab not found',
+   JSON.stringify(fl2));
+const flList = buildSourceFreshness_({ tracked: { failedReason: 'Tempo 401 <token>' } }, new Date(T('2026-11-09T12:00:00')));
+const flRow = (FE.sourceFreshnessHtml_(flList, T('2026-11-09T12:00:00')).match(/<tr data-src="tracked"[^>]*>(.*?)<\/tr>/) || [])[0] || '';
+ck('failed: panel row uses the overdue styling', flRow.includes('data-state="overdue"') && flRow.includes('src-lz-overdue'), flRow);
+ck('failed: panel row shows the reason, escaped', flRow.includes('Last run failed — Tempo 401 &lt;token&gt;'), flRow);
+FE.renderSourceFreshness_({ sourceFreshness: flList, generatedAt: T('2026-11-09T12:00:00') });
+ck('failed: chip turns red', els.dataFreshnessNote.className.includes('fresh-bad'), els.dataFreshnessNote.className);
+
+// ── The ledger feeds the freshness view ──────────────────────────────────────
+let ledgerReads = 0, ledgerOpens = 0;
+const ledgerTab = values => ({ getDataRange: () => { ledgerReads++; return { getValues: () => values }; } });
+const HDR = SOURCE_STATUS.HEADERS.slice();
+const lrow = (key, lastUpdated, status, detail) => {
+  const r = HDR.map(() => '');
+  r[HDR.indexOf('Source')] = key; r[HDR.indexOf('Last updated')] = lastUpdated;
+  r[HDR.indexOf('Status')] = status; r[HDR.indexOf('Detail')] = detail || ''; return r;
+};
+const LEDGER_ROWS = [HDR,
+  lrow('tempo_tracked', new Date(T('2026-11-09T06:02:00')), 'ok', 'Run ok in 40 s'),
+  lrow('tempo_plan', new Date(T('2026-11-08T08:00:00')), 'failed', 'Tempo 429'),
+  lrow('tempo_capacity', new Date(T('2026-11-06T08:00:00')), 'ok'),
+  lrow('goals', '', 'pending', 'awaiting first update'),
+  lrow('pto', new Date(T('2026-11-02T10:00:00')), 'ok'),
+  lrow('roster', new Date(T('2026-11-09T05:00:00')), 'ok'),
+  lrow('kudos', 'not a date', 'ok'),
+];
+const withLedger = (tab, extraTabs) => {
+  ledgerReads = 0; ledgerOpens = 0;
+  global.SpreadsheetApp = { getActiveSpreadsheet: () => ({ getId: () => 'dash-id',
+    getSheetByName: n => { if (n === SOURCE_STATUS.SHEET) { ledgerOpens++; return tab; } return (extraTabs || {})[n] || null; } }) };
+};
+withLedger(ledgerTab(LEDGER_ROWS));
+let lf = ledgerFreshnessSignals_();
+ck('ledger: tracked ok → loadedAt', lf.tracked && lf.tracked.loadedAt === new Date(T('2026-11-09T06:02:00')).toISOString(), JSON.stringify(lf.tracked));
+ck('ledger: plan failed → failedReason', lf.planned && lf.planned.failedReason === 'Tempo 429', JSON.stringify(lf.planned));
+ck('ledger: failed keeps the last good load', lf.planned && lf.planned.loadedAt === new Date(T('2026-11-08T08:00:00')).toISOString());
+ck('ledger: pending goals without a stamp is omitted', !('goals' in lf), JSON.stringify(lf.goals));
+ck('ledger: PTO stamp → loadedAt', lf.pto && lf.pto.loadedAt === new Date(T('2026-11-02T10:00:00')).toISOString());
+ck('ledger: kudos with no valid date is omitted', !('kudos' in lf), JSON.stringify(lf.kudos));
+ck('ledger: roster, capacity and others are not mapped',
+   Object.keys(lf).sort().join() === 'planned,pto,tracked', Object.keys(lf).join());
+ck('ledger: read at most once', ledgerReads === 1 && ledgerOpens === 1, ledgerReads + ' reads / ' + ledgerOpens + ' opens');
+withLedger(null);
+ck('ledger: no tab → {}', JSON.stringify(ledgerFreshnessSignals_()) === '{}');
+withLedger(ledgerTab([['Source', 'Label']]));
+ck('ledger: missing column → {}, no throw', JSON.stringify(ledgerFreshnessSignals_()) === '{}');
+global.SpreadsheetApp = { getActiveSpreadsheet: () => { throw new Error('no container'); } };
+let lfThrew = false; try { lf = ledgerFreshnessSignals_(); } catch (e) { lfThrew = true; }
+ck('ledger: unreachable spreadsheet → {}, no throw', !lfThrew && JSON.stringify(lf) === '{}');
+withLedger(ledgerTab([HDR, lrow('kudos', new Date(T('2026-11-09T09:00:00')), 'failed', 'Kudos sheet missing')]));
+lf = ledgerFreshnessSignals_();
+ck('ledger: kudos failed → failedReason', lf.kudos && lf.kudos.failedReason === 'Kudos sheet missing', JSON.stringify(lf.kudos));
+
+// collectFreshnessSignals_ merges the ledger over the existing signals.
+global.DriveApp = { getFileById: () => ({ getLastUpdated: () => new Date('2026-11-09T11:00:00Z') }) };
+withLedger(ledgerTab(LEDGER_ROWS), { [CONFIG_PS.SHEET_PLANNED]: sheet('p'), [CONFIG_PS.SHEET_TEMPO_TRACKED]: sheet('t'), [CONFIG_PS.SHEET_KUDOS]: sheet('k') });
+sig = collectFreshnessSignals_(240, { _lastExport: '2026-10-15T17:51:00.000Z' }, { lastMonth: 'Oct 26' }, { teamAvg: 3.6, quarter: 'FY27Q1' });
+ck('merge: tracked replaced by the ledger stamp', sig.tracked.loadedAt === new Date(T('2026-11-09T06:02:00')).toISOString(), JSON.stringify(sig.tracked));
+ck('merge: planned failure replaces the A1-note stamp', sig.planned.failedReason === 'Tempo 429', JSON.stringify(sig.planned));
+ck('merge: goals with no ledger stamp keeps its Drive stamp', sig.goals.loadedAt === '2026-11-09T11:00:00.000Z', JSON.stringify(sig.goals));
+ck('merge: roster keeps its Drive stamp', sig.roster.loadedAt === '2026-11-09T11:00:00.000Z', JSON.stringify(sig.roster));
+ck('merge: kudos with no ledger stamp keeps its row-1 stamp', sig.kudos.loadedAt === new Date(T('2026-10-19T11:35:00')).toISOString(), JSON.stringify(sig.kudos));
+const merged = buildSourceFreshness_(sig, new Date(T('2026-11-09T12:00:00')));
+const mp = merged.find(s => s.key === 'planned');
+ck('merge: planned shows overdue with the failure', mp.state === 'overdue' && /^Last run failed — Tempo 429$/.test(mp.reason), JSON.stringify(mp));
+withLedger(null, { [CONFIG_PS.SHEET_PLANNED]: sheet('p'), [CONFIG_PS.SHEET_TEMPO_TRACKED]: sheet('t'), [CONFIG_PS.SHEET_KUDOS]: sheet('k') });
+sig = collectFreshnessSignals_(240, { _lastExport: '2026-10-15T17:51:00.000Z' }, { lastMonth: 'Oct 26' }, { teamAvg: 3.6, quarter: 'FY27Q1' });
+ck('no ledger yet: tracked keeps Last Export', sig.tracked.loadedAt === '2026-10-15T17:51:00.000Z', JSON.stringify(sig.tracked));
+ck('no ledger yet: planned keeps the A1 note', sig.planned.loadedAt === '2026-10-19T14:05:00.000Z', JSON.stringify(sig.planned));
 
 // ── I2 ledger ──────────────────────────────────────────────────────────────
 if (process.argv.includes('--ledger')) {

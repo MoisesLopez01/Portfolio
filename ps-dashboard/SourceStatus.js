@@ -503,6 +503,40 @@ function readSourceStatus_() {
   }
 }
 
+// Ledger key → key of the dashboard's live freshness view (SOURCE_FRESHNESS_ in
+// PS Contribution Report.js). Roster is not mapped: its ledger stamp moves only when
+// the data changes, so a quiet day would look overdue; it keeps its Drive stamp.
+var LEDGER_FRESHNESS_KEYS_SS = { tempo_tracked: "tracked", tempo_plan: "planned", goals: "goals", pto: "pto", kudos: "kudos" };
+
+// Signals for collectFreshnessSignals_, from the ledger's stored rows:
+//   status "failed"      → { failedReason: detail, loadedAt?: last good update }
+//   valid "Last updated" → { loadedAt: ISO }
+//   otherwise            → key omitted, so the view keeps its own signal.
+// Reads the ledger at most once. Never throws; {} when there is no ledger tab.
+function ledgerFreshnessSignals_() {
+  try {
+    var sh = ledgerSpreadsheet_SS_().getSheetByName(SOURCE_STATUS.SHEET);
+    if (!sh) return {};
+    var rows = readLedgerRows_SS_(sh).rows, out = {};
+    for (var key in LEDGER_FRESHNESS_KEYS_SS) {
+      var r = rows[key];
+      if (!r) continue;
+      var at = isDate_SS_(r.lastUpdated) ? r.lastUpdated.toISOString() : null;
+      if (String(r.status || "").trim().toLowerCase() === "failed") {
+        var sig = { failedReason: String(r.detail || "").trim() || "no detail recorded" };
+        if (at) sig.loadedAt = at;
+        out[LEDGER_FRESHNESS_KEYS_SS[key]] = sig;
+      } else if (at) {
+        out[LEDGER_FRESHNESS_KEYS_SS[key]] = { loadedAt: at };
+      }
+    }
+    return out;
+  } catch (e) {
+    Logger.log("⚠️ [ledgerFreshnessSignals_] " + e.message);
+    return {};
+  }
+}
+
 // ── Daily checks ────────────────────────────────────────────
 
 // Returns a problem string, or null when the tab (and optional header) is readable.
