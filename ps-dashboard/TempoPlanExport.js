@@ -512,6 +512,13 @@ function markPlanDeepRefreshDone_(props, today) {
   }
 }
 
+// Entry point for the daily trigger (added by hand on the Triggers page) and manual runs. See fetchTempoLoggedTime.
+function fetchTempoPlannedTime() {
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('fetchTempoPlannedTime');
+  if (typeof withSourceStatus_ !== 'function') return fetchTempoPlannedTimeBody_();
+  return withSourceStatus_("tempo_plan", fetchTempoPlannedTimeBody_);
+}
+
 /**
  * Main function: fetches all Tempo planned hours for the CONFIGPlanured
  * date range and writes a weekly breakdown table to the output sheet.
@@ -521,7 +528,7 @@ function markPlanDeepRefreshDone_(props, today) {
  * see the freeze-and-merge note on CONFIGPlan. Use backfillPlanHistory() to
  * populate history the first time.
  */
-function fetchTempoPlannedTime() {
+function fetchTempoPlannedTimeBody_() {
   // Web-reachable via google.script.run by anyone the deployment admits, so it is
   // gated. The typeof test is not defensive noise: if this file lives in its OWN
   // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)

@@ -86,7 +86,7 @@ try { due = P.planDeepRefreshDue_(broken, thu); } catch (e) { threw = true; }
 ck('unreadable Script Properties → routine run, no throw', !threw && due === false);
 
 // ── 3. The export wires the deep pass in, and restores the override ──────────
-const body = src.slice(src.indexOf('function fetchTempoPlannedTime()'));
+const body = src.slice(src.indexOf('function fetchTempoPlannedTimeBody_()'));
 const fn = body.slice(0, body.indexOf('\nfunction ', 10));
 ck('fetchTempoPlannedTime decides the depth from planDeepRefreshDue_', /planDeepRefreshDue_\(\)/.test(fn));
 ck('fetchTempoPlannedTime marks the week only after the write',
