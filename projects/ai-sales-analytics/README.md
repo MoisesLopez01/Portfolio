@@ -2,6 +2,10 @@
 
 > HubSpot CRM + Gemini LLM → automated weekly deal intelligence
 
+**Runnable in this repo:** a KMeans + PCA cross-sell recommender over 120 synthetic accounts (99 recommendations, 5 cohorts, 4 tests). The HubSpot + Gemini deal-intelligence pipeline described below is the production system; [`src/ingestion.gs`](./src/ingestion.gs) shows its CRM-pull pattern.
+
+![Cross-sell recommender output](docs/cross_sell_overview.png)
+
 An end-to-end pipeline that pulls deal data from HubSpot, runs semantic analysis on
 unstructured deal notes with a Gemini LLM, applies a Time Decay forecasting model, and
 delivers AI-generated deal-risk flags and narrative summaries to sales leadership every

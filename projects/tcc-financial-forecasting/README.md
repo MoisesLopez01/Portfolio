@@ -2,6 +2,10 @@
 
 > CFO-ready P&L dashboards replacing manual budget consolidation
 
+**Runnable in this repo:** three portable SQL models (attrition proration, cost drivers, actuals vs. forecast) executed on synthetic finance data with SQLite (4 tests). The production system runs in Apps Script and a cloud warehouse.
+
+![Actuals vs. forecast and cost drivers](docs/forecast_overview.png)
+
 A Financial Forecasting & Total Cost of Compensation (TCC) Impact System built in Apps
 Script that models the cost impact of attrition, promotions, merit increases, and new hires,
 and surfaces it through automated, board-ready P&L dashboards.

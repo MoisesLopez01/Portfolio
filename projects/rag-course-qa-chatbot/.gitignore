@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.env.txt
+
+# Course material and generated data (not redistributable / rebuilt on run)
+data/*
+!data/README.md
+*.pdf
+
+# Vector store
+chroma_*/
+*.sqlite3
+*.bin
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

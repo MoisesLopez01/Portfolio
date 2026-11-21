@@ -2,6 +2,10 @@
 
 > 10+ regions, micro-banding, PDF + Sheets auto-output for board decisions
 
+**Runnable in this repo:** multi-currency normalization, cost-of-living adjustment, micro-banding and market compa-ratio for 300 synthetic employees across 6 regions, with an offline fallback for the Vertex AI benchmark (6 tests).
+
+![Compa-ratio by region](docs/compa_ratio_by_region.png)
+
 A Python + Gemini Pro tool that unifies compensation reporting across a globally distributed
 SaaS company — normalizing multi-currency salaries, applying regional cost-of-living
 adjustments and micro-banding, and auto-generating board-ready PDF and Google Sheets output.

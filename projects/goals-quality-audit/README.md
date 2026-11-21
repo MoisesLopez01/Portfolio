@@ -2,6 +2,10 @@
 
 > SuiteQL + Python → 100% bonus-eligibility compliance enforced automatically
 
+**Runnable in this repo:** the bonus-eligibility rule engine on 230 synthetic employees, flagging 56 exceptions before the bonus cycle (5 tests).
+
+![Goals compliance audit output](docs/compliance_overview.png)
+
 An automated pipeline that extracts goal data from NetSuite, applies the company's bonus
 eligibility rule (every employee must have at least 10 active goals), and flags
 non-compliant employees before the bonus cycle runs — at a scale of roughly **60K data
@@ -76,7 +80,7 @@ python -m pytest tests/ -q          # 5 passed
 The audit emits a full compliance DataFrame plus a non-compliant subset (written to
 `exceptions.csv`) — the rows that drive the automated HR notification in production.
 
-Example run (230 synthetic employees): **174 compliant / 56 exceptions → 75.6% compliance.**
+Example run (230 synthetic employees): **174 compliant / 56 exceptions → 75.7% compliance.**
 
 ## License
 

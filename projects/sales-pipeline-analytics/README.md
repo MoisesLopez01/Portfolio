@@ -3,6 +3,10 @@
 > Python + SQL pipeline that turns raw CRM deal data into a clean, warehouse-ready
 > model for BI dashboards — **runnable end-to-end in one command, with tests.**
 
+**Runnable in this repo:** 431 raw CRM records deduplicated, quality-gated and loaded as 400 warehouse rows, then modeled in SQL for BI (12 tests).
+
+![Pipeline data-quality gates and weighted pipeline](docs/pipeline_overview.png)
+
 A compact but production-shaped data pipeline: it **extracts** deal records from a
 cursor-paginated CRM REST API (or a local file), **transforms** them (cleaning,
 deduplication, data-quality gating, fiscal-calendar enrichment, risk-adjusted
