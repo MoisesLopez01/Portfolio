@@ -1,20 +1,32 @@
 # Alex López – Data Analytics Portfolio
 
-**Senior Data Analyst** | SQL · Python · ETL/ELT · BI · AI/LLM applications
+**Senior Data Analyst** | Custom dashboards · SQL · Python · ETL/ELT · AI/LLM applications
 
-Runnable, tested projects that mirror the work I do in production: turning raw API and CRM data into reliable models, forecasts, audits, and AI-assisted tools. Every project ships with source code, setup notes, and automated tests or checks. The data is **synthetic**, except for the RAG chatbot, which indexes course material that is not redistributed here.
+I build the data layer and the custom views that leadership uses to run workforce planning, delivery, recruiting, and people-cost decisions. This repo shows that work two ways: **recreations of my production dashboards** (synthetic data) and **runnable, tested projects** with source code.
 
 [LinkedIn](https://www.linkedin.com/in/ai-analyst/) · [GitHub profile](https://github.com/MoisesLopez01)
 
-![Sales pipeline data-quality gates and weighted pipeline](projects/sales-pipeline-analytics/docs/pipeline_overview.png)
+![Top skills, each paired with where it is used in production](showcase/images/skills.png)
+
+## Custom dashboard gallery
+
+Recreations of analytics web apps I built for leadership teams. Layout, metrics, and business rules match the originals; every name and number is synthetic. **[See the full gallery →](showcase)**
+
+| | |
+| --- | --- |
+| [![Delivery Health](showcase/images/delivery-health.png)](showcase#delivery-health)<br>**Delivery Health**: on-time delivery, utilization, rework, and free capacity by ISO week | [![Recruiting overview](showcase/images/recruiting.png)](showcase#recruiting-overview)<br>**Recruiting overview**: funnel split at the recruiter screen, offers, priority roles |
+| [![Attrition Intelligence](showcase/images/attrition.png)](showcase#attrition-intelligence)<br>**Attrition Intelligence**: regretted exits, concentration signals, 12-month outlook | [![PTO Liability](showcase/images/pto-liability.png)](showcase#pto-liability)<br>**PTO Liability**: liability trend, year-end exposure, department risk tiers |
 
 ## Start here (2-minute tour)
 
-1. **[sales-pipeline-analytics](projects/sales-pipeline-analytics)** – the end-to-end data engineering flow: API extract, data-quality gates, idempotent warehouse load, SQL models.
-2. **[rag-course-qa-chatbot](projects/rag-course-qa-chatbot)** – a grounded LLM chatbot built with LangChain, Chroma and RAG.
-3. **[tcc-financial-forecasting](projects/tcc-financial-forecasting)** – compensation cost forecasting in plain SQL.
+1. **[Dashboard gallery](showcase)** – four recreated leadership views and the design patterns behind them.
+2. **[sales-pipeline-analytics](projects/sales-pipeline-analytics)** – the end-to-end data engineering flow: API extract, data-quality gates, idempotent warehouse load, SQL models.
+3. **[rag-course-qa-chatbot](projects/rag-course-qa-chatbot)** – a grounded LLM chatbot built with LangChain, Chroma and RAG.
+4. **[tcc-financial-forecasting](projects/tcc-financial-forecasting)** – compensation cost forecasting in plain SQL.
 
-## Projects
+## Runnable projects
+
+Every project ships with source code, setup notes, and automated tests or checks. The data is **synthetic**, except for the RAG chatbot, which indexes course material that is not redistributed here.
 
 | Project | Business question | Stack | Proof |
 | --- | --- | --- | --- |
@@ -25,8 +37,9 @@ Runnable, tested projects that mirror the work I do in production: turning raw A
 | [**goals-quality-audit**](projects/goals-quality-audit) | Which performance goals break policy before bonus review? | Python, pandas | Rule engine with exception reporting. **5 tests** |
 | [**ai-sales-analytics**](projects/ai-sales-analytics) | Which customers are likely cross-sell targets? | Python, scikit-learn | KMeans + PCA recommender on won-deal data. **4 tests** |
 
-## Skills shown
+## Skills (searchable text)
 
+- **Dashboards and visualization:** custom analytics web apps (HTML, CSS, JavaScript, Google Apps Script), hand-built SVG, Chart.js, Plotly, Looker, Tableau, Power BI
 - **SQL and modeling:** CTEs, joins, window functions, idempotent upserts, layered raw → staging → model design
 - **Python:** pandas, NumPy, scikit-learn, pytest
 - **Pipelines and quality:** REST API extraction, pagination, deduplication, data-quality gates, run-audit tables

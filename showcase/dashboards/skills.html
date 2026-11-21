@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Top skills · Alex López</title>
+<link rel="stylesheet" href="assets/dash.css">
+<style>
+  html, body { background: #fff; }
+  .wrap { padding: 26px 30px; }
+  .hd { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+  .hd h1 { font-size: 24px; } .hd .sub { font-size: 13.5px; }
+  .sk { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .s { border: 1px solid var(--border); border-radius: 14px; padding: 15px 16px; background: #fff; position: relative; }
+  .s::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 4px; border-radius: 0 4px 4px 0; background: var(--c); }
+  .s h3 { margin: 0 0 3px; font-size: 16px; display: flex; gap: 8px; align-items: center; }
+  .s .n { width: 22px; height: 22px; border-radius: 6px; background: var(--c); color: #fff; font-size: 12px; display: grid; place-items: center; }
+  .s .ev { font-size: 12.5px; color: var(--ink); margin: 6px 0 9px; line-height: 1.4; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tags span { font-size: 11.5px; padding: 3px 8px; border-radius: 6px; background: var(--card2); border: 1px solid var(--border); color: #344054; }
+  .ux { margin-top: 14px; border: 1px dashed var(--border2); border-radius: 14px; padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .ux b { font-size: 12px; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+  .ux span { font-size: 12.5px; padding: 4px 10px; border-radius: 99px; background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hd"><h1>Top skills</h1><div class="sub">Senior Data Analyst · each skill paired with where it is used in production</div></div>
+  <div class="sk">
+    <div class="s" style="--c:#3B5BDB"><h3><span class="n">1</span>Custom dashboards &amp; data visualization</h3>
+      <div class="ev">20+ production analytics web apps for the CEO, Finance, People and Delivery leadership: KPI tiles, drill-downs, executive briefs.</div>
+      <div class="tags"><span>Hand-built SVG</span><span>Chart.js</span><span>Plotly</span><span>Looker</span><span>Tableau</span><span>Power BI</span><span>HTML / CSS / JS</span></div></div>
+    <div class="s" style="--c:#0E9F9A"><h3><span class="n">2</span>SQL &amp; data modeling</h3>
+      <div class="ev">Weekly SQL and SuiteQL on NetSuite and Oracle Analytics Warehouse; KPI models at person-issue-week grain from 9,000+ Jira issues.</div>
+      <div class="tags"><span>SQL</span><span>SuiteQL</span><span>CTEs</span><span>Window functions</span><span>Entity modeling</span><span>Idempotent MERGE</span></div></div>
+    <div class="s" style="--c:#EE7B4D"><h3><span class="n">3</span>Pipelines &amp; automation</h3>
+      <div class="ev">Scheduled API pipelines over Lever, Jira, Tempo, HubSpot and HRIS with pagination, incremental loads, retries and caching.</div>
+      <div class="tags"><span>Python</span><span>pandas</span><span>JavaScript</span><span>Google Apps Script</span><span>REST APIs</span><span>ETL / ELT</span><span>pytest</span></div></div>
+    <div class="s" style="--c:#1F9D55"><h3><span class="n">4</span>Data quality &amp; governance</h3>
+      <div class="ev">Compensation auditor reconciling 12 executive sheets in one run; metric dictionaries; row-level access from the HRIS hierarchy.</div>
+      <div class="tags"><span>Reconciliation</span><span>Schema checks</span><span>Freshness monitoring</span><span>Metric definitions</span><span>RBAC</span><span>Data minimization</span></div></div>
+    <div class="s" style="--c:#7C3AED"><h3><span class="n">5</span>AI &amp; LLM applications</h3>
+      <div class="ev">AI salary benchmarking with traceable sources; 40% faster leadership-evaluation workflow; RAG chatbot (LangChain certificate, 2026).</div>
+      <div class="tags"><span>LangChain</span><span>RAG</span><span>Chroma</span><span>OpenAI / Gemini APIs</span><span>Vertex AI</span><span>Prompt design</span><span>Claude Code</span></div></div>
+    <div class="s" style="--c:#64748B"><h3><span class="n">6</span>Business domains &amp; stakeholders</h3>
+      <div class="ev">Turns ambiguous requests into written, testable business rules and presents findings to executive leadership.</div>
+      <div class="tags"><span>Workforce planning</span><span>Compensation / TCC</span><span>FP&amp;A</span><span>Recruiting funnel</span><span>Service delivery KPIs</span><span>Forecasting</span></div></div>
+  </div>
+  <div class="ux"><b>Built into every view</b><span>Freshness stamps</span><span>Role-based scoping</span><span>Click-to-filter drill-downs</span><span>Status glyphs, not color alone</span><span>Low-sample suppression</span><span>PNG / CSV export</span><span>Copy-ready executive brief</span></div>
+</div>
+</body>
+</html>

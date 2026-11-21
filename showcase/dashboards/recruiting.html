@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recruiting Overview (recreation, synthetic data)</title>
+<link rel="stylesheet" href="assets/dash.css">
+<style>
+  .strip { display: grid; grid-template-columns: 1.25fr repeat(6, 1fr); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 16px; }
+  .strip > div { padding: 14px 16px; border-right: 1px solid var(--border); }
+  .strip > div:last-child { border-right: 0; }
+  .strip .lead { border-left: 4px solid var(--primary); background: #F3F6FE; }
+  .strip .l { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 700; min-height: 28px; }
+  .strip .v { font-size: 34px; font-weight: 700; letter-spacing: -.5px; margin: 2px 0; }
+  .strip .d { font-size: 12px; color: var(--muted); }
+  .news { display: flex; gap: 14px; align-items: center; background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; flex-wrap: wrap; }
+  .p { font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 4px; color: #fff; margin-right: 6px; }
+  .p1 { background: var(--bad); } .p2 { background: var(--warn); } .p3 { background: var(--slate); }
+  .funnel { display: grid; gap: 7px; }
+  .fr { display: grid; grid-template-columns: 170px 1fr 44px; gap: 10px; align-items: center; font-size: 12.8px; }
+  .fr .bar { height: 20px; border-radius: 4px; }
+  .fr .n { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .divider { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: center; font-size: 10.5px; font-weight: 800; letter-spacing: 1px; color: var(--primary); margin: 4px 0; }
+  .divider hr { border: 0; border-top: 1.5px dashed var(--primary); margin: 0; }
+  .callouts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .callout { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--card2); font-size: 12.5px; color: var(--muted); }
+  .callout b { display: block; font-size: 22px; color: var(--ink); }
+  .warmb { color: var(--warm); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="app light-rail">
+  <aside class="rail">
+    <div class="brand"><div class="mark">RC</div><div><b>Hiring Hub</b><small>Lever pipeline views</small></div></div>
+    <div class="eyebrow">Recruiting</div>
+    <div class="nav active"><span class="ico"></span>Overview</div>
+    <div class="nav"><span class="ico"></span>Needs action</div>
+    <div class="nav"><span class="ico"></span>Source planning</div>
+    <div class="nav"><span class="ico"></span>Metrics</div>
+    <div class="nav"><span class="ico"></span>Year to date</div>
+    <div class="eyebrow">Admin</div>
+    <div class="nav"><span class="ico"></span>Access</div>
+    <div class="nav"><span class="ico"></span>Pull &amp; settings</div>
+    <div class="nav"><span class="ico"></span>Changes</div>
+    <div class="nav"><span class="ico"></span>Activity</div>
+    <div class="foot">Role: Talent Acquisition · Admin</div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h1>Recruiting overview</h1>
+        <div class="sub">Week 2026.W47 (Nov 16–22) · 6 entity levels joined: requisition → posting → opportunity → interview → feedback → offer</div>
+      </div>
+      <div class="top-right">
+        <span class="seg"><span class="on">Last completed week</span><span>Week in progress</span></span>
+        <span class="pill synthetic">Recreation · synthetic data</span>
+        <span class="pill"><span class="dot" style="background:var(--primary)"></span>Source: Lever · 07:10</span>
+      </div>
+    </div>
+
+    <div class="news"><b>Priority roles</b>
+      <span><span class="p p1">P1</span>Senior Data Engineer · 2 offers out</span>
+      <span><span class="p p1">P1</span>Solutions Architect · onsite this week</span>
+      <span><span class="p p2">P2</span>Customer Success Manager · 14 unscreened</span>
+      <span><span class="p p3">P3</span>QA Analyst · stalled 24d</span>
+    </div>
+
+    <div class="strip" id="strip"></div>
+
+    <div class="grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 16px;">
+      <div class="card">
+        <div class="card-head"><div><h3>58% of the funnel has not reached a recruiter screen</h3><div class="cs">Where the funnel actually is: open candidates by current stage, all postings.</div></div><span class="scope">ALL POSTINGS</span></div>
+        <div class="funnel" id="funnel"></div>
+        <div class="callouts"><div class="callout"><b class="num">41</b>unscreened for 7+ days</div><div class="callout"><b class="num">23 of 172</b>stalled: no stage change in 21+ days</div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h3>Qualified pipeline up 31% in six weeks</h3><div class="cs">Weekly snapshot. Bars use the left axis; offer lines use the right axis.</div></div><span class="scope">LAST 6 WEEKS</span></div>
+        <div class="legend"><span><i style="background:var(--sand)"></i>In funnel</span><span><i style="background:var(--primary)"></i>Qualified</span><span><i class="line" style="background:var(--warm)"></i>Offers open</span><span><i class="line" style="background:var(--good)"></i>Accepted</span></div>
+        <div id="combo"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h3>Hiring roles</h3><div class="cs">Open postings by role. Bold coral = offers out. Age = days since the posting opened.</div></div><span class="select">Hiring manager: All</span></div>
+      <table id="roles"></table>
+    </div>
+    <div class="foot-note"><span>Recreation of a production view I built. Layout and logic mirror the original; every name and number is generated.</span><span>Alex López · github.com/MoisesLopez01/Portfolio</span></div>
+  </main>
+</div>
+<script src="assets/dash.js"></script>
+<script>
+const k = [
+  ["In the hiring funnel", "172", "+9 vs last week", "lead"],
+  ["Qualified (past screen)", "72", "+6 vs last week"],
+  ["Offers open", "5", "+2 vs last week"],
+  ["Accepted this quarter", "11", "+1 vs last week"],
+  ["Declined this quarter", "2", "click to see list"],
+  ["Hired this quarter", "9", "Q2 FY27 to date"],
+  ["Open postings", "22", "17 distinct roles"],
+];
+document.getElementById("strip").innerHTML = k.map(([l, v, d, c]) => `<div class="${c || ""}"><div class="l">${l}</div><div class="v num">${v}</div><div class="d">${d}</div></div>`).join("");
+
+const stages = [["New applicant", 46], ["Resume review", 33], ["Pre-screening", 21], null, ["Phone / TA interview", 31], ["With hiring manager", 22], ["Onsite interview", 14], ["Offer", 5]];
+const max = 46, f = document.getElementById("funnel");
+let after = false;
+f.innerHTML = stages.map((s) => {
+  if (!s) { after = true; return `<div class="divider"><span>RECRUITER SCREEN</span><hr></div>`; }
+  const col = s[0] === "Offer" ? "var(--warm)" : after ? "var(--primary)" : "var(--sand)";
+  return `<div class="fr"><span>${s[0]}</span><div class="bar" style="width:${(s[1] / max) * 100}%;background:${col}"></div><span class="n">${s[1]}</span></div>`;
+}).join("");
+
+// combo: grouped bars + two lines on a right axis
+(() => {
+  const w = 560, h = 268, pad = { l: 40, r: 34, t: 12, b: 30 }, iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+  const wk = ["W42", "W43", "W44", "W45", "W46", "W47"];
+  const funnel = [151, 158, 149, 160, 163, 172], qual = [55, 58, 61, 63, 66, 72], offers = [2, 3, 3, 4, 3, 5], acc = [1, 2, 4, 6, 9, 11];
+  const s = D.svg(w, h), ymax = 200, rmax = 12, gw = iw / wk.length, bw = gw * 0.3;
+  const y = (v) => pad.t + ih - (v / ymax) * ih, ry = (v) => pad.t + ih - (v / rmax) * ih, cx = (i) => pad.l + (i + 0.5) * gw;
+  for (let i = 0; i <= 4; i++) {
+    s.append(D.el("line", { x1: pad.l, x2: w - pad.r, y1: y(i * 50), y2: y(i * 50), stroke: D.css("--border") }));
+    s.append(D.el("text", { x: pad.l - 6, y: y(i * 50) + 4, "text-anchor": "end", "font-size": 10.5, fill: D.css("--muted") }, i * 50));
+    s.append(D.el("text", { x: w - pad.r + 6, y: ry(i * 3) + 4, "font-size": 10.5, fill: D.css("--warm") }, i * 3));
+  }
+  wk.forEach((lab, i) => {
+    s.append(D.el("rect", { x: cx(i) - bw - 1, y: y(funnel[i]), width: bw, height: y(0) - y(funnel[i]), fill: D.css("--sand"), rx: 2 }));
+    s.append(D.el("rect", { x: cx(i) + 1, y: y(qual[i]), width: bw, height: y(0) - y(qual[i]), fill: D.css("--primary"), rx: 2 }));
+    s.append(D.el("text", { x: cx(i), y: h - 10, "text-anchor": "middle", "font-size": 10.5, fill: D.css("--muted") }, "2026." + lab));
+  });
+  [[offers, D.css("--warm")], [acc, D.css("--good")]].forEach(([vals, c]) => {
+    s.append(D.el("polyline", { points: vals.map((v, i) => `${cx(i)},${ry(v)}`).join(" "), fill: "none", stroke: c, "stroke-width": 2.4 }));
+    vals.forEach((v, i) => { s.append(D.el("circle", { cx: cx(i), cy: ry(v), r: 3.4, fill: "#fff", stroke: c, "stroke-width": 2 })); });
+    s.append(D.el("text", { x: cx(5) + 8, y: ry(vals[5]) + 4, "font-size": 11, "font-weight": 700, fill: c }, vals[5]));
+  });
+  document.getElementById("combo").append(s);
+})();
+
+const roles = [
+  ["Senior Data Engineer", "P1", 24, 12, 2, 0, 3, "38d", "2 offers out; decision due Fri"],
+  ["Solutions Architect", "P1", 18, 9, 1, 1, 2, "52d", "Onsite loop booked for 3"],
+  ["Customer Success Manager", "P2", 31, 10, 0, 1, 14, "27d", "Screen backlog: 14 waiting"],
+  ["Analytics Engineer", "P2", 15, 8, 1, 2, 1, "61d", "Offer accepted; 1 more seat"],
+  ["Cloud Support Engineer", "P2", 26, 11, 0, 3, 6, "44d", "Hiring manager review"],
+  ["QA Analyst", "P3", 12, 4, 0, 0, 5, "96d", "Stalled 24d: refresh posting"],
+];
+const pc = { P1: "p1", P2: "p2", P3: "p3" };
+document.getElementById("roles").innerHTML = `<tr><th>Role</th><th>Priority</th><th class="r">In funnel</th><th class="r">Qualified</th><th class="r">Offers open</th><th class="r">Accepted</th><th class="r">Unscreened</th><th class="r">Age</th><th>Where it stands</th></tr>` +
+  roles.map((r) => `<tr><td><b>${r[0]}</b></td><td><span class="p ${pc[r[1]]}">${r[1]}</span></td><td class="r">${r[2]}</td><td class="r">${r[3]}</td><td class="r ${r[4] ? "warmb" : ""}">${r[4]}</td><td class="r">${r[5]}</td><td class="r ${r[6] >= 10 ? "bad-t" : ""}">${r[6]}</td><td class="r">${r[7]}</td><td>${r[8]}</td></tr>`).join("") +
+  `<tr class="total"><td>Total (6 of 17 roles shown)</td><td></td><td class="r">126</td><td class="r">54</td><td class="r">4</td><td class="r">7</td><td class="r">31</td><td class="r">—</td><td></td></tr>`;
+</script>
+</body>
+</html>

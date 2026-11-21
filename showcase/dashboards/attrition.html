@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attrition Intelligence (recreation, synthetic data)</title>
+<link rel="stylesheet" href="assets/dash.css">
+<style>
+  .wrap { max-width: 1380px; margin: 0 auto; padding: 0 28px 28px; }
+  header.bar { background: #fff; border-bottom: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 18px; }
+  header.bar .in { max-width: 1380px; margin: 0 auto; padding: 14px 28px; display: flex; align-items: center; gap: 16px; }
+  header .vr { width: 1px; height: 34px; background: var(--border); }
+  .tabs { display: flex; gap: 6px; margin-left: 24px; }
+  .tabs span { padding: 7px 14px; border-radius: 9px; font-size: 13.5px; color: var(--muted); font-weight: 600; }
+  .tabs span.on { background: var(--ink); color: #fff; }
+  .hero { background: linear-gradient(135deg, #14213D, #1E2F5C 55%, #24427E); color: #fff; border-radius: 16px; padding: 20px 22px; margin-bottom: 16px; }
+  .hero .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .ht { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 12px 14px; }
+  .ht .l { font-size: 11px; letter-spacing: .7px; text-transform: uppercase; opacity: .75; font-weight: 700; display: flex; justify-content: space-between; }
+  .ht .sc { font-size: 10px; padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.14); letter-spacing: .3px; }
+  .ht .v { font-size: 30px; font-weight: 700; margin: 6px 0 2px; }
+  .ht .d { font-size: 12.5px; opacity: .85; }
+  .up { color: #FFB49E; } .down { color: #D6F5E3; }
+  .fc { margin-top: 14px; display: flex; gap: 18px; align-items: center; font-size: 12.5px; opacity: .92; }
+  .fc .track { flex: 1; height: 8px; border-radius: 8px; background: rgba(255,255,255,.12); position: relative; }
+  .fc .band { position: absolute; left: 38%; width: 22%; top: 0; bottom: 0; border-radius: 8px; background: rgba(255,180,158,.75); }
+  .fc .mk { position: absolute; left: 46%; top: -4px; width: 2px; height: 16px; background: #fff; }
+  .lens { display: inline-flex; border: 1px solid var(--border2); border-radius: 999px; overflow: hidden; }
+  .lens span { padding: 5px 12px; font-size: 12.5px; color: var(--muted); } .lens span.on { background: var(--primary); color: #fff; }
+  .pillr { background: var(--bad-bg); color: #8A2C08; padding: 1px 7px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+</style>
+</head>
+<body>
+<header class="bar"><div class="in">
+  <div class="mark">AI</div><div class="vr"></div>
+  <div><div style="font-size:21px;font-weight:700">Attrition Intelligence</div><div class="sub" style="margin:0">FY27 · month 5 of 12 · roster as of 2026-11-20 · cached payload</div></div>
+  <div class="tabs"><span class="on">Overview</span><span>Trends</span><span>Leavers</span><span>🔒 Access</span></div>
+  <div style="margin-left:auto" class="top-right"><span class="pill synthetic">Recreation · synthetic data</span><span class="btn">↻ Refresh</span></div>
+</div></header>
+
+<div class="wrap">
+  <div class="filters">
+    <span class="btn">☰ Filters</span><span class="chip">Region: All</span><span class="chip">FY27</span>
+    <span class="flabel">Exit lens</span><span class="lens"><span class="on">Regretted</span><span>Voluntary</span><span>All</span></span>
+    <span class="sub" style="margin:0 0 0 auto">Click any department or region in a chart to filter the whole page</span>
+  </div>
+
+  <div class="hero">
+    <div class="row" id="hero"></div>
+    <div class="fc"><span><b>12-month outlook</b> · voluntary exits</span><div class="track"><div class="band"></div><div class="mk"></div></div><span>58–79 expected · midpoint 66 · FY26 actual 71</span></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 16px;">
+    <div class="card">
+      <div class="card-head"><div><h3>Regretted exits concentrate in Engineering and Delivery</h3><div class="cs">Exits by department, FY27 to date, split by who initiated. Regretted share in coral.</div></div><span class="scope">COMPANY-WIDE</span></div>
+      <div class="legend"><span><i style="background:var(--warm)"></i>Regretted</span><span><i style="background:var(--ink)"></i>Other voluntary</span><span><i style="background:var(--sand)"></i>Company-initiated</span></div>
+      <div id="conc"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h3>FY27 is running 17% below FY26 at the same point</h3><div class="cs">Monthly exits, Jul 2025 to Nov 2026. Shaded months = FY27 (Jul–Jun).</div></div><span class="scope">COMPANY-WIDE</span></div>
+      <div class="legend"><span><i style="background:var(--warm)"></i>Regretted</span><span><i style="background:var(--ink)"></i>Other voluntary</span><span><i style="background:var(--sand)"></i>Company-initiated</span><span><i style="background:#C9CED8"></i>Unknown</span></div>
+      <div id="trend"></div>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns: 1.55fr 1fr;">
+    <div class="card">
+      <div class="card-head"><div><h3>Concentration table</h3><div class="cs">Groups with fewer than 3 exits show "not enough data". Signal = regretted share of exits 5pp or more above the company share (45%).</div></div><span class="btn">⤓ CSV</span></div>
+      <table id="tbl"></table>
+    </div>
+    <div class="card">
+      <h3>Brief</h3><div class="cs">Generated from the same numbers as the charts.</div>
+      <div class="notes">
+        <div class="note"><span class="t fact">FACT</span>29 exits so far in FY27, down from 35 at the same point in FY26.</div>
+        <div class="note"><span class="t high">HIGHLIGHT</span>Early exits (under 6 months) fell to 3, from 7.</div>
+        <div class="note"><span class="t concern">CONCERN</span>Engineering: 67% of exits were regretted vs 45% company-wide; 4 of those 6 went to competitors.</div>
+        <div class="note"><span class="t signal">SIGNAL</span>Compensation is the top stated reason for regretted exits (5 of 13).</div>
+        <div class="note"><span class="t fact">FACT</span>Cost figures use placeholder replacement assumptions and are labeled as such.</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot-note"><span>Recreation of a production view I built. Layout and logic mirror the original; every name and number is generated.</span><span>Alex López · github.com/MoisesLopez01/Portfolio</span></div>
+</div>
+<script src="assets/dash.js"></script>
+<script>
+const hero = [
+  ["Exits so far", "FY27", "29", "<span class='down'>▼ 6</span> vs 35 at this point in FY26 (fewer)"],
+  ["Regretted exits", "FY27", "13", "<span class='up'>▲ 2</span> vs FY26 · 7 went to a competitor"],
+  ["Net FTE", "FY27", "+14", "43 hires behind the net change"],
+  ["12-month outlook", "NEXT 12 MO", "58–79", "voluntary exits only"],
+];
+document.getElementById("hero").innerHTML = hero.map(([l, s, v, d]) => `<div class="ht"><div class="l"><span>${l}</span><span class="sc">${s}</span></div><div class="v num">${v}</div><div class="d">${d}</div></div>`).join("");
+
+const depts = [
+  { k: "Engineering", reg: 6, vol: 2, co: 1 }, { k: "Delivery", reg: 4, vol: 3, co: 1 }, { k: "Customer Success", reg: 1, vol: 3, co: 1 },
+  { k: "Sales", reg: 1, vol: 1, co: 2 }, { k: "Operations", reg: 1, vol: 1, co: 0 }, { k: "Marketing", reg: 0, vol: 1, co: 0 },
+];
+D.hStack(document.getElementById("conc"), depts, [{ key: "reg", color: D.css("--warm") }, { key: "vol", color: D.css("--ink") }, { key: "co", color: D.css("--sand") }], { rowH: 34, labelW: 130 });
+
+const months = ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov"];
+const reg = [2, 2, 3, 2, 2, 1, 2, 3, 2, 3, 2, 3, 3, 2, 3, 3, 2], vol = [3, 3, 3, 3, 3, 2, 3, 2, 4, 2, 3, 2, 2, 2, 2, 3, 2],
+      co = [1, 2, 1, 1, 2, 1, 0, 1, 2, 1, 1, 2, 1, 1, 1, 1, 1], unk = [0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0];
+D.stackedBars(document.getElementById("trend"), months, [
+  { name: "Regretted", color: D.css("--warm"), values: reg }, { name: "Other voluntary", color: D.css("--ink"), values: vol },
+  { name: "Company", color: D.css("--sand"), values: co }, { name: "Unknown", color: "#C9CED8", values: unk },
+], { h: 250, bandEvery: 12, ticks: 5, ymaxFixed: 10 });
+
+const rows = [
+  [1, "Engineering", "AMER", 9, "31%", 6, 1, 148, "+6", "signal +22pp"],
+  [2, "Delivery", "EMEA", 8, "28%", 4, 1, 121, "+4", "signal +5pp"],
+  [3, "Customer Success", "AMER", 5, "17%", 1, 1, 64, "+1", ""],
+  [4, "Sales", "APAC", 4, "14%", 1, 2, 58, "+2", ""],
+  [5, "Operations", "EMEA", "—", "—", "—", "—", 41, "+1", "low-n"],
+  [6, "Marketing", "AMER", "—", "—", "—", "—", 33, "0", "low-n"],
+];
+document.getElementById("tbl").innerHTML = `<tr><th class="r">#</th><th>Area</th><th>Region</th><th class="r">Exits</th><th class="r">Share</th><th class="r">Regretted</th><th class="r">Company</th><th class="r">Headcount</th><th class="r">Δ HC</th><th>Flag</th></tr>` +
+  rows.map((r) => `<tr><td class="r">${r[0]}</td><td><b>${r[1]}</b></td><td>${r[2]}</td><td class="r">${r[3]}</td><td class="r">${r[4]}</td><td class="r">${r[5]}</td><td class="r">${r[6]}</td><td class="r">${r[7]}</td><td class="r">${r[8]}</td><td>${r[9].startsWith("signal") ? `<span class='pillr'>${r[9]}</span>` : r[9] === "low-n" ? "<span class='tag' style='border:1px dashed var(--border2);color:var(--muted)'>not enough data</span>" : ""}</td></tr>`).join("") +
+  `<tr class="total"><td></td><td>Company</td><td>All</td><td class="r">29</td><td class="r">100%</td><td class="r">13</td><td class="r">5</td><td class="r">465</td><td class="r">+14</td><td></td></tr>`;
+</script>
+</body>
+</html>

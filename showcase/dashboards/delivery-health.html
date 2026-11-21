@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delivery Health (recreation, synthetic data)</title>
+<link rel="stylesheet" href="assets/dash.css">
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><div class="mark">DH</div><div><b>Delivery Health</b><small>Services KPIs</small></div></div>
+    <div class="nav active"><span class="ico"></span>Executive</div>
+    <div class="nav"><span class="ico"></span>Actions</div>
+    <div class="nav"><span class="ico"></span>Epic owners</div>
+    <div class="nav"><span class="ico"></span>Availability</div>
+    <div class="nav"><span class="ico"></span>Capacity<span class="tag">in progress</span></div>
+    <div class="eyebrow">Admin</div>
+    <div class="nav"><span class="ico"></span>Configuration</div>
+    <div class="nav"><span class="ico"></span>Changes</div>
+    <div class="nav"><span class="ico"></span>Access</div>
+    <div class="foot">Role: Director · scoped view</div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h1>Delivery Health</h1>
+        <div class="sub">Data as of 2026-11-20 06:00 · FY27 Q2 · week 2026.W47 · Jira issues + Tempo worklogs at person-issue-week grain</div>
+      </div>
+      <div class="top-right">
+        <span class="pill synthetic">Recreation · synthetic data</span>
+        <span class="pill"><span class="dot"></span>Fresh · 3h ago</span>
+        <span class="btn">↻ Refresh</span>
+      </div>
+    </div>
+
+    <div class="filters">
+      <span class="flabel">Period</span>
+      <span class="seg"><span>Week</span><span class="on">Month</span><span>Quarter</span></span>
+      <span class="select">FY27 · Nov — so far</span>
+      <span class="flabel">Region</span>
+      <span class="seg"><span class="on">All</span><span>AMER</span><span>EMEA</span><span>APAC</span></span>
+      <span class="select">All teams (8)</span>
+      <span class="flabel">People</span>
+      <span class="seg"><span class="on">FTE</span><span>Contractors</span><span>All</span></span>
+      <span class="select">Find person…</span>
+    </div>
+
+    <div class="subtabs"><span class="on">Health &amp; Actions</span><span>Backlog &amp; Flow</span><span>Executive brief</span></div>
+
+    <div class="kpis" id="kpis" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 16px;"></div>
+
+    <div class="grid" style="grid-template-columns: 1fr 1fr;">
+      <div class="card">
+        <div class="card-head"><div><h3>Four teams miss the 85% target; one is below 70%</h3><div class="cs">On-time delivery by team, November so far. Glyphs repeat the color: ✔ on target, ▲ watch, ✖ below.</div></div><span class="scope">COMPANY-WIDE</span></div>
+        <div style="display:flex; gap:8px; margin-bottom:6px; flex-wrap:wrap;"><span class="flabel">Compare by</span><span class="seg"><span>Region</span><span>Level</span><span class="on">Team</span><span>PM</span></span></div>
+        <div id="bullets"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h3>Spare capacity shrinks to 96h by 2026.W50</h3><div class="cs">Free hours by ISO week and region. Weeks after 2026.W47 use planned work.</div></div><span class="scope">NEXT 4 WEEKS</span></div>
+        <div class="legend" id="lg2"></div>
+        <div id="free"></div>
+      </div>
+    </div>
+    <div class="foot-note"><span>Recreation of a production view I built. Layout and logic mirror the original; every name and number is generated.</span><span>Alex López · github.com/MoisesLopez01/Portfolio</span></div>
+  </main>
+</div>
+<script src="assets/dash.js"></script>
+<script>
+const r = D.rng(47);
+const tiles = [
+  { k: "On-time delivery", v: 81, t: "≥85%", good: 85, watch: 70, ctx: "126 of 156 items due" },
+  { k: "Milestone commitments", v: 76, t: "≥80%", good: 80, watch: 60, ctx: "19 of 25 milestones" },
+  { k: "Forecast accuracy", v: 88, t: "≥80%", good: 80, watch: 65, ctx: "estimate vs. logged, 31 epics" },
+  { k: "Rework rate", v: 4.1, t: "≤5%", good: 5, watch: 10, lower: true, ctx: "9 reopened of 219 done" },
+  { k: "Billable utilization", v: 72, t: "≥70%", good: 70, watch: 50, ctx: "4,212h of 5,850h available" },
+  { k: "Availability", v: 18, t: "info", ctx: "free hours / capacity" },
+  { k: "Planned coverage", v: 64, t: "next 4 wks", ctx: "planned / productive hours" },
+  { k: "Data attributed", v: 93, t: "≥90%", good: 90, watch: 75, ctx: "worklogs mapped to epics" },
+];
+const host = document.getElementById("kpis");
+tiles.forEach((t) => {
+  let cls = "", g = "", col = D.css("--ink");
+  if (t.good !== undefined) {
+    const good = t.lower ? t.v <= t.good : t.v >= t.good, watch = t.lower ? t.v <= t.watch : t.v >= t.watch;
+    cls = good ? "" : watch ? "warn" : "bad"; g = good ? "✔" : watch ? "▲" : "✖";
+    col = good ? D.css("--good") : watch ? D.css("--warn") : D.css("--bad");
+  }
+  const trend = Array.from({ length: 6 }, (_, i) => t.v + (r() - 0.5) * 10 - (5 - i) * (t.lower ? -0.3 : 0.6));
+  trend[5] = t.v;
+  const d = document.createElement("div");
+  d.className = "kpi " + cls;
+  d.innerHTML = `<div class="lbl"><span>${t.k} ⓘ</span><span class="tgt">${t.t}</span></div>
+    <div class="val num" style="color:${col}">${g ? `<span style="font-size:18px;vertical-align:5px;margin-right:4px">${g}</span>` : ""}${t.v}%</div>
+    <div class="ctx">${t.ctx}</div><div class="sp"></div>`;
+  host.append(d);
+  D.sparkline(d.querySelector(".sp"), trend, { target: typeof t.good === "number" ? t.good : undefined, w: 260, h: 34, color: col === D.css("--ink") ? D.css("--primary") : col });
+});
+
+const teams = ["Platform", "Data & AI", "Integrations", "Apps", "Cloud Ops", "Learning", "Analytics", "Support Eng"];
+const vals = [92, 88, 86, 85, 83, 79, 74, 68];
+D.bulletBars(document.getElementById("bullets"), teams.map((k, i) => ({ k, v: vals[i] })), { target: 85, goodAt: 85, watchAt: 70 });
+
+const weeks = ["2026.W43", "2026.W44", "2026.W45", "2026.W46", "2026.W47", "2026.W48", "2026.W49", "2026.W50"];
+const regions = [["AMER", D.css("--primary")], ["EMEA", D.css("--teal")], ["APAC", D.css("--sand")]];
+const base = [[120, 96, 104, 88, 70, 58, 44, 38], [84, 90, 76, 70, 61, 47, 40, 34], [52, 48, 40, 44, 38, 30, 27, 24]];
+document.getElementById("lg2").innerHTML = regions.map(([n, c]) => `<span><i style="background:${c}"></i>${n}</span>`).join("") + `<span style="margin-left:auto">shaded weeks = plan</span>`;
+D.stackedBars(document.getElementById("free"), weeks.map((w) => w.slice(5)), regions.map(([name, color], i) => ({ name, color, values: base[i] })), { h: 286, yFmt: (v) => v + "h", bandEvery: 5 });
+</script>
+</body>
+</html>
