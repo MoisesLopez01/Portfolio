@@ -37,28 +37,18 @@ Every project ships with source code, setup notes, and automated tests or checks
 | [**goals-quality-audit**](projects/goals-quality-audit) | Which performance goals break policy before bonus review? | Python, pandas | Rule engine with exception reporting. **5 tests** |
 | [**ai-sales-analytics**](projects/ai-sales-analytics) | Which customers are likely cross-sell targets? | Python, scikit-learn | KMeans + PCA recommender on won-deal data. **4 tests** |
 
-## Skills (searchable text)
+Each project's README covers the problem, approach, results, and run steps.
+
+<details>
+<summary>Skills as text</summary>
 
 - **Dashboards and visualization:** custom analytics web apps (HTML, CSS, JavaScript, Google Apps Script), hand-built SVG, Chart.js, Plotly, Looker, Tableau, Power BI
-- **SQL and modeling:** CTEs, joins, window functions, idempotent upserts, layered raw → staging → model design
+- **SQL and modeling:** SQL, SuiteQL, CTEs, joins, window functions, idempotent upserts, layered raw → staging → model design
 - **Python:** pandas, NumPy, scikit-learn, pytest
-- **Pipelines and quality:** REST API extraction, pagination, deduplication, data-quality gates, run-audit tables
-- **Analytics:** forecasting, compensation analytics, compliance auditing, segmentation
+- **Pipelines and quality:** REST API extraction, pagination, deduplication, data-quality gates, reconciliation, RBAC
+- **Analytics:** workforce planning, forecasting, compensation analytics, FP&A, compliance auditing, segmentation
 - **AI/LLM:** LangChain (LCEL), retrieval-augmented generation, vector databases, prompt design, Vertex AI
 
-## Run any project
+</details>
 
-```bash
-# Example: the flagship ETL pipeline
-cd projects/sales-pipeline-analytics
-pip install -r requirements.txt
-python src/generate_sample_data.py --out data/sample_deals.json --n 400
-python src/pipeline.py --source data/sample_deals.json --db warehouse.db --verbose
-python -m pytest tests/ -q          # 12 passed
-```
-
-Each project's own README covers the problem, approach, results, and run steps.
-
-## License
-
-MIT © 2026 Moises Alexander López (Alex López)
+<sub>MIT © 2026 Moises Alexander López (Alex López)</sub>
